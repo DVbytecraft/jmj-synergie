@@ -49,7 +49,7 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
-        value: support@bytecraft.art
+        value: biloz@bytecraft.art
       - key: BREVO_SENDER_NAME
         value: Biloz
       - key: SMTP_HOST
@@ -61,7 +61,7 @@ services:
       - key: SMTP_PASSWORD
         sync: false
       - key: SMTP_FROM
-        value: support@bytecraft.art
+        value: biloz@bytecraft.art
       - key: SMTP_TLS
         value: "true"
       # ── Cloudinary ───────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ services:
       - key: COMPANY_PHONE
         value: "+229 00 00 00 00"
       - key: COMPANY_EMAIL
-        value: support@bytecraft.art
+        value: biloz@bytecraft.art
       # ── Sentry (optionnel) ────────────────────────────────────────────────────
       - key: SENTRY_DSN
         sync: false

@@ -58,12 +58,12 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
-    SMTP_FROM: str = "support@bytecraft.art"
+    SMTP_FROM: str = "biloz@bytecraft.art"
     SMTP_TLS: bool = True
 
     # ── Brevo (transactional email) ───────────────────────────────────────────
     BREVO_API_KEY: str = ""
-    BREVO_SENDER_EMAIL: str = "support@bytecraft.art"
+    BREVO_SENDER_EMAIL: str = "biloz@bytecraft.art"
     BREVO_SENDER_NAME: str = "Biloz"
 
     # ── Cloudinary (asset storage) ────────────────────────────────────────────
