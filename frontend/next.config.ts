@@ -9,8 +9,8 @@ const CSP = [
   "script-src 'self' 'unsafe-inline'",          // 'unsafe-inline' requis par Next.js
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data: blob:",
-  "connect-src 'self'",
+  "img-src 'self' data: blob: https://res.cloudinary.com",
+  "connect-src 'self' https://res.cloudinary.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -65,13 +65,15 @@ const nextConfig: NextConfig = {
   },
 
   // ── Réécriture API → backend ───────────────────────────────────────────────
-  // En production : le frontend proxifie /api/v1/* vers le backend FastAPI
-  // En développement : NEXT_PUBLIC_API_URL pointe directement sur le backend
+  // BACKEND_URL : URL interne du backend (server-side uniquement, pas publique)
+  // Utilisée par Next.js pour proxifier /api/v1/* → backend
+  // NEXT_PUBLIC_API_URL reste /api/v1 (relatif) côté navigateur
   async rewrites() {
+    const backendUrl = process.env.BACKEND_URL || "http://backend:8000";
     return [
       {
         source: "/api/v1/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://backend:8000/api/v1"}/:path*`,
+        destination: `${backendUrl}/api/v1/:path*`,
       },
     ];
   },

@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user
-RUN groupadd -r jmj && useradd -r -g jmj -d /app -s /sbin/nologin jmj
+RUN groupadd -r biloz && useradd -r -g biloz -d /app -s /sbin/nologin biloz
 
 WORKDIR /app
 
@@ -33,14 +33,14 @@ COPY . .
 
 RUN mkdir -p /app/storage/documents /app/storage/signatures \
              /app/storage/stamps /app/storage/scans /app/storage/assets && \
-    chown -R jmj:jmj /app
+    chmod +x /app/start.sh && \
+    chown -R biloz:biloz /app
 
-USER jmj
+USER biloz
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["/app/start.sh"]

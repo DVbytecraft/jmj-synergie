@@ -1,6 +1,7 @@
 # =============================================================================
-#  JMJ Synergie — Frontend Dockerfile (multi-stage)
-#  Build : docker build --build-arg NEXT_PUBLIC_API_URL=/api/v1 -t jmj-frontend .
+#  Biloz — Frontend Dockerfile (multi-stage)
+#  NEXT_PUBLIC_API_URL : URL publique de l'API (baked at build, côté navigateur)
+#  BACKEND_URL         : URL interne du backend (lue au runtime par Next.js server)
 # =============================================================================
 
 # ── Stage 1 : dépendances ────────────────────────────────────────────────────
@@ -24,9 +25,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Variables publiques injectées au build (côté navigateur)
-ARG NEXT_PUBLIC_API_URL=/api/v1
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# NEXT_PUBLIC_API_URL est toujours /api/v1 (relatif, baked dans le bundle navigateur)
+# BACKEND_URL est l'URL interne du backend — baked dans les rewrites Next.js
+ARG BACKEND_URL=http://backend:8000
+ENV BACKEND_URL=$BACKEND_URL
+ENV NEXT_PUBLIC_API_URL=/api/v1
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 

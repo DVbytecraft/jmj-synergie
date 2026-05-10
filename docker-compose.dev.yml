@@ -81,7 +81,8 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      NEXT_PUBLIC_API_URL: ${DEV_NEXT_PUBLIC_API_URL:-http://localhost:8001/api/v1}
+      BACKEND_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: /api/v1
       NEXTAUTH_URL: ${DEV_NEXTAUTH_URL:-http://localhost:3001}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev_nextauth_secret_32chars_minimum_ok}
       NODE_ENV: development
