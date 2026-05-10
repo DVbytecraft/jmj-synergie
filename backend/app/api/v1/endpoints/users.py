@@ -1,0 +1,278 @@
+"""
+Users management endpoints — admin only.
+"""
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
+
+from app.api.v1.deps import AdminUser, CurrentUser
+from app.core.config import settings
+from app.core.security import hash_password
+from app.infrastructure.database.models import IssuerProfileModel, OrganizationModel, UserModel
+from app.infrastructure.database.session import get_db_session as get_db
+
+router = APIRouter()
+
+VALID_ROLES = ("super_admin", "admin", "manager", "operator")
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    full_name: str = Field(..., min_length=2)
+    password: str = Field(..., min_length=8)
+    role: str = "operator"
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+    role: str
+    is_active: bool
+    created_at: str
+
+
+class IssuerProfileUpdate(BaseModel):
+    profile_type: str = Field(default="business", pattern="^(business|individual)$")
+    display_name: str | None = Field(default=None, max_length=255)
+    company_name: str | None = Field(default=None, max_length=255)
+    tax_id: str | None = Field(default=None, max_length=60)
+    phone: str | None = Field(default=None, max_length=30)
+    email: EmailStr | None = None
+    address_line1: str | None = Field(default=None, max_length=255)
+    city: str | None = Field(default=None, max_length=100)
+    postal_code: str | None = Field(default=None, max_length=30)
+    country: str | None = Field(default=None, max_length=100)
+    signature_title: str | None = Field(default=None, max_length=100)
+    footer_notes: str | None = None
+    document_email: EmailStr | None = None
+    auto_send_documents: bool = True
+    primary_color: str | None = Field(default=None, max_length=20)
+    secondary_color: str | None = Field(default=None, max_length=20)
+    font_family: str | None = Field(default=None, max_length=50)
+
+
+class IssuerProfileResponse(BaseModel):
+    profile_type: str
+    display_name: str | None
+    company_name: str | None
+    tax_id: str | None
+    phone: str | None
+    email: str | None
+    address_line1: str | None
+    city: str | None
+    postal_code: str | None
+    country: str | None
+    signature_title: str | None
+    footer_notes: str | None
+    document_email: str | None
+    auto_send_documents: bool
+    primary_color: str | None
+    secondary_color: str | None
+    font_family: str | None
+    logo_path: str | None
+    stamp_path: str | None
+    signature_path: str | None
+    account_email: str
+    account_name: str
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: CurrentUser):
+    return _to_response(current_user)
+
+
+@router.get("/me/profile", response_model=IssuerProfileResponse)
+async def get_my_issuer_profile(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(IssuerProfileModel).where(IssuerProfileModel.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+    return _to_issuer_profile_response(current_user, profile)
+
+
+@router.put("/me/profile", response_model=IssuerProfileResponse)
+async def update_my_issuer_profile(
+    body: IssuerProfileUpdate,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(IssuerProfileModel).where(IssuerProfileModel.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+    if profile is None:
+        profile = IssuerProfileModel(user_id=current_user.id, organization_id=current_user.organization_id)
+        db.add(profile)
+
+    profile.profile_type = body.profile_type
+    profile.display_name = _normalize_optional(body.display_name)
+    profile.company_name = _normalize_optional(body.company_name)
+    profile.tax_id = _normalize_optional(body.tax_id)
+    profile.phone = _normalize_optional(body.phone)
+    profile.email = str(body.email) if body.email else None
+    profile.address_line1 = _normalize_optional(body.address_line1)
+    profile.city = _normalize_optional(body.city)
+    profile.postal_code = _normalize_optional(body.postal_code)
+    profile.country = _normalize_optional(body.country)
+    profile.signature_title = _normalize_optional(body.signature_title)
+    profile.footer_notes = _normalize_optional(body.footer_notes)
+    profile.document_email = str(body.document_email) if body.document_email else None
+    profile.auto_send_documents = body.auto_send_documents
+    profile.primary_color = _normalize_optional(body.primary_color)
+    profile.secondary_color = _normalize_optional(body.secondary_color)
+    profile.font_family = _normalize_optional(body.font_family)
+
+    await db.flush()
+    await db.refresh(profile)
+    return _to_issuer_profile_response(current_user, profile)
+
+
+@router.post("/me/profile/assets/{asset_type}", response_model=IssuerProfileResponse)
+async def upload_my_issuer_asset(
+    asset_type: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    file: UploadFile = File(...),
+):
+    if asset_type not in {"logo", "stamp", "signature"}:
+        raise HTTPException(status_code=400, detail="Type de ressource invalide")
+    if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Format non supporté (PNG, JPEG, WEBP)")
+    if file.size and file.size > settings.max_file_size_bytes:
+        raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {settings.MAX_FILE_SIZE_MB}MB)")
+
+    result = await db.execute(
+        select(IssuerProfileModel).where(IssuerProfileModel.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+    if profile is None:
+        profile = IssuerProfileModel(user_id=current_user.id, organization_id=current_user.organization_id)
+        db.add(profile)
+
+    content = await file.read()
+    ext = Path(file.filename or "asset").suffix or ".png"
+    filename = f"{asset_type}{ext}"
+
+    from app.infrastructure.services.storage.cloudinary_service import CloudinaryStorageService
+    storage = CloudinaryStorageService()
+    saved_path, _ = storage.upload_asset(content, asset_type=asset_type, user_id=str(current_user.id), filename=filename)
+
+    if asset_type == "logo":
+        profile.logo_path = saved_path
+    elif asset_type == "stamp":
+        profile.stamp_path = saved_path
+    else:
+        # signature_path vit sur UserModel (pas IssuerProfileModel)
+        current_user.signature_path = saved_path
+
+    await db.flush()
+    await db.refresh(profile)
+    return _to_issuer_profile_response(current_user, profile)
+
+
+@router.get("/", response_model=list[UserResponse])
+async def list_users(
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(UserModel).where(UserModel.is_deleted == False).order_by(UserModel.full_name))
+    return [_to_response(u) for u in result.scalars().all()]
+
+
+@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    body: UserCreate,
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Rôle invalide. Valeurs acceptées : {list(VALID_ROLES)}")
+    existing = await db.execute(select(UserModel).where(UserModel.email == body.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email déjà utilisé")
+    user = UserModel(
+        id=uuid.uuid4(),
+        organization_id=current_user.organization_id,
+        email=body.email,
+        full_name=body.full_name,
+        hashed_password=hash_password(body.password),
+        role=body.role,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    return _to_response(user)
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: UUID,
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(UserModel).where(UserModel.id == user_id, UserModel.is_deleted == False))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas supprimer votre propre compte")
+    from datetime import datetime, timezone
+    user.is_deleted = True
+    user.deleted_at = datetime.now(timezone.utc)
+
+
+def _to_response(u: UserModel) -> UserResponse:
+    return UserResponse(
+        id=u.id,
+        email=u.email,
+        full_name=u.full_name,
+        role=u.role,
+        is_active=(u.status == "active"),
+        created_at=u.created_at.isoformat(),
+    )
+
+
+def _to_issuer_profile_response(
+    user: UserModel,
+    profile: IssuerProfileModel | None,
+) -> IssuerProfileResponse:
+    return IssuerProfileResponse(
+        profile_type=profile.profile_type if profile else "business",
+        display_name=profile.display_name if profile else user.full_name,
+        company_name=profile.company_name if profile else None,
+        tax_id=profile.tax_id if profile else None,
+        phone=profile.phone if profile else None,
+        email=profile.email if profile else user.email,
+        address_line1=profile.address_line1 if profile else None,
+        city=profile.city if profile else None,
+        postal_code=profile.postal_code if profile else None,
+        country=profile.country if profile else None,
+        signature_title=profile.signature_title if profile else None,
+        footer_notes=profile.footer_notes if profile else None,
+        document_email=profile.document_email if profile else user.email,
+        auto_send_documents=profile.auto_send_documents if profile else True,
+        primary_color=profile.primary_color if profile else "#1a56db",
+        secondary_color=profile.secondary_color if profile else "#eff6ff",
+        font_family=profile.font_family if profile else "Helvetica",
+        logo_path=profile.logo_path if profile else None,
+        stamp_path=profile.stamp_path if profile else None,
+        signature_path=user.signature_path,
+        account_email=user.email,
+        account_name=user.full_name,
+    )
+
+
+def _normalize_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None

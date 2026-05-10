@@ -1,0 +1,69 @@
+# ── Web framework ────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+alembic==1.13.3
+
+# ── Validation & settings ────────────────────────────────────────────────────
+pydantic==2.9.2
+pydantic-settings==2.5.2
+email-validator==2.2.0
+
+# ── Auth & security ───────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+cryptography==43.0.1
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+redis[hiredis]==5.1.1
+
+# ── Dependency Injection ──────────────────────────────────────────────────────
+dependency-injector==4.48.1
+
+# ── PDF ───────────────────────────────────────────────────────────────────────
+reportlab==4.2.2
+pypdf==4.3.1
+Pillow==10.4.0
+qrcode[pil]==7.4.2
+
+# ── File handling ─────────────────────────────────────────────────────────────
+aiofiles==24.1.0
+python-magic==0.4.27
+pytesseract==0.3.13
+pdf2image==1.17.0
+
+# ── HTTP Client ───────────────────────────────────────────────────────────────
+httpx==0.27.2
+
+# ── Email (Brevo transactional API — SMTP fallback built-in) ─────────────────
+# Uses httpx for Brevo REST; no extra SDK needed
+
+# ── Cloud storage ──────────────────────────────────────────────────────────────
+cloudinary==1.41.0
+
+# ── AI OCR (Gemini Flash — gratuit 1500 req/jour) ─────────────────────────────
+google-generativeai==0.8.3
+
+# ── AI OCR alternatif (Claude Vision — optionnel) ─────────────────────────────
+anthropic==0.34.2
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+structlog==24.4.0
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+sentry-sdk[fastapi]==2.14.0
+prometheus-fastapi-instrumentator==7.0.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==5.0.0
+httpx==0.27.2
+factory-boy==3.3.1
+faker==30.3.0
+respx==0.21.1
+freezegun==1.5.1

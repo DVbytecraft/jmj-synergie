@@ -1,0 +1,118 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Biloz — Render Blueprint (Infrastructure as Code)
+#  Déploiement : connecter ce repo sur https://dashboard.render.com/blueprints
+#
+#  Avant le premier déploiement, renseigner les variables marquées "sync: false"
+#  dans le dashboard Render (Settings > Environment).
+# ─────────────────────────────────────────────────────────────────────────────
+
+databases:
+  - name: biloz-db
+    databaseName: biloz
+    user: biloz_admin
+    plan: starter          # free tier disponible, passer à "standard" en prod
+    region: frankfurt      # choisir la région la plus proche
+
+services:
+
+  # ── Backend FastAPI ──────────────────────────────────────────────────────────
+  - type: web
+    name: biloz-backend
+    env: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: biloz-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true        # Render génère automatiquement une valeur sécurisée
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 60
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: 7
+      - key: ALLOWED_ORIGINS
+        sync: false                # À renseigner manuellement : URL du frontend Render
+      - key: STORAGE_PATH
+        value: /app/storage
+      - key: MAX_FILE_SIZE_MB
+        value: 10
+      # ── Email Brevo ──────────────────────────────────────────────────────────
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        value: support@bytecraft.art
+      - key: BREVO_SENDER_NAME
+        value: Biloz
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        value: support@bytecraft.art
+      - key: SMTP_TLS
+        value: "true"
+      # ── Cloudinary ───────────────────────────────────────────────────────────
+      - key: USE_CLOUDINARY
+        value: "true"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # ── AI OCR ───────────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # ── Infos société ─────────────────────────────────────────────────────────
+      - key: APP_NAME
+        value: Biloz
+      - key: COMPANY_NAME
+        value: Biloz
+      - key: COMPANY_ADDRESS
+        value: "Cotonou, Bénin"
+      - key: COMPANY_PHONE
+        value: "+229 00 00 00 00"
+      - key: COMPANY_EMAIL
+        value: support@bytecraft.art
+      # ── Sentry (optionnel) ────────────────────────────────────────────────────
+      - key: SENTRY_DSN
+        sync: false
+
+  # ── Frontend Next.js ─────────────────────────────────────────────────────────
+  - type: web
+    name: biloz-frontend
+    env: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    healthCheckPath: /
+    dockerBuildArgs:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://biloz-backend.onrender.com/api/v1   # mettre à jour avec l'URL réelle du backend
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://biloz-backend.onrender.com/api/v1   # mettre à jour
+      - key: NEXTAUTH_URL
+        sync: false                # URL publique du frontend après déploiement
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
