@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: JMJ Synergie
+  - name: Biloz
     orgId: 1
-    folder: "JMJ Synergie"
+    folder: "Biloz"
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
