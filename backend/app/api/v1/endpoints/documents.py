@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, require_roles
+from app.api.v1.deps import CurrentUser, ManagerUser
 
 from app.core.config import settings
 from app.infrastructure.database.session import get_db_session as get_db
@@ -189,10 +189,9 @@ async def generate_pro_forma(
 @router.post("/delivery-note/{order_id}", status_code=status.HTTP_201_CREATED)
 async def generate_delivery_note(
     order_id: UUID,
-    delivery_note_number: str | None = None,
-    ocr_fields: dict | None = None,
-    current_user: CurrentUser = Depends(require_roles("super_admin", "admin", "manager")),
+    current_user: ManagerUser,
     db: AsyncSession = Depends(get_db),
+    delivery_note_number: str | None = None,
 ):
     """Generate a delivery note (bon de livraison) PDF."""
     await _get_order_or_404(db, order_id, current_user.organization_id)

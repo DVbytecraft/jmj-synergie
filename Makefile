@@ -41,13 +41,13 @@ build: ## Rebuilder les images sans cache
 # ─── Migrations Alembic ───────────────────────────────────────────────────────
 
 migrate: ## Appliquer les migrations (alembic upgrade head)
-	$(COMPOSE_DEV) exec backend alembic upgrade head
+	$(COMPOSE_DEV) exec -w /app -e PYTHONPATH=/app backend alembic upgrade head
 
 migrate-create: ## Créer une migration (MSG="description")
-	$(COMPOSE_DEV) exec backend alembic revision --autogenerate -m "$(MSG)"
+	$(COMPOSE_DEV) exec -w /app -e PYTHONPATH=/app backend alembic revision --autogenerate -m "$(MSG)"
 
 migrate-down: ## Rollback d'une migration
-	$(COMPOSE_DEV) exec backend alembic downgrade -1
+	$(COMPOSE_DEV) exec -w /app -e PYTHONPATH=/app backend alembic downgrade -1
 
 # ─── Shells ──────────────────────────────────────────────────────────────────
 

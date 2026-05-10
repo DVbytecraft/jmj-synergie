@@ -52,8 +52,9 @@ if settings.SENTRY_DSN:
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("Starting Biloz API", version=settings.APP_VERSION)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if settings.ENVIRONMENT == "testing":
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     yield
     logger.info("Shutting down Biloz API")
     await engine.dispose()

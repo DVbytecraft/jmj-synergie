@@ -1,4 +1,4 @@
-a """GenerateDeliveryNote use case."""
+"""GenerateDeliveryNote use case."""
 from __future__ import annotations
 
 from uuid import UUID
