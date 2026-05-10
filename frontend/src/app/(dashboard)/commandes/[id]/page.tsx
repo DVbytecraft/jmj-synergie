@@ -6,11 +6,12 @@ import { commandesApi } from "@/lib/api/commandes";
 import { clientsApi } from "@/lib/api/clients";
 import { paiementsApi } from "@/lib/api/paiements";
 import { apiClient } from "@/lib/api/client";
-import { amountToCents, formatCents } from "@/lib/utils/money";
+import { formatCents } from "@/lib/utils/money";
 import type { PaymentMethod } from "@/types";
 import {
   ArrowLeft, CheckCircle, XCircle, Download, FileText,
-  CreditCard, Loader2, Package, Truck, Wallet,
+  CreditCard, Loader2, Package, Truck, Wallet, Receipt,
+  ShoppingCart, ClipboardList, ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
@@ -22,6 +23,8 @@ const METHODE_LABELS: Record<PaymentMethod, string> = {
   check: "Chèque",
   card: "Carte bancaire",
 };
+
+type DocType = "purchase_order" | "pro_forma" | "invoice" | "delivery_note" | "payment_receipt";
 
 export default function CommandeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -40,6 +43,12 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
     enabled: !!commande?.client_id,
   });
 
+  const { data: payments } = useQuery({
+    queryKey: ["payments", id],
+    queryFn: () => paiementsApi.list({ order_id: id }),
+    enabled: !!commande && commande.paid_cents > 0,
+  });
+
   const confirmerMut = useMutation({
     mutationFn: () => commandesApi.confirmer(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["commandes", id] }),
@@ -50,15 +59,13 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
     onSuccess: () => qc.invalidateQueries({ queryKey: ["commandes", id] }),
   });
 
-  const [pdfLoading, setPdfLoading] = useState<"facture" | "proforma" | null>(null);
-  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [docLoading, setDocLoading] = useState<DocType | string | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
 
-  const handleDownload = async (type: "facture" | "proforma") => {
-    setPdfLoading(type);
-    setPdfError(null);
+  const generateAndDownload = async (endpoint: string, fileName: string, loadingKey: string) => {
+    setDocLoading(loadingKey);
+    setDocError(null);
     try {
-      const endpoint = type === "facture" ? `/documents/invoice/${id}` : `/documents/pro-forma/${id}`;
-      const fileName = type === "facture" ? `facture-${id.slice(0, 8)}.pdf` : `proforma-${id.slice(0, 8)}.pdf`;
       const postRes = await apiClient.post<{ document_id: string }>(endpoint);
       const { document_id } = postRes.data;
       const fileRes = await apiClient.get(`/documents/${document_id}/download`, { responseType: "blob" });
@@ -69,10 +76,9 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      const detail = err?.response?.data?.detail ?? "Erreur lors de la génération du PDF";
-      setPdfError(detail);
+      setDocError(err?.response?.data?.detail ?? "Erreur lors de la génération du document");
     } finally {
-      setPdfLoading(null);
+      setDocLoading(null);
     }
   };
 
@@ -92,6 +98,10 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const canCancel = !["delivered", "cancelled", "refunded"].includes(commande.status);
   const canPay = commande.status === "confirmed";
   const canRecordDelivery = ["confirmed", "in_progress", "partially_delivered"].includes(commande.status);
+  const isConfirmed = ["confirmed", "in_progress", "in_production", "ready", "partially_delivered", "delivered"].includes(commande.status);
+  const hasPaid = commande.paid_cents > 0;
+
+  const latestPayment = payments?.find((p: any) => p.status === "completed") ?? payments?.[0];
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -112,7 +122,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           </p>
         </div>
 
-        {/* Actions */}
+        {/* Action buttons */}
         <div className="flex gap-2 flex-wrap">
           {canConfirm && (
             <button
@@ -140,26 +150,6 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
               Livraison
             </button>
           )}
-          <button
-            onClick={() => handleDownload("proforma")}
-            disabled={pdfLoading === "proforma"}
-            className="btn-secondary"
-            title="Pro forma — document avant confirmation"
-          >
-            {pdfLoading === "proforma" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
-            Pro forma
-          </button>
-          {["confirmed", "in_progress", "partially_delivered", "delivered"].includes(commande.status) && (
-            <button
-              onClick={() => handleDownload("facture")}
-              disabled={pdfLoading === "facture"}
-              className="btn-secondary text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-              title="Facture définitive — commande confirmée"
-            >
-              {pdfLoading === "facture" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-              Facture
-            </button>
-          )}
           {canCancel && (
             <button
               onClick={() => annulerMut.mutate()}
@@ -173,10 +163,10 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {pdfError && (
+      {docError && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
-          <span>{pdfError}</span>
-          <button onClick={() => setPdfError(null)} className="ml-3 text-red-400 hover:text-red-600">✕</button>
+          <span>{docError}</span>
+          <button onClick={() => setDocError(null)} className="ml-3 text-red-400 hover:text-red-600">✕</button>
         </div>
       )}
 
@@ -187,6 +177,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="font-semibold text-gray-900">Lignes de commande</h2>
             </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
@@ -211,6 +202,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           {commande.notes && (
@@ -221,7 +213,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           )}
         </div>
 
-        {/* Summary sidebar */}
+        {/* Sidebar */}
         <div className="space-y-5">
           {/* Totaux */}
           <div className="card p-5">
@@ -257,7 +249,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                   <span>Oui</span>
                 </div>
               )}
-              {commande.paid_cents > 0 && (
+              {hasPaid && (
                 <>
                   <div className="flex justify-between text-emerald-600">
                     <span>Payé</span>
@@ -268,6 +260,128 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                     <span>{formatCents(commande.balance_due_cents, commande.currency)}</span>
                   </div>
                 </>
+              )}
+            </div>
+          </div>
+
+          {/* Documents flow */}
+          <div className="card p-5">
+            <h2 className="font-semibold text-gray-900 mb-4">Documents</h2>
+            <div className="space-y-2">
+
+              {/* 1. Bon de commande */}
+              <DocStep
+                icon={<ShoppingCart className="w-4 h-4" />}
+                label="Bon de commande"
+                available={true}
+                loading={docLoading === "purchase_order"}
+                onGenerate={() =>
+                  generateAndDownload(
+                    `/documents/purchase-order/${id}`,
+                    `bon_commande-${id.slice(0, 8)}.pdf`,
+                    "purchase_order"
+                  )
+                }
+              />
+
+              {/* 2. Pro forma */}
+              <DocStep
+                icon={<ClipboardList className="w-4 h-4" />}
+                label="Pro forma"
+                available={true}
+                loading={docLoading === "pro_forma"}
+                onGenerate={() =>
+                  generateAndDownload(
+                    `/documents/pro-forma/${id}`,
+                    `proforma-${id.slice(0, 8)}.pdf`,
+                    "pro_forma"
+                  )
+                }
+              />
+
+              {/* Separator — confirm step */}
+              {canConfirm && (
+                <div className="py-1">
+                  <button
+                    onClick={() => confirmerMut.mutate()}
+                    disabled={confirmerMut.isPending}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                  >
+                    {confirmerMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    Confirmer la commande
+                  </button>
+                </div>
+              )}
+
+              {/* 3. Facture */}
+              <DocStep
+                icon={<FileText className="w-4 h-4" />}
+                label="Facture"
+                available={isConfirmed}
+                disabledReason="Confirmez la commande d'abord"
+                loading={docLoading === "invoice"}
+                onGenerate={() =>
+                  generateAndDownload(
+                    `/documents/invoice/${id}`,
+                    `facture-${id.slice(0, 8)}.pdf`,
+                    "invoice"
+                  )
+                }
+              />
+
+              {/* 4. Bon de livraison */}
+              <DocStep
+                icon={<Truck className="w-4 h-4" />}
+                label="Bon de livraison"
+                available={isConfirmed}
+                disabledReason="Confirmez la commande d'abord"
+                loading={docLoading === "delivery_note"}
+                onGenerate={() =>
+                  generateAndDownload(
+                    `/documents/delivery-note/${id}`,
+                    `bon_livraison-${id.slice(0, 8)}.pdf`,
+                    "delivery_note"
+                  )
+                }
+              />
+
+              {/* Separator — payment step */}
+              {isConfirmed && !hasPaid && (
+                <div className="py-1">
+                  <button
+                    onClick={() => setShowPayModal(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    Enregistrer un paiement
+                  </button>
+                </div>
+              )}
+
+              {/* 5. Reçu de paiement */}
+              {hasPaid && latestPayment ? (
+                <DocStep
+                  icon={<Receipt className="w-4 h-4" />}
+                  label="Reçu de paiement"
+                  available={true}
+                  loading={docLoading === "payment_receipt"}
+                  onGenerate={() =>
+                    generateAndDownload(
+                      `/documents/payment-receipt/${id}/${latestPayment.id}`,
+                      `recu_paiement-${id.slice(0, 8)}.pdf`,
+                      "payment_receipt"
+                    )
+                  }
+                />
+              ) : (
+                <DocStep
+                  icon={<Receipt className="w-4 h-4" />}
+                  label="Reçu de paiement"
+                  available={false}
+                  disabledReason="Enregistrez un paiement d'abord"
+                  loading={false}
+                  onGenerate={() => {}}
+                />
               )}
             </div>
           </div>
@@ -293,7 +407,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Payment modal */}
+      {/* Modals */}
       {showPayModal && (
         <PaymentModal
           orderId={id}
@@ -303,6 +417,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           onSuccess={() => {
             setShowPayModal(false);
             qc.invalidateQueries({ queryKey: ["commandes", id] });
+            qc.invalidateQueries({ queryKey: ["payments", id] });
           }}
         />
       )}
@@ -316,6 +431,54 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           }}
         />
       )}
+    </div>
+  );
+}
+
+function DocStep({
+  icon,
+  label,
+  available,
+  loading,
+  disabledReason,
+  onGenerate,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  available: boolean;
+  loading: boolean;
+  disabledReason?: string;
+  onGenerate: () => void;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-2 py-2 px-3 rounded-lg border transition-colors ${
+        available
+          ? "border-gray-200 bg-white hover:bg-gray-50"
+          : "border-gray-100 bg-gray-50 opacity-60"
+      }`}
+      title={!available ? disabledReason : undefined}
+    >
+      <div className="flex items-center gap-2 text-sm text-gray-700">
+        <span className={available ? "text-blue-600" : "text-gray-400"}>{icon}</span>
+        <span className={available ? "font-medium" : "text-gray-400"}>{label}</span>
+      </div>
+      <button
+        onClick={onGenerate}
+        disabled={!available || loading}
+        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md font-medium transition-colors ${
+          available
+            ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+            : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+        }`}
+      >
+        {loading ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <Download className="w-3 h-3" />
+        )}
+        Générer
+      </button>
     </div>
   );
 }

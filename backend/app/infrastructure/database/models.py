@@ -346,8 +346,12 @@ class DocumentModel(Base):
 
 
 class DocumentType:
-    PRO_FORMA = "pro_forma"
-    SCANNED = "scanned"
+    PURCHASE_ORDER  = "purchase_order"
+    PRO_FORMA       = "pro_forma"
+    INVOICE         = "invoice"
+    DELIVERY_NOTE   = "delivery_note"
+    PAYMENT_RECEIPT = "payment_receipt"
+    SCANNED         = "scanned"
 
 
 # Alias pour compatibilité avec l'ancien code qui importait "Document"

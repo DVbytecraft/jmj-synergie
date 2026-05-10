@@ -57,7 +57,7 @@ export function TopBar() {
           className="btn-icon relative"
           aria-label="Notifications"
         >
-          <Bell className="w-4.5 h-4.5" />
+          <Bell className="w-5 h-5" />
         </button>
 
         {/* Separator */}

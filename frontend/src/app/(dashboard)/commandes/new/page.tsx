@@ -272,9 +272,9 @@ function NewCommandeForm() {
 
           <div className="space-y-3">
             {fields.map((field, i) => (
-              <div key={field.id} className="grid grid-cols-12 gap-2 items-start">
-                <div className="col-span-6">
-                  {i === 0 && <label className="label">Description</label>}
+              <div key={field.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                <div className="sm:col-span-6">
+                  <label className={`label ${i !== 0 ? "sm:hidden" : ""}`}>Description</label>
                   <input
                     {...register(`items.${i}.description`)}
                     placeholder="Description du produit/service"
@@ -286,8 +286,8 @@ function NewCommandeForm() {
                     </p>
                   )}
                 </div>
-                <div className="col-span-2">
-                  {i === 0 && <label className="label">Qté</label>}
+                <div className="sm:col-span-2">
+                  <label className={`label ${i !== 0 ? "sm:hidden" : ""}`}>Qté</label>
                   <input
                     {...register(`items.${i}.quantity`)}
                     type="number"
@@ -301,8 +301,8 @@ function NewCommandeForm() {
                     </p>
                   )}
                 </div>
-                <div className="col-span-3">
-                  {i === 0 && <label className="label">Prix unitaire (XAF)</label>}
+                <div className="sm:col-span-3">
+                  <label className={`label ${i !== 0 ? "sm:hidden" : ""}`}>Prix unitaire</label>
                   <input
                     {...register(`items.${i}.unit_price`)}
                     type="number"
@@ -312,12 +312,13 @@ function NewCommandeForm() {
                     className="input text-sm"
                   />
                 </div>
-                <div className={`col-span-1 ${i === 0 ? "mt-6" : ""}`}>
+                <div className={`sm:col-span-1 ${i === 0 ? "sm:mt-6" : ""} flex items-center sm:block`}>
                   <button
                     type="button"
                     onClick={() => remove(i)}
                     disabled={fields.length === 1}
                     className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30"
+                    title="Supprimer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

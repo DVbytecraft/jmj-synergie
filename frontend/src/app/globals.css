@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes shimmer {
+  0%   { background-position: -1000px 0; }
+  100% { background-position:  1000px 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
 @layer base {
   :root {
     --radius: 0.5rem;
@@ -124,6 +139,12 @@
   .badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
+
+  .badge-blue    { @apply badge bg-blue-50    text-blue-700;    }
+  .badge-gray    { @apply badge bg-slate-100  text-slate-600;   }
+  .badge-emerald { @apply badge bg-emerald-50 text-emerald-700; }
+  .badge-amber   { @apply badge bg-amber-50   text-amber-700;   }
+  .badge-red     { @apply badge bg-red-50     text-red-700;     }
 
   /* ── Page layout ─────────────────────────────────── */
   .page-container {

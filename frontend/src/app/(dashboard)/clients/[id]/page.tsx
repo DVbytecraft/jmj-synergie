@@ -84,15 +84,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Link href="/clients" className="btn-secondary py-1.5 px-3">
           <ArrowLeft className="w-4 h-4" />
         </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">{client.full_name}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900 truncate">{client.full_name}</h1>
           <p className="text-sm text-gray-500 font-mono">{client.code}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {editing ? (
             <>
               <button onClick={() => { setEditing(false); reset(); }} className="btn-secondary">
@@ -217,6 +217,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               Aucune commande pour ce client
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
@@ -245,6 +246,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

@@ -1,6 +1,14 @@
 """
-PDF Service — Pro forma & Invoice generation with ReportLab.
+PDF Service — Generation of all commercial documents with ReportLab.
+
+Documents produced:
+  1. Bon de commande   (purchase_order)  — at order creation
+  2. Facture pro forma (pro_forma)        — before confirmation
+  3. Facture           (invoice)          — after confirmation
+  4. Bon de livraison  (delivery_note)    — when goods are shipped
+  5. Reçu de paiement  (payment_receipt)  — after payment recorded
 """
+import io
 import os
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +31,7 @@ from app.infrastructure.database.models import (
     DocumentModel as Document,
     IssuerProfileModel,
     OrderModel as Order,
+    PaymentTransactionModel,
     UserModel,
 )
 
@@ -33,21 +42,33 @@ class PDFService:
         self.output_dir = Path(settings.STORAGE_PATH) / "documents"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Public generate methods
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def generate_purchase_order(
+        self,
+        order_id: uuid.UUID,
+        created_by: uuid.UUID,
+        db: AsyncSession,
+    ) -> Document:
+        order = await self._load_order(db, order_id)
+        issuer = await self._load_issuer_context(db, created_by)
+
+        doc_number = f"BC-{datetime.now(timezone.utc).strftime('%Y%m')}-{order.order_number}"
+        file_name = f"bon_commande_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        file_path = self.output_dir / file_name
+
+        self._build_purchase_order_pdf(str(file_path), order, doc_number, issuer)
+        return await self._upsert_document(db, order, created_by, "purchase_order", doc_number, file_path, file_name)
+
     async def generate_pro_forma(
         self,
         order_id: uuid.UUID,
         created_by: uuid.UUID,
         db: AsyncSession,
     ) -> Document:
-        from sqlalchemy.orm import selectinload
-        result = await db.execute(
-            select(Order)
-            .options(selectinload(Order.client), selectinload(Order.items))
-            .where(Order.id == order_id)
-        )
-        order = result.scalar_one_or_none()
-        if not order:
-            raise ValueError(f"Order {order_id} not found")
+        order = await self._load_order(db, order_id)
         issuer = await self._load_issuer_context(db, created_by)
 
         doc_number = f"PF-{datetime.now(timezone.utc).strftime('%Y%m')}-{order.order_number}"
@@ -55,44 +76,7 @@ class PDFService:
         file_path = self.output_dir / file_name
 
         self._build_pro_forma_pdf(str(file_path), order, doc_number, issuer)
-        file_size = os.path.getsize(file_path)
-
-        # Check if a document already exists for this order (same order + type)
-        existing_result = await db.execute(
-            select(Document)
-            .where(
-                Document.order_id == order_id,
-                Document.document_type == "pro_forma",
-                Document.organization_id == order.organization_id,
-            )
-            .order_by(Document.created_at.desc())
-        )
-        existing = existing_result.scalar_one_or_none()
-
-        if existing:
-            # Update the existing record with the new file
-            existing.file_path = str(file_path)
-            existing.file_name = file_name
-            existing.file_size_bytes = file_size
-            existing.updated_at = datetime.now(timezone.utc)
-            await db.flush()
-            return existing
-
-        document = Document(
-            id=uuid.uuid4(),
-            organization_id=order.organization_id,
-            order_id=order_id,
-            created_by=created_by,
-            document_type="pro_forma",
-            document_number=doc_number,
-            file_path=str(file_path),
-            file_name=file_name,
-            file_size_bytes=file_size,
-            mime_type="application/pdf",
-        )
-        db.add(document)
-        await db.flush()
-        return document
+        return await self._upsert_document(db, order, created_by, "pro_forma", doc_number, file_path, file_name)
 
     async def generate_invoice(
         self,
@@ -100,19 +84,15 @@ class PDFService:
         created_by: uuid.UUID,
         db: AsyncSession,
     ) -> Document:
-        from sqlalchemy.orm import selectinload
-        result = await db.execute(
-            select(Order)
-            .options(selectinload(Order.client), selectinload(Order.items))
-            .where(Order.id == order_id)
-        )
-        order = result.scalar_one_or_none()
-        if not order:
-            raise ValueError(f"Order {order_id} not found")
+        order = await self._load_order(db, order_id)
         issuer = await self._load_issuer_context(db, created_by)
 
-        if order.status not in ("confirmed", "in_progress", "in_production", "partially_delivered", "delivered"):
-            raise ValueError(f"La facture ne peut être générée que pour une commande confirmée (statut actuel: {order.status})")
+        if order.status not in ("confirmed", "in_progress", "in_production",
+                                "partially_delivered", "delivered"):
+            raise ValueError(
+                f"La facture ne peut être générée que pour une commande confirmée "
+                f"(statut actuel: {order.status})"
+            )
 
         doc_number = f"FAC-{datetime.now(timezone.utc).strftime('%Y%m')}-{order.order_number}"
         file_name = f"facture_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -120,432 +100,208 @@ class PDFService:
 
         has_delivery = any(item.delivered_quantity > 0 for item in order.items)
         self._build_invoice_pdf(str(file_path), order, doc_number, issuer, delivered_only=has_delivery)
-        file_size = os.path.getsize(file_path)
+
         if has_delivery:
             for item in order.items:
                 if item.delivered_quantity > item.invoiced_quantity:
                     item.invoiced_quantity = item.delivered_quantity
 
-        # Upsert : mettre à jour la facture existante si elle existe déjà
-        existing_result = await db.execute(
-            select(Document)
-            .where(
-                Document.order_id == order_id,
-                Document.document_type == "invoice",
-                Document.organization_id == order.organization_id,
-            )
-            .order_by(Document.created_at.desc())
-        )
-        existing = existing_result.scalar_one_or_none()
-
-        if existing:
-            existing.file_path = str(file_path)
-            existing.file_name = file_name
-            existing.file_size_bytes = file_size
-            existing.updated_at = datetime.now(timezone.utc)
-            await db.flush()
-            return existing
-
-        document = Document(
-            id=uuid.uuid4(),
-            organization_id=order.organization_id,
-            order_id=order_id,
-            created_by=created_by,
-            document_type="invoice",
-            document_number=doc_number,
-            file_path=str(file_path),
-            file_name=file_name,
-            file_size_bytes=file_size,
-            mime_type="application/pdf",
-        )
-        db.add(document)
-        await db.flush()
-        return document
+        return await self._upsert_document(db, order, created_by, "invoice", doc_number, file_path, file_name)
 
     async def generate_delivery_note(
         self,
         order_id: uuid.UUID,
         created_by: uuid.UUID,
-        delivery_note_number: str,
+        delivery_note_number: str | None,
         db: AsyncSession,
     ) -> Document:
-        from sqlalchemy.orm import selectinload
-
-        result = await db.execute(
-            select(Order)
-            .options(selectinload(Order.client), selectinload(Order.items))
-            .where(Order.id == order_id)
-        )
-        order = result.scalar_one_or_none()
-        if not order:
-            raise ValueError(f"Order {order_id} not found")
+        order = await self._load_order(db, order_id)
         issuer = await self._load_issuer_context(db, created_by)
 
-        if order.status not in ("confirmed", "in_progress", "in_production", "ready", "partially_delivered", "delivered"):
+        if order.status not in ("confirmed", "in_progress", "in_production",
+                                "ready", "partially_delivered", "delivered"):
             raise ValueError(
                 "Le bon de livraison ne peut être généré que pour une commande "
                 f"confirmée ou en cours (statut actuel: {order.status})"
             )
 
-        doc_number = (delivery_note_number or "").strip() or self._generate_delivery_note_number(order.order_number)
-
-        file_name = (
-            f"bon_livraison_{order.order_number}_"
-            f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
-        )
+        doc_number = (delivery_note_number or "").strip() or f"BL-{datetime.now(timezone.utc).strftime('%Y%m')}-{order.order_number}"
+        file_name = f"bon_livraison_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
         file_path = self.output_dir / file_name
 
         self._build_delivery_note_pdf(str(file_path), order, doc_number, issuer)
-        file_size = os.path.getsize(file_path)
+        return await self._upsert_document(db, order, created_by, "delivery_note", doc_number, file_path, file_name)
 
-        existing_result = await db.execute(
-            select(Document)
-            .where(
-                Document.order_id == order_id,
-                Document.document_type == "delivery_note",
-                Document.document_number == doc_number,
-                Document.organization_id == order.organization_id,
-            )
-            .order_by(Document.created_at.desc())
+    async def generate_payment_receipt(
+        self,
+        order_id: uuid.UUID,
+        payment_id: uuid.UUID,
+        created_by: uuid.UUID,
+        db: AsyncSession,
+    ) -> Document:
+        order = await self._load_order(db, order_id)
+        issuer = await self._load_issuer_context(db, created_by)
+
+        payment_result = await db.execute(
+            select(PaymentTransactionModel).where(PaymentTransactionModel.id == payment_id)
         )
-        existing = existing_result.scalar_one_or_none()
+        payment = payment_result.scalar_one_or_none()
+        if not payment:
+            raise ValueError(f"Payment {payment_id} not found")
 
-        if existing:
-            existing.file_path = str(file_path)
-            existing.file_name = file_name
-            existing.file_size_bytes = file_size
-            existing.updated_at = datetime.now(timezone.utc)
-            await db.flush()
-            return existing
+        doc_number = f"REC-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{order.order_number}"
+        file_name = f"recu_paiement_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        file_path = self.output_dir / file_name
 
-        document = Document(
+        self._build_payment_receipt_pdf(str(file_path), order, payment, doc_number, issuer)
+
+        doc = Document(
             id=uuid.uuid4(),
             organization_id=order.organization_id,
             order_id=order_id,
             created_by=created_by,
-            document_type="delivery_note",
+            document_type="payment_receipt",
             document_number=doc_number,
             file_path=str(file_path),
             file_name=file_name,
-            file_size_bytes=file_size,
+            file_size_bytes=os.path.getsize(file_path),
             mime_type="application/pdf",
         )
-        db.add(document)
+        db.add(doc)
         await db.flush()
-        return document
+        return doc
 
-    def _build_invoice_pdf(self, path: str, order: Any, doc_number: str, issuer: dict[str, str], delivered_only: bool = False) -> None:
-        doc = SimpleDocTemplate(
-            path,
-            pagesize=A4,
-            leftMargin=15 * mm,
-            rightMargin=15 * mm,
-            topMargin=20 * mm,
-            bottomMargin=20 * mm,
-        )
-        styles = getSampleStyleSheet()
-        story = []
+    # ─────────────────────────────────────────────────────────────────────────
+    #  PDF builders
+    # ─────────────────────────────────────────────────────────────────────────
 
-        # ─── Header ───────────────────────────────────────────────────────────
-        header_data = [[self._company_block(styles, issuer), self._doc_info_block(styles, doc_number, order)]]
-        header_table = Table(header_data, colWidths=[100 * mm, 75 * mm])
-        header_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ]))
-        story.append(header_table)
-        story.append(Spacer(1, 8 * mm))
-        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor(issuer["primary_color"])))
-        story.append(Spacer(1, 4 * mm))
+    def _build_purchase_order_pdf(self, path: str, order: Any, doc_number: str, issuer: dict) -> None:
+        doc, styles, story = self._init_doc(path)
 
-        # ─── Title ────────────────────────────────────────────────────────────
-        title_style = ParagraphStyle("title", fontSize=16, fontName="Helvetica-Bold",
-                                     alignment=TA_CENTER, textColor=colors.HexColor(issuer["primary_color"]))
-        story.append(Paragraph("FACTURE", title_style))
+        story += self._header_section(styles, issuer, doc_number, order)
+        story.append(Paragraph("BON DE COMMANDE", self._title_style(issuer)))
         story.append(Spacer(1, 6 * mm))
 
-        # ─── Client block ─────────────────────────────────────────────────────
-        client = order.client
-        client_text = f"""
-        <b>Facturé à:</b> {client.full_name}<br/>
-        {f"<b>Société:</b> {client.company_name}<br/>" if client.company_name else ""}
-        <b>Téléphone:</b> {client.phone}<br/>
-        {f"<b>Email:</b> {client.email}<br/>" if client.email else ""}
-        {f"<b>Adresse:</b> {client.address_line1}<br/>" if client.address_line1 else ""}
-        """
-        story.append(Paragraph(client_text, styles["Normal"]))
+        story.append(self._client_block(styles, order.client, label="Commandé par"))
         story.append(Spacer(1, 6 * mm))
 
-        # ─── Items table ──────────────────────────────────────────────────────
-        col_headers = ["#", "Description", "Qté", "Unité", "P.U.", "Total"]
-        rows = [col_headers]
-        invoice_items = self._invoice_items(order, delivered_only=delivered_only)
-        for i, item in enumerate(invoice_items, 1):
-            rows.append([
-                str(i),
-                item["description"],
-                str(item["quantity"]),
-                item["unit"],
-                self._format_amount(item["unit_price_cents"], order.currency),
-                self._format_amount(int(item["unit_price_cents"] * item["quantity"]), order.currency),
-            ])
-
-        col_widths = [10 * mm, 70 * mm, 15 * mm, 15 * mm, 25 * mm, 30 * mm]
-        items_table = Table(rows, colWidths=col_widths, repeatRows=1)
-        items_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(issuer["primary_color"])),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(issuer["secondary_color"])]),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(items_table)
-        story.append(Spacer(1, 6 * mm))
-
-        # ─── Totals ───────────────────────────────────────────────────────────
-        subtotal_cents = self._subtotal_cents_for_invoice(order, delivered_only=delivered_only)
-        tax_cents = int(subtotal_cents * order.tax_rate / 100)
-        total_cents = subtotal_cents + tax_cents
-        totals = [["Sous-total HT", self._format_amount(subtotal_cents, order.currency)]]
-        if order.tax_rate > 0:
-            totals.append([f"TVA ({order.tax_rate}%)", self._format_amount(tax_cents, order.currency)])
-        if order.discount_cents > 0:
-            discount_cents = self._discount_cents_for_invoice(order, subtotal_cents)
-            totals.append(["Remise", f"- {self._format_amount(discount_cents, order.currency)}"])
-            total_cents -= discount_cents
-        totals.append(["TOTAL TTC", self._format_amount(total_cents, order.currency)])
-        if order.paid_cents > 0:
-            totals.append(["Montant payé", self._format_amount(order.paid_cents, order.currency)])
-            totals.append(["SOLDE DÛ", self._format_amount(max(0, total_cents - order.paid_cents), order.currency)])
-
-        totals_table = Table(totals, colWidths=[100 * mm, 40 * mm])
-        n = len(totals)
-        totals_table.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-            ("FONTNAME", (0, 3), (-1, 3), "Helvetica-Bold"),   # TOTAL TTC en gras
-            ("FONTSIZE", (0, 0), (-1, -1), 10),
-            ("FONTSIZE", (0, 3), (-1, 3), 12),
-            ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor(issuer["primary_color"])),
-            ("TEXTCOLOR", (0, 3), (-1, 3), colors.white),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(totals_table)
-        story.append(Spacer(1, 10 * mm))
-
-        # ─── Footer ───────────────────────────────────────────────────────────
-        footer_style = ParagraphStyle("footer", fontSize=8, alignment=TA_CENTER,
-                                      textColor=colors.HexColor("#6b7280"))
-        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#d1d5db")))
-        story.append(Spacer(1, 3 * mm))
-        story.append(Paragraph(
-            f"Facture émise le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M')} UTC — "
-            f"{issuer['name']} — {issuer['phone']} — {issuer['email']}",
-            footer_style,
-        ))
-        if issuer["footer_notes"]:
-            story.append(Spacer(1, 2 * mm))
-            story.append(Paragraph(issuer["footer_notes"], footer_style))
-        doc.build(story)
-
-    def _build_pro_forma_pdf(self, path: str, order: Any, doc_number: str, issuer: dict[str, str]) -> None:
-        doc = SimpleDocTemplate(
-            path,
-            pagesize=A4,
-            leftMargin=15 * mm,
-            rightMargin=15 * mm,
-            topMargin=20 * mm,
-            bottomMargin=20 * mm,
-        )
-        styles = getSampleStyleSheet()
-        story = []
-
-        # ─── Header ───────────────────────────────────────────────────────────
-        header_data = [
-            [
-                self._company_block(styles, issuer),
-                self._doc_info_block(styles, doc_number, order),
-            ]
-        ]
-        header_table = Table(header_data, colWidths=[100 * mm, 75 * mm])
-        header_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ]))
-        story.append(header_table)
-        story.append(Spacer(1, 8 * mm))
-        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor(issuer["primary_color"])))
-        story.append(Spacer(1, 4 * mm))
-
-        # ─── Title ────────────────────────────────────────────────────────────
-        title_style = ParagraphStyle("title", fontSize=16, fontName="Helvetica-Bold",
-                                     alignment=TA_CENTER, textColor=colors.HexColor(issuer["primary_color"]))
-        story.append(Paragraph("FACTURE PRO FORMA", title_style))
-        story.append(Spacer(1, 6 * mm))
-
-        # ─── Client block ─────────────────────────────────────────────────────
-        client = order.client
-        client_text = f"""
-        <b>Client:</b> {client.full_name}<br/>
-        {f"<b>Société:</b> {client.company_name}<br/>" if client.company_name else ""}
-        <b>Téléphone:</b> {client.phone}<br/>
-        {f"<b>Email:</b> {client.email}<br/>" if client.email else ""}
-        {f"<b>Adresse:</b> {client.address_line1}<br/>" if client.address_line1 else ""}
-        """
-        story.append(Paragraph(client_text, styles["Normal"]))
-        story.append(Spacer(1, 6 * mm))
-
-        # ─── Items table ──────────────────────────────────────────────────────
-        col_headers = ["#", "Description", "Qté", "Unité", "P.U.", "Total"]
-        rows = [col_headers]
+        rows = [["#", "Description", "Qté", "Unité", "P.U.", "Total"]]
         for i, item in enumerate(order.items, 1):
             rows.append([
-                str(i),
-                item.description,
-                str(item.quantity),
+                str(i), item.description, str(item.quantity),
                 item.unit or "",
-                self._format_amount(item.unit_price_cents, order.currency),
-                self._format_amount(int(item.unit_price_cents * item.quantity), order.currency),
+                self._fmt(item.unit_price_cents, order.currency),
+                self._fmt(int(item.unit_price_cents * item.quantity), order.currency),
             ])
-
-        col_widths = [10 * mm, 70 * mm, 15 * mm, 15 * mm, 25 * mm, 30 * mm]
-        items_table = Table(rows, colWidths=col_widths, repeatRows=1)
-        items_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(issuer["primary_color"])),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(issuer["secondary_color"])]),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(items_table)
+        story.append(self._items_table(rows, issuer))
         story.append(Spacer(1, 6 * mm))
 
-        # ─── Totals ───────────────────────────────────────────────────────────
-        totals = [
-            ["Sous-total", self._format_amount(order.subtotal_cents, order.currency)],
-        ]
-        if order.tax_rate > 0:
-            totals.append([f"TVA ({order.tax_rate}%)", self._format_amount(order.tax_cents, order.currency)])
-        if order.discount_cents > 0:
-            totals.append(["Remise", f"- {self._format_amount(order.discount_cents, order.currency)}"])
-        totals.append(["TOTAL TTC", self._format_amount(order.total_cents, order.currency)])
+        story.append(self._totals_table(order, issuer))
+        story.append(Spacer(1, 8 * mm))
 
-        totals_table = Table(totals, colWidths=[100 * mm, 40 * mm])
-        totals_table.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 10),
-            ("FONTSIZE", (0, -1), (-1, -1), 12),
-            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(issuer["primary_color"])),
-            ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(totals_table)
-        story.append(Spacer(1, 10 * mm))
+        if order.notes:
+            story.append(Paragraph(f"<b>Conditions / Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Spacer(1, 6 * mm))
 
-        # ─── Footer ───────────────────────────────────────────────────────────
-        footer_style = ParagraphStyle("footer", fontSize=8, alignment=TA_CENTER,
-                                      textColor=colors.HexColor("#6b7280"))
-        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#d1d5db")))
-        story.append(Spacer(1, 3 * mm))
-        story.append(Paragraph(
-            f"Document généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M')} UTC — "
-            f"{issuer['name']} — {issuer['phone']} — {issuer['email']}",
-            footer_style,
-        ))
-        if issuer["footer_notes"]:
-            story.append(Spacer(1, 2 * mm))
-            story.append(Paragraph(issuer["footer_notes"], footer_style))
-
+        story += self._footer_section(styles, issuer)
         doc.build(story)
 
-    def _build_delivery_note_pdf(self, path: str, order: Any, doc_number: str, issuer: dict[str, str]) -> None:
-        doc = SimpleDocTemplate(
-            path,
-            pagesize=A4,
-            leftMargin=15 * mm,
-            rightMargin=15 * mm,
-            topMargin=20 * mm,
-            bottomMargin=20 * mm,
-        )
-        styles = getSampleStyleSheet()
-        story = []
+    def _build_pro_forma_pdf(self, path: str, order: Any, doc_number: str, issuer: dict) -> None:
+        doc, styles, story = self._init_doc(path)
 
-        header_data = [[self._company_block(styles, issuer), self._doc_info_block(styles, doc_number, order)]]
-        header_table = Table(header_data, colWidths=[100 * mm, 75 * mm])
-        header_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ]))
-        story.append(header_table)
-        story.append(Spacer(1, 8 * mm))
-        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor(issuer["primary_color"])))
+        story += self._header_section(styles, issuer, doc_number, order)
+        story.append(Paragraph("FACTURE PRO FORMA", self._title_style(issuer)))
+        story.append(Spacer(1, 6 * mm))
+
+        validity = Paragraph(
+            "<i>Ce document est un devis / pro forma et ne constitue pas une facture définitive.</i>",
+            ParagraphStyle("sub", fontSize=9, alignment=TA_CENTER, textColor=colors.HexColor("#6b7280")),
+        )
+        story.append(validity)
         story.append(Spacer(1, 4 * mm))
 
-        title_style = ParagraphStyle(
-            "title",
-            fontSize=16,
-            fontName="Helvetica-Bold",
-            alignment=TA_CENTER,
-            textColor=colors.HexColor(issuer["primary_color"]),
-        )
-        story.append(Paragraph("BON DE LIVRAISON", title_style))
+        story.append(self._client_block(styles, order.client, label="Client"))
         story.append(Spacer(1, 6 * mm))
 
-        client = order.client
+        rows = [["#", "Description", "Qté", "Unité", "P.U.", "Total"]]
+        for i, item in enumerate(order.items, 1):
+            rows.append([
+                str(i), item.description, str(item.quantity),
+                item.unit or "",
+                self._fmt(item.unit_price_cents, order.currency),
+                self._fmt(int(item.unit_price_cents * item.quantity), order.currency),
+            ])
+        story.append(self._items_table(rows, issuer))
+        story.append(Spacer(1, 6 * mm))
+
+        story.append(self._totals_table(order, issuer))
+        story.append(Spacer(1, 8 * mm))
+
+        if order.notes:
+            story.append(Paragraph(f"<b>Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Spacer(1, 6 * mm))
+
+        story += self._footer_section(styles, issuer)
+        doc.build(story)
+
+    def _build_invoice_pdf(self, path: str, order: Any, doc_number: str, issuer: dict, delivered_only: bool = False) -> None:
+        doc, styles, story = self._init_doc(path)
+
+        story += self._header_section(styles, issuer, doc_number, order)
+        story.append(Paragraph("FACTURE", self._title_style(issuer)))
+        story.append(Spacer(1, 6 * mm))
+
+        story.append(self._client_block(styles, order.client, label="Facturé à"))
+        story.append(Spacer(1, 6 * mm))
+
+        invoice_items = self._invoice_items(order, delivered_only=delivered_only)
+        rows = [["#", "Description", "Qté", "Unité", "P.U.", "Total"]]
+        for i, item in enumerate(invoice_items, 1):
+            rows.append([
+                str(i), item["description"], str(item["quantity"]),
+                item["unit"],
+                self._fmt(item["unit_price_cents"], order.currency),
+                self._fmt(int(item["unit_price_cents"] * item["quantity"]), order.currency),
+            ])
+        story.append(self._items_table(rows, issuer))
+        story.append(Spacer(1, 6 * mm))
+
+        subtotal_cents = self._subtotal_cents_for_invoice(order, delivered_only=delivered_only)
+        story.append(self._totals_table_from_cents(order, issuer, subtotal_cents))
+        story.append(Spacer(1, 8 * mm))
+
+        if order.notes:
+            story.append(Paragraph(f"<b>Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Spacer(1, 6 * mm))
+
+        story += self._footer_section(styles, issuer)
+        doc.build(story)
+
+    def _build_delivery_note_pdf(self, path: str, order: Any, doc_number: str, issuer: dict) -> None:
+        doc, styles, story = self._init_doc(path)
+
+        story += self._header_section(styles, issuer, doc_number, order)
+        story.append(Paragraph("BON DE LIVRAISON", self._title_style(issuer)))
+        story.append(Spacer(1, 6 * mm))
+
+        story.append(self._client_block(styles, order.client, label="Livré à"))
+        story.append(Spacer(1, 6 * mm))
+
         delivery_items = self._delivery_items(order)
-        client_text = f"""
-        <b>Livré à:</b> {client.full_name}<br/>
-        {f"<b>Société:</b> {client.company_name}<br/>" if client.company_name else ""}
-        <b>Téléphone:</b> {client.phone}<br/>
-        {f"<b>Email:</b> {client.email}<br/>" if client.email else ""}
-        {f"<b>Adresse:</b> {client.address_line1}<br/>" if client.address_line1 else ""}
-        """
-        story.append(Paragraph(client_text, styles["Normal"]))
-        story.append(Spacer(1, 6 * mm))
-
         rows = [["#", "Description", "Qté livrée", "Unité", "Reliquat"]]
         for i, item in enumerate(delivery_items, 1):
             rows.append([
-                str(i),
-                item["description"],
-                str(item["quantity"]),
-                item["unit"],
-                str(item["remaining_quantity"]),
+                str(i), item["description"], str(item["quantity"]),
+                item["unit"], str(item["remaining_quantity"]),
             ])
-
-        items_table = Table(
-            rows,
-            colWidths=[10 * mm, 88 * mm, 18 * mm, 20 * mm, 44 * mm],
-            repeatRows=1,
-        )
-        items_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(issuer["primary_color"])),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ALIGN", (2, 0), (3, -1), "RIGHT"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(issuer["secondary_color"])]),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(items_table)
+        col_widths = [10 * mm, 88 * mm, 18 * mm, 20 * mm, 44 * mm]
+        story.append(self._items_table(rows, issuer, col_widths=col_widths))
         story.append(Spacer(1, 8 * mm))
 
         signature_table = Table(
             [[
-                Paragraph("<b>Magasin / Expédition</b><br/><br/><br/>Nom et signature", styles["Normal"]),
-                Paragraph("<b>Client / Réception</b><br/><br/><br/>Nom, date et cachet", styles["Normal"]),
+                Paragraph("<b>Expédition</b><br/><br/><br/><br/>Nom et signature", styles["Normal"]),
+                Paragraph("<b>Réception client</b><br/><br/><br/><br/>Nom, date et cachet", styles["Normal"]),
             ]],
             colWidths=[85 * mm, 85 * mm],
         )
@@ -554,63 +310,287 @@ class PDFService:
             ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 28),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 32),
             ("LEFTPADDING", (0, 0), (-1, -1), 8),
             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
         ]))
         story.append(signature_table)
-        story.append(Spacer(1, 10 * mm))
+        story.append(Spacer(1, 8 * mm))
 
-        footer_style = ParagraphStyle("footer", fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#6b7280"))
-        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#d1d5db")))
-        story.append(Spacer(1, 3 * mm))
-        story.append(Paragraph(
-            f"Bon généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y à %H:%M')} UTC — "
-            f"{issuer['name']} — {issuer['phone']} — {issuer['email']}",
-            footer_style,
-        ))
-        if issuer["footer_notes"]:
-            story.append(Spacer(1, 2 * mm))
-            story.append(Paragraph(issuer["footer_notes"], footer_style))
-
+        story += self._footer_section(styles, issuer)
         doc.build(story)
 
-    def _company_block(self, styles, issuer: dict[str, str]) -> Paragraph:
-        elements: list[Any] = []
-        if issuer["logo_path"] and os.path.exists(issuer["logo_path"]):
-            elements.append(Image(issuer["logo_path"], width=28 * mm, height=28 * mm))
-        text = f"""
-        <b>{issuer['name']}</b><br/>
-        {issuer['address']}<br/>
-        Tél: {issuer['phone']}<br/>
-        Email: {issuer['email']}
-        {f"<br/>NIF: {issuer['tax_id']}" if issuer['tax_id'] else ""}
-        """
-        elements.append(Paragraph(text, styles["Normal"]))
-        return Table([[elements[0], elements[1]]], colWidths=[32 * mm, 68 * mm]) if len(elements) == 2 else elements[0]
+    def _build_payment_receipt_pdf(self, path: str, order: Any, payment: Any, doc_number: str, issuer: dict) -> None:
+        doc, styles, story = self._init_doc(path)
+
+        story += self._header_section(styles, issuer, doc_number, order)
+        story.append(Paragraph("REÇU DE PAIEMENT", self._title_style(issuer)))
+        story.append(Spacer(1, 6 * mm))
+
+        story.append(self._client_block(styles, order.client, label="Reçu de"))
+        story.append(Spacer(1, 8 * mm))
+
+        METHODE = {
+            "cash": "Espèces", "bank_transfer": "Virement bancaire",
+            "mobile_money": "Mobile Money", "check": "Chèque", "card": "Carte bancaire",
+        }
+        payment_date = payment.paid_at.strftime("%d/%m/%Y") if hasattr(payment, "paid_at") and payment.paid_at else datetime.now(timezone.utc).strftime("%d/%m/%Y")
+        method_label = METHODE.get(str(payment.method), str(payment.method))
+
+        receipt_data = [
+            ["Référence facture :", order.order_number],
+            ["Date de paiement :", payment_date],
+            ["Mode de paiement :", method_label],
+            ["Montant reçu :", self._fmt(payment.amount_cents, order.currency)],
+        ]
+        if payment.reference:
+            receipt_data.append(["Référence :", payment.reference])
+
+        receipt_table = Table(receipt_data, colWidths=[60 * mm, 100 * mm])
+        receipt_table.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 11),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor(issuer["secondary_color"])]),
+        ]))
+        story.append(receipt_table)
+        story.append(Spacer(1, 8 * mm))
+
+        # Total paid vs balance
+        remaining = max(0, order.total_cents - order.paid_cents)
+        summary_data = [
+            ["Total commande :", self._fmt(order.total_cents, order.currency)],
+            ["Total payé :", self._fmt(order.paid_cents, order.currency)],
+            ["Solde restant :", self._fmt(remaining, order.currency)],
+        ]
+        summary_table = Table(summary_data, colWidths=[100 * mm, 55 * mm])
+        summary_table.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 11),
+            ("FONTSIZE", (0, -1), (-1, -1), 13),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(issuer["primary_color"])),
+            ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 10 * mm))
+
+        story += self._footer_section(styles, issuer)
+        doc.build(story)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Shared layout helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _init_doc(self, path: str):
+        doc = SimpleDocTemplate(
+            path, pagesize=A4,
+            leftMargin=15 * mm, rightMargin=15 * mm,
+            topMargin=20 * mm, bottomMargin=20 * mm,
+        )
+        styles = getSampleStyleSheet()
+        return doc, styles, []
+
+    def _title_style(self, issuer: dict) -> ParagraphStyle:
+        return ParagraphStyle(
+            "title", fontSize=16, fontName="Helvetica-Bold",
+            alignment=TA_CENTER, textColor=colors.HexColor(issuer["primary_color"]),
+        )
+
+    def _header_section(self, styles, issuer: dict, doc_number: str, order: Any) -> list:
+        header_data = [[self._company_block(styles, issuer), self._doc_info_block(styles, doc_number, order)]]
+        header_table = Table(header_data, colWidths=[100 * mm, 75 * mm])
+        header_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ]))
+        return [
+            header_table,
+            Spacer(1, 8 * mm),
+            HRFlowable(width="100%", thickness=2, color=colors.HexColor(issuer["primary_color"])),
+            Spacer(1, 4 * mm),
+        ]
+
+    def _footer_section(self, styles, issuer: dict) -> list:
+        footer_style = ParagraphStyle(
+            "footer", fontSize=8, alignment=TA_CENTER,
+            textColor=colors.HexColor("#6b7280"),
+        )
+        elements = [
+            HRFlowable(width="100%", thickness=1, color=colors.HexColor("#d1d5db")),
+            Spacer(1, 3 * mm),
+        ]
+        if issuer["footer_notes"]:
+            elements.append(Paragraph(issuer["footer_notes"], footer_style))
+        return elements
+
+    def _company_block(self, styles, issuer: dict) -> Any:
+        text = Paragraph(
+            f"<b>{issuer['name']}</b><br/>"
+            f"{issuer['address']}<br/>"
+            f"{'Tél: ' + issuer['phone'] + '<br/>' if issuer['phone'] else ''}"
+            f"{'Email: ' + issuer['email'] + '<br/>' if issuer['email'] else ''}"
+            f"{'NIF: ' + issuer['tax_id'] if issuer['tax_id'] else ''}",
+            styles["Normal"],
+        )
+        logo = self._load_logo(issuer)
+        if logo:
+            t = Table([[logo, text]], colWidths=[32 * mm, 68 * mm])
+            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            return t
+        return text
+
+    def _load_logo(self, issuer: dict) -> Image | None:
+        logo_path = issuer.get("logo_path", "")
+        if not logo_path:
+            return None
+        if logo_path.startswith("http"):
+            try:
+                import httpx
+                resp = httpx.get(logo_path, timeout=5)
+                if resp.status_code == 200:
+                    return Image(io.BytesIO(resp.content), width=28 * mm, height=28 * mm)
+            except Exception:
+                return None
+        if os.path.exists(logo_path):
+            return Image(logo_path, width=28 * mm, height=28 * mm)
+        return None
+
+    def _client_block(self, styles, client: Any, label: str = "Client") -> Paragraph:
+        lines = [f"<b>{label} :</b> {client.full_name}"]
+        if client.company_name:
+            lines.append(f"<b>Société :</b> {client.company_name}")
+        if client.phone:
+            lines.append(f"<b>Téléphone :</b> {client.phone}")
+        if client.email:
+            lines.append(f"<b>Email :</b> {client.email}")
+        if client.address_line1:
+            lines.append(f"<b>Adresse :</b> {client.address_line1}")
+        return Paragraph("<br/>".join(lines), styles["Normal"])
 
     def _doc_info_block(self, styles, doc_number: str, order: Any) -> Paragraph:
-        text = f"""
-        <b>N° Document:</b> {doc_number}<br/>
-        <b>Commande:</b> {order.order_number}<br/>
-        <b>Date:</b> {datetime.now(timezone.utc).strftime("%d/%m/%Y")}<br/>
-        <b>Devise:</b> {order.currency}
-        """
+        text = (
+            f"<b>N° Document :</b> {doc_number}<br/>"
+            f"<b>Référence :</b> {order.order_number}<br/>"
+            f"<b>Date :</b> {datetime.now(timezone.utc).strftime('%d/%m/%Y')}<br/>"
+            f"<b>Devise :</b> {order.currency}"
+        )
         return Paragraph(text, ParagraphStyle("right", alignment=TA_RIGHT, fontSize=10))
 
-    @staticmethod
-    def _format_amount(cents: int, currency: str) -> str:
-        amount = cents / 100
-        return f"{amount:,.0f} {currency}"
+    def _items_table(self, rows: list, issuer: dict, col_widths: list | None = None) -> Table:
+        col_widths = col_widths or [10 * mm, 70 * mm, 15 * mm, 15 * mm, 25 * mm, 30 * mm]
+        t = Table(rows, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(issuer["primary_color"])),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(issuer["secondary_color"])]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return t
 
-    async def _load_issuer_context(
+    def _totals_table(self, order: Any, issuer: dict) -> Table:
+        return self._totals_table_from_cents(order, issuer, order.subtotal_cents)
+
+    def _totals_table_from_cents(self, order: Any, issuer: dict, subtotal_cents: int) -> Table:
+        tax_cents = int(subtotal_cents * order.tax_rate / 100)
+        total_cents = subtotal_cents + tax_cents
+        rows = [["Sous-total HT", self._fmt(subtotal_cents, order.currency)]]
+        if order.tax_rate > 0:
+            rows.append([f"TVA ({order.tax_rate}%)", self._fmt(tax_cents, order.currency)])
+        if order.discount_cents > 0:
+            discount = self._discount_cents_for_invoice(order, subtotal_cents)
+            rows.append(["Remise", f"- {self._fmt(discount, order.currency)}"])
+            total_cents -= discount
+        rows.append(["TOTAL TTC", self._fmt(total_cents, order.currency)])
+        if order.paid_cents > 0:
+            rows.append(["Montant payé", self._fmt(order.paid_cents, order.currency)])
+            rows.append(["SOLDE DÛ", self._fmt(max(0, total_cents - order.paid_cents), order.currency)])
+
+        n = len(rows)
+        total_idx = next(i for i, r in enumerate(rows) if r[0] == "TOTAL TTC")
+        t = Table(rows, colWidths=[100 * mm, 40 * mm])
+        t.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+            ("FONTNAME", (0, total_idx), (-1, total_idx), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("FONTSIZE", (0, total_idx), (-1, total_idx), 12),
+            ("BACKGROUND", (0, total_idx), (-1, total_idx), colors.HexColor(issuer["primary_color"])),
+            ("TEXTCOLOR", (0, total_idx), (-1, total_idx), colors.white),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return t
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Data helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def _load_order(self, db: AsyncSession, order_id: uuid.UUID) -> Any:
+        from sqlalchemy.orm import selectinload
+        result = await db.execute(
+            select(Order)
+            .options(selectinload(Order.client), selectinload(Order.items))
+            .where(Order.id == order_id)
+        )
+        order = result.scalar_one_or_none()
+        if not order:
+            raise ValueError(f"Order {order_id} not found")
+        return order
+
+    async def _upsert_document(
         self,
         db: AsyncSession,
+        order: Any,
         created_by: uuid.UUID,
-    ) -> dict[str, str]:
+        doc_type: str,
+        doc_number: str,
+        file_path: Path,
+        file_name: str,
+    ) -> Document:
+        file_size = os.path.getsize(file_path)
+        existing_result = await db.execute(
+            select(Document).where(
+                Document.order_id == order.id,
+                Document.document_type == doc_type,
+                Document.organization_id == order.organization_id,
+            ).order_by(Document.created_at.desc())
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing:
+            existing.file_path = str(file_path)
+            existing.file_name = file_name
+            existing.file_size_bytes = file_size
+            existing.document_number = doc_number
+            existing.updated_at = datetime.now(timezone.utc)
+            await db.flush()
+            return existing
+        doc = Document(
+            id=uuid.uuid4(),
+            organization_id=order.organization_id,
+            order_id=order.id,
+            created_by=created_by,
+            document_type=doc_type,
+            document_number=doc_number,
+            file_path=str(file_path),
+            file_name=file_name,
+            file_size_bytes=file_size,
+            mime_type="application/pdf",
+        )
+        db.add(doc)
+        await db.flush()
+        return doc
+
+    async def _load_issuer_context(self, db: AsyncSession, created_by: uuid.UUID) -> dict:
         user_result = await db.execute(select(UserModel).where(UserModel.id == created_by))
         user = user_result.scalar_one_or_none()
-
         profile_result = await db.execute(
             select(IssuerProfileModel).where(IssuerProfileModel.user_id == created_by)
         )
@@ -628,31 +608,21 @@ class PDFService:
             profile.city if profile else None,
             profile.country if profile else None,
         ]
-        address = ", ".join(part for part in address_parts if part) or self.settings.COMPANY_ADDRESS
-        phone = (profile.phone if profile else None) or self.settings.COMPANY_PHONE
-        email = (
-            (profile.email if profile else None)
-            or (user.email if user else None)
-            or self.settings.COMPANY_EMAIL
-        )
-        tax_id = (profile.tax_id if profile else None) or self.settings.COMPANY_TAX_ID
+        address = ", ".join(p for p in address_parts if p) or self.settings.COMPANY_ADDRESS
         return {
-            "name": name or self.settings.COMPANY_NAME,
-            "address": address or "",
-            "phone": phone or "",
-            "email": email or "",
-            "tax_id": tax_id or "",
-            "footer_notes": (profile.footer_notes if profile else None) or "",
-            "primary_color": (profile.primary_color if profile else None) or "#1a56db",
-            "secondary_color": (profile.secondary_color if profile else None) or "#eff6ff",
-            "font_family": (profile.font_family if profile else None) or "Helvetica",
-            "logo_path": (profile.logo_path if profile else None) or "",
+            "name":             name or self.settings.COMPANY_NAME,
+            "address":          address or "",
+            "phone":            (profile.phone if profile else None) or self.settings.COMPANY_PHONE or "",
+            "email":            (profile.email if profile else None) or (user.email if user else None) or self.settings.COMPANY_EMAIL or "",
+            "tax_id":           (profile.tax_id if profile else None) or self.settings.COMPANY_TAX_ID or "",
+            "footer_notes":     (profile.footer_notes if profile else None) or "",
+            "primary_color":    (profile.primary_color if profile else None) or "#1a56db",
+            "secondary_color":  (profile.secondary_color if profile else None) or "#eff6ff",
+            "font_family":      (profile.font_family if profile else None) or "Helvetica",
+            "logo_path":        (profile.logo_path if profile else None) or "",
         }
 
-    def _generate_delivery_note_number(self, order_number: str) -> str:
-        return f"BL-{datetime.now(timezone.utc).strftime('%Y%m')}-{order_number}"
-
-    def _delivery_items(self, order: Any) -> list[dict[str, Any]]:
+    def _delivery_items(self, order: Any) -> list[dict]:
         has_delivery = any(item.delivered_quantity > 0 for item in order.items)
         items = []
         for item in order.items:
@@ -667,7 +637,7 @@ class PDFService:
             })
         return items
 
-    def _invoice_items(self, order: Any, delivered_only: bool) -> list[dict[str, Any]]:
+    def _invoice_items(self, order: Any, delivered_only: bool) -> list[dict]:
         items = []
         for item in order.items:
             quantity = item.delivered_quantity - item.invoiced_quantity if delivered_only else item.quantity
@@ -683,12 +653,15 @@ class PDFService:
 
     def _subtotal_cents_for_invoice(self, order: Any, delivered_only: bool) -> int:
         return sum(
-            int(entry["unit_price_cents"] * entry["quantity"])
-            for entry in self._invoice_items(order, delivered_only=delivered_only)
+            int(e["unit_price_cents"] * e["quantity"])
+            for e in self._invoice_items(order, delivered_only=delivered_only)
         )
 
     def _discount_cents_for_invoice(self, order: Any, subtotal_cents: int) -> int:
         if order.subtotal_cents <= 0 or order.discount_cents <= 0:
             return 0
-        ratio = subtotal_cents / order.subtotal_cents
-        return int(order.discount_cents * ratio)
+        return int(order.discount_cents * subtotal_cents / order.subtotal_cents)
+
+    @staticmethod
+    def _fmt(cents: int, currency: str) -> str:
+        return f"{cents / 100:,.0f} {currency}"

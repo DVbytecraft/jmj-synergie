@@ -168,6 +168,24 @@ async def send_document_by_email(
     return {"message": "Document envoyé par email avec succès"}
 
 
+@router.post("/purchase-order/{order_id}", status_code=status.HTTP_201_CREATED)
+async def generate_purchase_order(
+    order_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a purchase order (bon de commande) PDF."""
+    pdf_service = PDFService(settings)
+    await _get_order_or_404(db, order_id, current_user.organization_id)
+    try:
+        document = await pdf_service.generate_purchase_order(order_id, current_user.id, db)
+        return {"document_id": document.id, "file_name": document.file_name, "message": "Bon de commande généré avec succès"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erreur interne lors de la génération du bon de commande")
+
+
 @router.post("/pro-forma/{order_id}", status_code=status.HTTP_201_CREATED)
 async def generate_pro_forma(
     order_id: UUID,
@@ -227,6 +245,25 @@ async def generate_invoice(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         raise HTTPException(status_code=500, detail="Erreur interne lors de la génération de la facture")
+
+
+@router.post("/payment-receipt/{order_id}/{payment_id}", status_code=status.HTTP_201_CREATED)
+async def generate_payment_receipt(
+    order_id: UUID,
+    payment_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a payment receipt (reçu de paiement) PDF."""
+    pdf_service = PDFService(settings)
+    await _get_order_or_404(db, order_id, current_user.organization_id)
+    try:
+        document = await pdf_service.generate_payment_receipt(order_id, payment_id, current_user.id, db)
+        return {"document_id": document.id, "file_name": document.file_name, "message": "Reçu de paiement généré avec succès"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erreur interne lors de la génération du reçu de paiement")
 
 
 @router.post("/{document_id}/sign", status_code=status.HTTP_200_OK)

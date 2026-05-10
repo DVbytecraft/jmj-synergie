@@ -201,6 +201,7 @@ export default function DocumentsPage() {
             </div>
           ) : (
             <>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
@@ -216,6 +217,7 @@ export default function DocumentsPage() {
                   {allDocs.items.map(renderDocRow)}
                 </tbody>
               </table>
+              </div>
               {/* Pagination */}
               {allDocs.total > LIMIT && (
                 <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
@@ -308,6 +310,7 @@ export default function DocumentsPage() {
               ) : !orderDocs?.length ? (
                 <div className="py-10 text-center text-gray-400 text-sm">Aucun document généré</div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
@@ -323,6 +326,7 @@ export default function DocumentsPage() {
                     {orderDocs.map((doc) => renderDocRow({ ...doc, order_id: selectedOrderId }))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           )}
