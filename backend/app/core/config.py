@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────────────────
     ALLOWED_ORIGINS: str = ""
     TRUSTED_HOSTS: str = "*"
+    FRONTEND_URL: str = "http://localhost:3000"
+    PASSWORD_RESET_EXPIRE_MINUTES: int = 60
 
     # ── Storage ───────────────────────────────────────────────────────────────
     STORAGE_PATH: str = "/app/storage"

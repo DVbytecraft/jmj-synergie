@@ -1,7 +1,9 @@
 """
-Auth endpoints — login, refresh, logout.
+Auth endpoints — login, refresh, logout, forgot/reset password.
 """
 from datetime import datetime, timedelta, timezone
+import hashlib
+import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -121,6 +123,92 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
         access_token=create_access_token(user.id, user.role, user.full_name),
         refresh_token=create_refresh_token(user.id),
     )
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8)
+
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Generate a reset token and send it by email. Always returns 200 to avoid user enumeration."""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(UserModel).where(UserModel.email == body.email, UserModel.is_deleted == False)
+    )
+    user = result.scalar_one_or_none()
+
+    if user and user.status == "active":
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        user.password_reset_token = token_hash
+        user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES
+        )
+        await db.flush()
+
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+        html_body = f"""
+        <p>Bonjour {user.full_name},</p>
+        <p>Vous avez demandé la réinitialisation de votre mot de passe <strong>Biloz</strong>.</p>
+        <p>
+          <a href="{reset_url}" style="
+            display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;
+            text-decoration:none;border-radius:8px;font-weight:600;
+          ">Réinitialiser mon mot de passe</a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;">
+          Ce lien est valable <strong>{settings.PASSWORD_RESET_EXPIRE_MINUTES} minutes</strong>.
+          Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+        </p>
+        <p style="color:#6b7280;font-size:12px;">Ou copiez ce lien : {reset_url}</p>
+        """
+
+        from app.infrastructure.services.email.brevo_service import BrevoEmailService
+        BrevoEmailService().send_custom(
+            to_email=user.email,
+            to_name=user.full_name,
+            subject="Réinitialisation de votre mot de passe Biloz",
+            html_body=html_body,
+        )
+
+    return {"message": "Si cet email existe, un lien de réinitialisation a été envoyé."}
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Validate reset token and set new password."""
+    from sqlalchemy import select
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(UserModel).where(
+            UserModel.password_reset_token == token_hash,
+            UserModel.is_deleted == False,
+        )
+    )
+    user = result.scalar_one_or_none()
+
+    if not user or user.password_reset_expires_at is None or user.password_reset_expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lien invalide ou expiré. Faites une nouvelle demande.",
+        )
+
+    user.hashed_password = hash_password(body.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    user.failed_login_count = 0
+    user.locked_until = None
+    await db.flush()
+
+    return {"message": "Mot de passe mis à jour avec succès. Vous pouvez maintenant vous connecter."}
 
 
 @router.post("/refresh", response_model=TokenResponse)
