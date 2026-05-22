@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,9 +50,11 @@ class IssuerProfileUpdate(BaseModel):
     postal_code: str | None = Field(default=None, max_length=30)
     country: str | None = Field(default=None, max_length=100)
     signature_title: str | None = Field(default=None, max_length=100)
+    signature_text: str | None = Field(default=None, max_length=255)
     footer_notes: str | None = None
     document_email: EmailStr | None = None
     auto_send_documents: bool = True
+    tax_included: bool = True
     primary_color: str | None = Field(default=None, max_length=20)
     secondary_color: str | None = Field(default=None, max_length=20)
     font_family: str | None = Field(default=None, max_length=50)
@@ -72,14 +75,20 @@ class IssuerProfileResponse(BaseModel):
     footer_notes: str | None
     document_email: str | None
     auto_send_documents: bool
+    tax_included: bool
     primary_color: str | None
     secondary_color: str | None
     font_family: str | None
     logo_path: str | None
     stamp_path: str | None
     signature_path: str | None
+    signature_text: str | None
     account_email: str
     account_name: str
+
+
+class SignatureTextUpdate(BaseModel):
+    signature_text: str | None = Field(default=None, max_length=255)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -127,12 +136,32 @@ async def update_my_issuer_profile(
     profile.footer_notes = _normalize_optional(body.footer_notes)
     profile.document_email = str(body.document_email) if body.document_email else None
     profile.auto_send_documents = body.auto_send_documents
+    profile.tax_included = body.tax_included
     profile.primary_color = _normalize_optional(body.primary_color)
+    if body.signature_text is not None:
+        current_user.signature_text = body.signature_text.strip() or None
     profile.secondary_color = _normalize_optional(body.secondary_color)
     profile.font_family = _normalize_optional(body.font_family)
 
     await db.flush()
     await db.refresh(profile)
+    return _to_issuer_profile_response(current_user, profile)
+
+
+@router.put("/me/signature-text", response_model=IssuerProfileResponse)
+async def update_my_signature_text(
+    body: SignatureTextUpdate,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Définir ou effacer la signature textuelle (nom écrit, alternative à l'image)."""
+    text = body.signature_text.strip() if body.signature_text else None
+    current_user.signature_text = text or None
+    await db.flush()
+    result = await db.execute(
+        select(IssuerProfileModel).where(IssuerProfileModel.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
     return _to_issuer_profile_response(current_user, profile)
 
 
@@ -159,7 +188,8 @@ async def upload_my_issuer_asset(
         db.add(profile)
 
     content = await file.read()
-    ext = Path(file.filename or "asset").suffix or ".png"
+    _EXT_MAP = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+    ext = _EXT_MAP.get(file.content_type or "", ".png")
     filename = f"{asset_type}{ext}"
 
     from app.infrastructure.services.storage.cloudinary_service import CloudinaryStorageService
@@ -177,6 +207,41 @@ async def upload_my_issuer_asset(
     await db.flush()
     await db.refresh(profile)
     return _to_issuer_profile_response(current_user, profile)
+
+
+@router.get("/me/profile/assets/{asset_type}")
+async def get_my_issuer_asset(
+    asset_type: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retourne l'image branding (logo, cachet, signature) de l'utilisateur courant."""
+    if asset_type not in {"logo", "stamp", "signature"}:
+        raise HTTPException(status_code=400, detail="Type invalide")
+
+    result = await db.execute(
+        select(IssuerProfileModel).where(IssuerProfileModel.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if asset_type == "logo":
+        path = profile.logo_path if profile else None
+    elif asset_type == "stamp":
+        path = profile.stamp_path if profile else None
+    else:
+        path = current_user.signature_path
+
+    if not path:
+        raise HTTPException(status_code=404, detail="Aucune image configurée")
+
+    if path.startswith("http"):
+        return RedirectResponse(url=path)
+
+    import os
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+
+    return FileResponse(path)
 
 
 @router.get("/", response_model=list[UserResponse])
@@ -260,12 +325,14 @@ def _to_issuer_profile_response(
         footer_notes=profile.footer_notes if profile else None,
         document_email=profile.document_email if profile else user.email,
         auto_send_documents=profile.auto_send_documents if profile else True,
+        tax_included=profile.tax_included if profile else True,
         primary_color=profile.primary_color if profile else "#1a56db",
         secondary_color=profile.secondary_color if profile else "#eff6ff",
         font_family=profile.font_family if profile else "Helvetica",
         logo_path=profile.logo_path if profile else None,
         stamp_path=profile.stamp_path if profile else None,
         signature_path=user.signature_path,
+        signature_text=user.signature_text,
         account_email=user.email,
         account_name=user.full_name,
     )

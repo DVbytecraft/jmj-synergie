@@ -54,8 +54,8 @@ export default function ForgotPasswordPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Email envoyé</h1>
                 <p className="text-sm text-slate-500 mt-2">
-                  Si cette adresse est associée à un compte, vous recevrez un lien de réinitialisation dans quelques minutes.
-                  Pensez à vérifier vos spams.
+                  Si cette adresse est associée à un compte, vous recevrez un code de vérification par email.
+                  Utilisez ensuite ce code pour réinitialiser votre mot de passe.
                 </p>
               </div>
               <Link href="/login" className="btn-secondary w-full justify-center">
@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4">
                 <div>
                   <label className="label">Adresse email</label>
                   <div className="relative">

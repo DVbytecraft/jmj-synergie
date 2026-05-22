@@ -92,11 +92,11 @@ function ResetPasswordForm() {
             <div>
               <h1 className="text-xl font-bold text-slate-900">Nouveau mot de passe</h1>
               <p className="text-sm text-slate-500 mt-1.5">
-                Choisissez un mot de passe sécurisé d'au moins 8 caractères.
+                Choisissez un mot de passe sécurisé d&apos;au moins 8 caractères.
               </p>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4">
               <div>
                 <label className="label">Nouveau mot de passe</label>
                 <div className="relative">

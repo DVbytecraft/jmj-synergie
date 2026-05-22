@@ -16,8 +16,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
     networks:
       - biloz_internal
     healthcheck:
@@ -91,8 +89,6 @@ services:
     container_name: biloz_frontend
     restart: unless-stopped
     environment:
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend

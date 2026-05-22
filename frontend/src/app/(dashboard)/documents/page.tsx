@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { commandesApi } from "@/lib/api/commandes";
 import { documentsApi } from "@/lib/api/documents";
 import {
@@ -14,9 +14,11 @@ import {
 import {
   Download, PenLine, Loader2, Plus, Mail, Send,
   CheckCircle2, Clock, ChevronDown, Receipt, Truck,
-  List, FolderOpen, AlertCircle, X,
+  List, FolderOpen, AlertCircle, X, Filter,
+  Pencil,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
+import Link from "next/link";
 
 type ActiveTab = "all" | "by-order";
 
@@ -24,8 +26,25 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   pro_forma: "Pro Forma",
   invoice: "Facture",
   delivery_note: "Bon de livraison",
+  purchase_order: "Bon de commande",
+  payment_receipt: "Reçu de paiement",
   scanned: "Scanné",
 };
+
+const DOC_TYPE_OPTIONS = [
+  { value: "", label: "Tous les types" },
+  { value: "invoice", label: "Factures" },
+  { value: "pro_forma", label: "Pro Formas" },
+  { value: "delivery_note", label: "Bons de livraison" },
+  { value: "purchase_order", label: "Bons de commande" },
+  { value: "payment_receipt", label: "Reçus de paiement" },
+];
+
+const CLIENT_TYPE_OPTIONS = [
+  { value: "", label: "Tous les clients" },
+  { value: "individual", label: "Particuliers" },
+  { value: "business", label: "Entreprises" },
+];
 
 export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("all");
@@ -34,19 +53,31 @@ export default function DocumentsPage() {
   const [emailRecipient, setEmailRecipient] = useState("");
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
   const [allPage, setAllPage] = useState(0);
+
+  // Filters
+  const [docTypeFilter, setDocTypeFilter] = useState("");
+  const [clientTypeFilter, setClientTypeFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   const LIMIT = 20;
-
-  const qc = useQueryClient();
-
-  /* ── Données ──────────────────────────────────────────────────────────── */
+  /* ── Data ─────────────────────────────────────────────────────────────── */
   const { data: orders, isLoading: loadingOrders } = useQuery({
     queryKey: ["commandes", "docs"],
     queryFn: () => commandesApi.list({ limit: 100 }),
   });
 
   const { data: allDocs, isLoading: loadingAll } = useQuery({
-    queryKey: ["documents", "all", allPage],
-    queryFn: () => documentsApi.listAll({ skip: allPage * LIMIT, limit: LIMIT }),
+    queryKey: ["documents", "all", allPage, docTypeFilter, clientTypeFilter, dateFrom, dateTo],
+    queryFn: () =>
+      documentsApi.listAll({
+        skip: allPage * LIMIT,
+        limit: LIMIT,
+        document_type: docTypeFilter || undefined,
+        client_type: clientTypeFilter || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      }),
     enabled: activeTab === "all",
   });
 
@@ -82,6 +113,16 @@ export default function DocumentsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const resetFilters = () => {
+    setDocTypeFilter("");
+    setClientTypeFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setAllPage(0);
+  };
+
+  const hasActiveFilters = docTypeFilter || clientTypeFilter || dateFrom || dateTo;
+
   /* ── Row renderer ─────────────────────────────────────────────────────── */
   const renderDocRow = (doc: {
     id: string;
@@ -97,9 +138,11 @@ export default function DocumentsPage() {
       <td className="table-cell font-mono text-xs">{doc.document_number}</td>
       <td className="table-cell">
         <span className={`badge text-xs ${
-          doc.document_type === "invoice" ? "badge-blue" :
-          doc.document_type === "pro_forma" ? "badge-gray" :
-          doc.document_type === "delivery_note" ? "badge-emerald" :
+          doc.document_type === "invoice"          ? "badge-blue" :
+          doc.document_type === "pro_forma"        ? "badge-gray" :
+          doc.document_type === "delivery_note"    ? "badge-emerald" :
+          doc.document_type === "purchase_order"   ? "badge-amber" :
+          doc.document_type === "payment_receipt"  ? "badge-blue" :
           "badge-amber"
         }`}>
           {DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type}
@@ -113,7 +156,7 @@ export default function DocumentsPage() {
           <Clock className="w-4 h-4 text-gray-300 mx-auto" />
         )}
       </td>
-      <td className="table-cell text-gray-400 text-xs">
+      <td className="table-cell text-gray-500 text-xs">
         {new Date(doc.created_at).toLocaleDateString("fr-FR")}
       </td>
       <td className="table-cell">
@@ -139,10 +182,20 @@ export default function DocumentsPage() {
               }
               disabled={signerMut.isPending}
               className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-emerald-600"
-              title="Signer"
+              title="Apposer signature et cachet"
             >
               <PenLine className="w-4 h-4" />
             </button>
+          )}
+          {/* Modifier la commande liée (édition des lignes) */}
+          {doc.order_id && (
+            <Link
+              href={`/commandes/${doc.order_id}`}
+              className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-orange-600"
+              title="Modifier la commande (lignes, montants)"
+            >
+              <Pencil className="w-4 h-4" />
+            </Link>
           )}
         </div>
       </td>
@@ -153,7 +206,7 @@ export default function DocumentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-        <p className="text-sm text-gray-500 mt-1">Pro formas, factures et bons de livraison</p>
+        <p className="text-sm text-gray-500 mt-1">Pro formas, factures, bons de livraison et reçus</p>
       </div>
 
       {/* Success toast */}
@@ -184,66 +237,133 @@ export default function DocumentsPage() {
 
       {/* ── Tab: Tous les documents ── */}
       {activeTab === "all" && (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">
-              Documents ({allDocs?.total ?? 0})
-            </h2>
+        <div className="space-y-4">
+          {/* Filtres */}
+          <div className="card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Filter className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-medium text-gray-900">Filtres</span>
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="ml-auto text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" /> Réinitialiser
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className="label">Type de document</label>
+                <div className="relative">
+                  <select
+                    className="input appearance-none pr-8"
+                    value={docTypeFilter}
+                    onChange={(e) => { setDocTypeFilter(e.target.value); setAllPage(0); }}
+                  >
+                    {DOC_TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="label">Type de client</label>
+                <div className="relative">
+                  <select
+                    className="input appearance-none pr-8"
+                    value={clientTypeFilter}
+                    onChange={(e) => { setClientTypeFilter(e.target.value); setAllPage(0); }}
+                  >
+                    {CLIENT_TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="label">Du</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setAllPage(0); }}
+                />
+              </div>
+              <div>
+                <label className="label">Au</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setAllPage(0); }}
+                />
+              </div>
+            </div>
           </div>
 
-          {loadingAll ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+          <div className="card overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">
+                Documents ({allDocs?.total ?? 0})
+              </h2>
             </div>
-          ) : !allDocs?.items.length ? (
-            <div className="py-12 text-center text-gray-400 text-sm">
-              Aucun document généré pour l&apos;instant
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="table-header">N° Document</th>
-                    <th className="table-header">Type</th>
-                    <th className="table-header">Fichier</th>
-                    <th className="table-header text-center">Signé</th>
-                    <th className="table-header">Date</th>
-                    <th className="table-header text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {allDocs.items.map(renderDocRow)}
-                </tbody>
-              </table>
+
+            {loadingAll ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
               </div>
-              {/* Pagination */}
-              {allDocs.total > LIMIT && (
-                <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
-                  <span className="text-xs text-gray-400">
-                    {allPage * LIMIT + 1}–{Math.min((allPage + 1) * LIMIT, allDocs.total)} sur {allDocs.total}
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setAllPage((p) => Math.max(0, p - 1))}
-                      disabled={allPage === 0}
-                      className="btn-secondary text-xs px-3 py-1"
-                    >
-                      Précédent
-                    </button>
-                    <button
-                      onClick={() => setAllPage((p) => p + 1)}
-                      disabled={(allPage + 1) * LIMIT >= allDocs.total}
-                      className="btn-secondary text-xs px-3 py-1"
-                    >
-                      Suivant
-                    </button>
-                  </div>
+            ) : !allDocs?.items.length ? (
+              <div className="py-12 text-center text-gray-400 text-sm">
+                Aucun document{hasActiveFilters ? " pour ces critères" : " généré pour l'instant"}
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="table-header">N° Document</th>
+                        <th className="table-header">Type</th>
+                        <th className="table-header">Fichier</th>
+                        <th className="table-header text-center">Signé</th>
+                        <th className="table-header">Date</th>
+                        <th className="table-header text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {allDocs.items.map(renderDocRow)}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </>
-          )}
+                {allDocs.total > LIMIT && (
+                  <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
+                    <span className="text-xs text-gray-400">
+                      {allPage * LIMIT + 1}–{Math.min((allPage + 1) * LIMIT, allDocs.total)} sur {allDocs.total}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setAllPage((p) => Math.max(0, p - 1))}
+                        disabled={allPage === 0}
+                        className="btn-secondary text-xs px-3 py-1"
+                      >
+                        Précédent
+                      </button>
+                      <button
+                        onClick={() => setAllPage((p) => p + 1)}
+                        disabled={(allPage + 1) * LIMIT >= allDocs.total}
+                        className="btn-secondary text-xs px-3 py-1"
+                      >
+                        Suivant
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -292,8 +412,15 @@ export default function DocumentsPage() {
                   className="btn-secondary"
                 >
                   {invoiceMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
-                  Facture
+                  Facture définitive
                 </button>
+                <Link
+                  href={`/commandes/${selectedOrderId}`}
+                  className="btn-secondary inline-flex items-center gap-2"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Modifier la commande
+                </Link>
               </div>
             )}
           </div>
@@ -311,21 +438,21 @@ export default function DocumentsPage() {
                 <div className="py-10 text-center text-gray-400 text-sm">Aucun document généré</div>
               ) : (
                 <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="table-header">N° Document</th>
-                      <th className="table-header">Type</th>
-                      <th className="table-header">Fichier</th>
-                      <th className="table-header text-center">Signé</th>
-                      <th className="table-header">Date</th>
-                      <th className="table-header text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {orderDocs.map((doc) => renderDocRow({ ...doc, order_id: selectedOrderId }))}
-                  </tbody>
-                </table>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="table-header">N° Document</th>
+                        <th className="table-header">Type</th>
+                        <th className="table-header">Fichier</th>
+                        <th className="table-header text-center">Signé</th>
+                        <th className="table-header">Date</th>
+                        <th className="table-header text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {orderDocs.map((doc) => renderDocRow({ ...doc, order_id: selectedOrderId }))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -342,10 +469,7 @@ export default function DocumentsPage() {
                 <Send className="w-4 h-4 text-blue-600" />
                 Envoyer par email
               </h3>
-              <button
-                onClick={() => setEmailModalDocId(null)}
-                className="p-1.5 hover:bg-gray-100 rounded-lg"
-              >
+              <button onClick={() => setEmailModalDocId(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
                 <X className="w-4 h-4 text-gray-500" />
               </button>
             </div>
@@ -359,7 +483,7 @@ export default function DocumentsPage() {
                 placeholder="client@exemple.com — laissez vide pour envoyer à votre email"
               />
               <p className="text-xs text-gray-400 mt-1.5">
-                Le document sera envoyé à votre email de compte. Ajoutez un destinataire supplémentaire si besoin.
+                Le document sera envoyé à votre email de compte. Ajoutez un destinataire si besoin.
               </p>
             </div>
             {sendEmailMut.isError && (
@@ -374,16 +498,10 @@ export default function DocumentsPage() {
               </button>
               <button
                 disabled={sendEmailMut.isPending}
-                onClick={() =>
-                  sendEmailMut.mutate({ docId: emailModalDocId, email: emailRecipient })
-                }
+                onClick={() => sendEmailMut.mutate({ docId: emailModalDocId, email: emailRecipient })}
                 className="btn-primary"
               >
-                {sendEmailMut.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
+                {sendEmailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 Envoyer
               </button>
             </div>

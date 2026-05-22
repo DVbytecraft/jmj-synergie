@@ -36,6 +36,9 @@ export function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
+    pathname.startsWith("/verify-email") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
     pathname.startsWith("/api")
   ) {
     return NextResponse.next();
@@ -61,7 +64,7 @@ export function middleware(request: NextRequest) {
 
   // Vérifications RBAC
   const isAdminOnly = ADMIN_ONLY_ROUTES.some((r) => pathname.startsWith(r));
-  if (isAdminOnly && payload.role !== "admin" && payload.role !== "super_admin") {
+  if (isAdminOnly && payload.role !== "super_admin") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -79,6 +82,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|login|register).*)",
+    "/((?!_next|favicon\\.ico|icon|chunk-guard\\.js|login|register|verify-email|forgot-password|reset-password).*)",
   ],
 };

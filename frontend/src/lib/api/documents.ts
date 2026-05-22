@@ -12,7 +12,14 @@ export interface DocumentListResponse {
 
 export const documentsApi = {
   /** Liste globale de tous les documents de l'organisation. */
-  listAll: (params?: { skip?: number; limit?: number; document_type?: string }) =>
+  listAll: (params?: {
+    skip?: number;
+    limit?: number;
+    document_type?: string;
+    date_from?: string;
+    date_to?: string;
+    client_type?: string;
+  }) =>
     apiClient
       .get<DocumentListResponse>("/documents/", { params })
       .then((r) => r.data),

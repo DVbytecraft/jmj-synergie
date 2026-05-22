@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, ShoppingCart, FileText,
   CreditCard, ScanLine, Settings, LogOut, Package,
-  BookOpen, RotateCcw, UserCog, X,
+  BookOpen, RotateCcw, ShieldCheck, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
@@ -58,7 +58,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Administration",
     items: [
-      { href: "/admin/users", icon: UserCog, label: "Utilisateurs", roles: ["super_admin", "admin"] },
+      { href: "/admin/users", icon: ShieldCheck, label: "Panneau admin", roles: ["super_admin"] },
     ],
   },
 ];

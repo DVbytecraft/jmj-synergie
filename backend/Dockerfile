@@ -7,7 +7,7 @@ WORKDIR /build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev libffi-dev libssl-dev poppler-utils tesseract-ocr \
-    tesseract-ocr-fra tesseract-ocr-eng \
+    tesseract-ocr-fra tesseract-ocr-eng libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -20,7 +20,7 @@ RUN pip install --upgrade pip && \
 FROM python:3.12-slim AS production
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
+    libpq5 poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user

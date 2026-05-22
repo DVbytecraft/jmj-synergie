@@ -1,6 +1,7 @@
 """SQLAlchemy implementation of IPaymentRepository & IRefundRepository."""
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -18,23 +19,32 @@ from app.infrastructure.database.models import PaymentTransactionModel, RefundMo
 
 class PaymentRepository(IPaymentRepository):
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, org_id: UUID | None = None) -> None:
         self._s = session
+        self._org_id = org_id
 
     async def get_by_id(self, txn_id: UUID) -> PaymentTransaction | None:
-        row = await self._s.get(PaymentTransactionModel, txn_id)
+        q = select(PaymentTransactionModel).where(PaymentTransactionModel.id == txn_id)
+        if self._org_id is not None:
+            q = q.where(PaymentTransactionModel.organization_id == self._org_id)
+        row = (await self._s.execute(q)).scalar_one_or_none()
         return _txn_to_entity(row) if row else None
 
     async def list_by_order(self, order_id: UUID) -> list[PaymentTransaction]:
-        rows = (await self._s.execute(
+        q = (
             select(PaymentTransactionModel)
             .where(PaymentTransactionModel.order_id == order_id)
             .order_by(PaymentTransactionModel.transaction_date.desc())
-        )).scalars().all()
+        )
+        if self._org_id is not None:
+            q = q.where(PaymentTransactionModel.organization_id == self._org_id)
+        rows = (await self._s.execute(q)).scalars().all()
         return [_txn_to_entity(r) for r in rows]
 
     async def list_by_client(self, client_id: UUID, skip: int, limit: int) -> tuple[list[PaymentTransaction], int]:
         q = select(PaymentTransactionModel).where(PaymentTransactionModel.client_id == client_id)
+        if self._org_id is not None:
+            q = q.where(PaymentTransactionModel.organization_id == self._org_id)
         total = (await self._s.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
         rows = (await self._s.execute(
             q.order_by(PaymentTransactionModel.transaction_date.desc()).offset(skip).limit(limit)
@@ -47,6 +57,8 @@ class PaymentRepository(IPaymentRepository):
             row = PaymentTransactionModel()
             self._s.add(row)
         _copy_txn(txn, row)
+        if self._org_id is not None and row.organization_id is None:
+            row.organization_id = self._org_id
         await self._s.flush()
         await self._s.refresh(row)
         return _txn_to_entity(row)
@@ -54,28 +66,34 @@ class PaymentRepository(IPaymentRepository):
     async def generate_number(self) -> str:
         now = datetime.now(timezone.utc)
         prefix = f"TXN-{now.strftime('%Y%m%d')}"
-        import secrets
         suffix = secrets.token_hex(4).upper()
         return f"{prefix}-{suffix}"
 
 
 class RefundRepository(IRefundRepository):
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, org_id: UUID | None = None) -> None:
         self._s = session
+        self._org_id = org_id
 
     async def get_by_id(self, refund_id: UUID) -> Refund | None:
-        row = await self._s.get(RefundModel, refund_id)
+        q = select(RefundModel).where(RefundModel.id == refund_id)
+        if self._org_id is not None:
+            q = q.where(RefundModel.organization_id == self._org_id)
+        row = (await self._s.execute(q)).scalar_one_or_none()
         return _refund_to_entity(row) if row else None
 
     async def list_by_order(self, order_id: UUID) -> list[Refund]:
-        rows = (await self._s.execute(
-            select(RefundModel).where(RefundModel.order_id == order_id)
-        )).scalars().all()
+        q = select(RefundModel).where(RefundModel.order_id == order_id)
+        if self._org_id is not None:
+            q = q.where(RefundModel.organization_id == self._org_id)
+        rows = (await self._s.execute(q)).scalars().all()
         return [_refund_to_entity(r) for r in rows]
 
     async def list(self, skip: int, limit: int, status: str | None) -> tuple[list[Refund], int]:
         q = select(RefundModel)
+        if self._org_id is not None:
+            q = q.where(RefundModel.organization_id == self._org_id)
         if status:
             q = q.where(RefundModel.status == status)
         total = (await self._s.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
@@ -90,14 +108,18 @@ class RefundRepository(IRefundRepository):
             row = RefundModel()
             self._s.add(row)
         _copy_refund(refund, row)
+        if self._org_id is not None and row.organization_id is None:
+            row.organization_id = self._org_id
         await self._s.flush()
         await self._s.refresh(row)
         return _refund_to_entity(row)
 
     async def generate_number(self) -> str:
         now = datetime.now(timezone.utc)
-        result = await self._s.execute(select(func.count(RefundModel.id)))
-        count = result.scalar_one()
+        q = select(func.count(RefundModel.id))
+        if self._org_id is not None:
+            q = q.where(RefundModel.organization_id == self._org_id)
+        count = (await self._s.execute(q)).scalar_one()
         return f"RMB-{now.strftime('%Y%m')}-{count + 1:04d}"
 
 

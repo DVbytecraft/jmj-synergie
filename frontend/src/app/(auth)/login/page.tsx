@@ -38,8 +38,16 @@ export default function LoginPage() {
       });
       setAuth(res.data.access_token, res.data.refresh_token);
       router.replace("/dashboard");
-    } catch (e: any) {
-      setError(e.response?.data?.detail || "Email ou mot de passe incorrect");
+    } catch (e: unknown) {
+      const err = e as { response?: { status?: number; data?: { detail?: unknown } } };
+      const detail = err.response?.data?.detail;
+      if (err.response?.status === 403 && detail === "EMAIL_NOT_VERIFIED") {
+        router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
+        return;
+      }
+      setError(
+        typeof detail === "string" ? detail : "Email ou mot de passe incorrect"
+      );
     }
   };
 
@@ -115,7 +123,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-5">
             {/* Email */}
             <div>
               <label className="label">Adresse email</label>

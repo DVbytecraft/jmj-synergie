@@ -7,7 +7,73 @@ import {
   MutationCache,
 } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+/**
+ * Handler global pour les ChunkLoadError.
+ * Quand un chunk Next.js ne peut pas être chargé (timeout ou 404 après un rebuild),
+ * webpack lève une erreur non-catchable par React. On l'intercepte ici et on force
+ * un rechargement complet de la page pour récupérer les URLs de chunks à jour.
+ */
+function hideOverlayAndReload() {
+  try {
+    document.querySelectorAll("nextjs-portal").forEach((n) => n.remove());
+    const s = document.createElement("style");
+    s.textContent =
+      "body,nextjs-portal,#__next-build-watcher{visibility:hidden!important;display:none!important}";
+    (document.head ?? document.documentElement).appendChild(s);
+    const mo = new MutationObserver((ms) => {
+      ms.forEach((m) =>
+        m.addedNodes.forEach((n) => {
+          if ((n as Element).nodeName?.toLowerCase() === "nextjs-portal")
+            (n as Element).remove();
+        })
+      );
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch {}
+  setTimeout(() => window.location.reload(), 50);
+}
+
+function useChunkLoadErrorGuard() {
+  useEffect(() => {
+    function onError(event: ErrorEvent) {
+      const isChunk =
+        event.error?.name === "ChunkLoadError" ||
+        event.message?.includes("Loading chunk") ||
+        event.message?.includes("ChunkLoadError");
+      if (isChunk) {
+        event.preventDefault();
+        hideOverlayAndReload();
+      }
+    }
+    function onUnhandledRejection(event: PromiseRejectionEvent) {
+      const reason = event.reason;
+
+      // Axios 401/403: interceptor clears auth, AuthGuard redirects — suppress silently.
+      const httpStatus = reason?.response?.status ?? reason?.status;
+      if (httpStatus === 401 || httpStatus === 403) {
+        event.preventDefault();
+        return;
+      }
+
+      const isChunk =
+        reason?.name === "ChunkLoadError" ||
+        String(reason?.message ?? "").includes("Loading chunk") ||
+        String(reason?.message ?? "").includes("ChunkLoadError");
+      if (isChunk) {
+        event.preventDefault();
+        hideOverlayAndReload();
+      }
+    }
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
+}
 
 const ReactQueryDevtools = dynamic(
   () =>
@@ -32,6 +98,8 @@ function shouldRetry(failureCount: number, error: unknown): boolean {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  useChunkLoadErrorGuard();
+
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -81,6 +149,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 60 * 1_000,
             retry: shouldRetry,
+            // Désactivé : évite l'avalanche de requêtes 401 simultanées quand
+            // l'utilisateur revient sur l'onglet après expiry du token.
+            // L'AuthGuard gère le refresh proactif avant de rendre le contenu.
+            refetchOnWindowFocus: false,
           },
           mutations: {
             retry: false,

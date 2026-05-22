@@ -8,6 +8,8 @@ import { formatCents } from "@/lib/utils/money";
 import { Users, ShoppingCart, CreditCard, TrendingUp, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
+import { formatDateFr } from "@/lib/utils/format-dates";
+
 
 /* ── Skeleton placeholder ──────────────────────────── */
 function SkeletonCard() {
@@ -200,7 +202,7 @@ export default function DashboardPage() {
                         {formatCents(c.total_cents, c.currency)}
                       </td>
                       <td className="table-cell text-slate-400 tabular-nums">
-                        {new Date(c.created_at).toLocaleDateString("fr-FR")}
+{formatDateFr(c.created_at)}
                       </td>
                     </tr>
                   ))}

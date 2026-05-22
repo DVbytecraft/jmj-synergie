@@ -114,24 +114,34 @@ class SignatureService:
         """Draw signature block and optional stamp image on a transparent PDF page."""
         c = canvas.Canvas(overlay_path, pagesize=(page_width, page_height))
 
-        # ─── Signature block (bottom-right) ───────────────────────────────────
-        sig_x = page_width - 180
+        # ─── Bloc signature "Pour acquit" (bas droite) ────────────────────────
+        sig_x = page_width - 185
         sig_y = 60
 
         c.setStrokeColorRGB(0.1, 0.34, 0.86)
         c.setFillColorRGB(0.1, 0.34, 0.86)
         c.setFont("Helvetica-Bold", 8)
-        c.drawString(sig_x, sig_y + 35, "Signé par:")
+        c.drawString(sig_x, sig_y + 50, "Pour acquit :")
         c.setFont("Helvetica", 8)
-        c.drawString(sig_x, sig_y + 25, user.full_name if user else "Utilisateur")
-        c.drawString(sig_x, sig_y + 15, datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"))
+        c.setFillColorRGB(0.22, 0.22, 0.22)
+        signer_name = user.full_name if user else "Utilisateur"
+        c.drawString(sig_x, sig_y + 38, signer_name)
+        c.drawString(sig_x, sig_y + 27, datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC"))
+        c.setStrokeColorRGB(0.82, 0.82, 0.82)
         c.setLineWidth(0.5)
-        c.rect(sig_x - 5, sig_y + 8, 165, 35, stroke=1, fill=0)
+        c.rect(sig_x - 5, sig_y + 20, 170, 40, stroke=1, fill=0)
 
-        # Signature image if exists
-        if user and user.signature_path and os.path.exists(user.signature_path):
-            c.drawImage(user.signature_path, sig_x, sig_y - 40, width=100, height=40,
+        # Signature image ou texte
+        has_sig_image = bool(user and user.signature_path and os.path.exists(user.signature_path))
+        has_sig_text = bool(user and getattr(user, "signature_text", None))
+
+        if has_sig_image:
+            c.drawImage(user.signature_path, sig_x, sig_y - 35, width=110, height=40,
                         preserveAspectRatio=True, mask="auto")
+        elif has_sig_text:
+            c.setFont("Helvetica-Oblique", 14)
+            c.setFillColorRGB(0.1, 0.34, 0.86)
+            c.drawString(sig_x, sig_y - 10, user.signature_text)
 
         # ─── Stamp (bottom-left or center) ────────────────────────────────────
         if include_stamp:

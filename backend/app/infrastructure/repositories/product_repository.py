@@ -14,22 +14,30 @@ from app.infrastructure.database.models import ProductModel
 
 class ProductRepository(IProductRepository):
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, org_id: UUID | None = None) -> None:
         self._s = session
+        self._org_id = org_id
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
     async def get_by_id(self, product_id: UUID) -> Product | None:
-        row = await self._s.get(ProductModel, product_id)
-        return _to_entity(row) if row and not row.is_deleted else None
+        q = select(ProductModel).where(
+            ProductModel.id == product_id,
+            ProductModel.is_deleted == False,  # noqa: E712
+        )
+        if self._org_id is not None:
+            q = q.where(ProductModel.organization_id == self._org_id)
+        row = (await self._s.execute(q)).scalar_one_or_none()
+        return _to_entity(row) if row else None
 
     async def get_by_code(self, code: str) -> Product | None:
-        row = (await self._s.execute(
-            select(ProductModel).where(
-                ProductModel.code == code,
-                ProductModel.is_deleted == False,  # noqa: E712
-            )
-        )).scalar_one_or_none()
+        q = select(ProductModel).where(
+            ProductModel.code == code,
+            ProductModel.is_deleted == False,  # noqa: E712
+        )
+        if self._org_id is not None:
+            q = q.where(ProductModel.organization_id == self._org_id)
+        row = (await self._s.execute(q)).scalar_one_or_none()
         return _to_entity(row) if row else None
 
     async def list(
@@ -41,6 +49,8 @@ class ProductRepository(IProductRepository):
         status: str | None,
     ) -> tuple[list[Product], int]:
         q = select(ProductModel).where(ProductModel.is_deleted == False)  # noqa: E712
+        if self._org_id is not None:
+            q = q.where(ProductModel.organization_id == self._org_id)
 
         if search:
             like = f"%{search}%"
@@ -73,13 +83,17 @@ class ProductRepository(IProductRepository):
             row = ProductModel()
             self._s.add(row)
         _copy_to_model(product, row)
+        if self._org_id is not None and row.organization_id is None:
+            row.organization_id = self._org_id
         await self._s.flush()
         await self._s.refresh(row)
         return _to_entity(row)
 
     async def generate_code(self) -> str:
-        result = await self._s.execute(select(func.count(ProductModel.id)))
-        count = result.scalar_one()
+        q = select(func.count(ProductModel.id))
+        if self._org_id is not None:
+            q = q.where(ProductModel.organization_id == self._org_id)
+        count = (await self._s.execute(q)).scalar_one()
         return f"PROD-{count + 1:05d}"
 
 

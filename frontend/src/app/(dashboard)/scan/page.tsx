@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useRef, useCallback } from "react";
 import {
   ScanLine, Upload, X, FileText, AlertCircle,
-  ChevronRight, Loader2, CheckCircle, Sparkles,
+  ChevronRight, Loader2, CheckCircle, ShieldAlert, Cpu,
 } from "lucide-react";
 import { documentsApi } from "@/lib/api/documents";
 
@@ -38,6 +38,7 @@ interface ExtractedData {
   currency?: string;
   notes?: string;
   payment_method?: string;
+  needs_review?: boolean;
 }
 
 type ScanStep = "upload" | "preview" | "extracted";
@@ -85,9 +86,10 @@ export default function ScanPage() {
       setConfidence(result.confidence);
       setRawText(result.raw_text);
       setStep("extracted");
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
       setExtractError(
-        e.response?.data?.detail || "Erreur lors de l'analyse. Vérifiez le fichier et réessayez."
+        err.response?.data?.detail || "Erreur lors de l'analyse. Vérifiez le fichier et réessayez."
       );
     } finally {
       setProcessing(false);
@@ -107,51 +109,63 @@ export default function ScanPage() {
   const vendorName = extracted?.vendor
     ? typeof extracted.vendor === "string"
       ? extracted.vendor
-      : extracted.vendor?.name ?? ""
+      : (extracted.vendor?.name ?? "")
     : "";
+
   const clientName = extracted?.client
     ? typeof extracted.client === "string"
       ? extracted.client
-      : extracted.client?.name ?? ""
+      : (extracted.client?.name ?? "")
     : "";
-  const clientEmail = extracted?.client && typeof extracted.client !== "string"
-    ? extracted.client.email ?? ""
-    : "";
+
+  const clientEmail =
+    extracted?.client && typeof extracted.client !== "string"
+      ? (extracted.client.email ?? "")
+      : "";
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* En-tête */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Scan de facture</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Importez une photo ou PDF de facture — l&apos;IA extrait automatiquement toutes les données
+        <h1 className="text-2xl font-bold text-slate-900">Scan de facture</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Importez une photo ou un PDF de facture — l&apos;OCR extrait automatiquement toutes les données
         </p>
       </div>
 
-      {/* Progress steps */}
+      {/* Étapes */}
       <div className="flex items-center gap-2">
         {(["upload", "preview", "extracted"] as const).map((s, i) => {
           const labels = ["Import", "Aperçu", "Extraction"];
-          const done = ["upload", "preview", "extracted"].indexOf(step) > i;
+          const done = (["upload", "preview", "extracted"] as const).indexOf(step) > i;
           const active = step === s;
           return (
             <div key={s} className="flex items-center gap-2">
-              <div className={`flex items-center gap-2 text-sm font-medium ${active ? "text-blue-700" : done ? "text-emerald-600" : "text-gray-400"}`}>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                  done ? "bg-emerald-500 border-emerald-500 text-white" :
-                  active ? "border-blue-600 text-blue-600" :
-                  "border-gray-200 text-gray-400"
-                }`}>
+              <div
+                className={`flex items-center gap-2 text-sm font-medium ${
+                  active ? "text-blue-700" : done ? "text-emerald-600" : "text-slate-400"
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                    done
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : active
+                      ? "border-blue-600 text-blue-600"
+                      : "border-slate-200 text-slate-400"
+                  }`}
+                >
                   {done ? <CheckCircle className="w-4 h-4" /> : i + 1}
                 </div>
                 {labels[i]}
               </div>
-              {i < 2 && <ChevronRight className="w-4 h-4 text-gray-300" />}
+              {i < 2 && <ChevronRight className="w-4 h-4 text-slate-300" />}
             </div>
           );
         })}
       </div>
 
-      {/* ── Step: Upload ── */}
+      {/* ── Étape : Import ── */}
       {step === "upload" && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -159,20 +173,22 @@ export default function ScanPage() {
           onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
           className={`card p-12 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all border-2 border-dashed ${
-            dragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+            dragging
+              ? "border-blue-400 bg-blue-50"
+              : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
           }`}
         >
           <div className="p-4 bg-blue-100 rounded-full">
             <Upload className="w-8 h-8 text-blue-600" />
           </div>
           <div className="text-center">
-            <p className="font-semibold text-gray-900">Glissez votre facture ici</p>
-            <p className="text-sm text-gray-400 mt-1">ou cliquez pour parcourir vos fichiers</p>
-            <p className="text-xs text-gray-400 mt-2">PNG, JPG, PDF — max 10 Mo</p>
+            <p className="font-semibold text-slate-900">Glissez votre facture ici</p>
+            <p className="text-sm text-slate-400 mt-1">ou cliquez pour parcourir vos fichiers</p>
+            <p className="text-xs text-slate-400 mt-2">PNG, JPG, PDF — max 10 Mo</p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full">
-            <Sparkles className="w-3.5 h-3.5" />
-            Extraction IA des données
+          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full">
+            <Cpu className="w-3.5 h-3.5" />
+            OCR local — aucune donnée envoyée en ligne
           </div>
           <input
             ref={inputRef}
@@ -187,7 +203,7 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* ── Step: Preview ── */}
+      {/* ── Étape : Aperçu ── */}
       {step === "preview" && file && (
         <div className="space-y-4">
           <div className="card p-5">
@@ -197,19 +213,19 @@ export default function ScanPage() {
                   <FileText className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">{file.name}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="font-medium text-slate-900">{file.name}</p>
+                  <p className="text-xs text-slate-400">
                     {(file.size / 1024).toFixed(1)} Ko · {file.type}
                   </p>
                 </div>
               </div>
-              <button onClick={reset} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <X className="w-4 h-4 text-gray-500" />
+              <button onClick={reset} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                <X className="w-4 h-4 text-slate-500" />
               </button>
             </div>
 
             {previewUrl && (
-              <div className="rounded-lg overflow-hidden border border-gray-100 bg-gray-50">
+              <div className="rounded-lg overflow-hidden border border-slate-100 bg-slate-50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={previewUrl}
@@ -220,8 +236,8 @@ export default function ScanPage() {
             )}
 
             {file.type === "application/pdf" && !previewUrl && (
-              <div className="h-32 flex items-center justify-center bg-gray-50 rounded-lg border border-gray-100">
-                <p className="text-sm text-gray-400">Aperçu PDF — l&apos;extraction démarre au clic</p>
+              <div className="h-32 flex items-center justify-center bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-sm text-slate-400">Aperçu PDF — l&apos;extraction démarre au clic</p>
               </div>
             )}
           </div>
@@ -239,7 +255,7 @@ export default function ScanPage() {
             </button>
             <button onClick={runExtraction} disabled={processing} className="btn-primary">
               {processing ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Analyse IA en cours…</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Analyse OCR en cours…</>
               ) : (
                 <><ScanLine className="w-4 h-4" /> Extraire les données</>
               )}
@@ -248,32 +264,49 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* ── Step: Extracted ── */}
+      {/* ── Étape : Données extraites ── */}
       {step === "extracted" && extracted && (
         <div className="space-y-5">
-          {/* Confidence banner */}
-          <div className={`flex items-center gap-3 rounded-xl px-4 py-3 border text-sm font-medium ${
-            confidence >= 0.7
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : confidence >= 0.4
-              ? "bg-amber-50 border-amber-200 text-amber-800"
-              : "bg-red-50 border-red-200 text-red-800"
-          }`}>
+
+          {/* Bandeau de confiance */}
+          <div
+            className={`flex items-center gap-3 rounded-xl px-4 py-3 border text-sm font-medium ${
+              confidence >= 0.7
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : confidence >= 0.4
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}
+          >
             {confidence >= 0.7 ? (
               <CheckCircle className="w-5 h-5 flex-shrink-0" />
             ) : (
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
             )}
             <div>
-              Confiance de l&apos;extraction : <strong>{Math.round(confidence * 100)}%</strong>
+              Fiabilité OCR : <strong>{Math.round(confidence * 100)}%</strong>
               {confidence < 0.7 && " — vérifiez et corrigez les champs avant de créer la commande"}
             </div>
           </div>
 
-          {/* Extracted form */}
+          {/* Bandeau validation mathématique */}
+          {extracted.needs_review && (
+            <div className="flex items-start gap-3 rounded-xl px-4 py-3 border bg-amber-50 border-amber-300 text-amber-900 text-sm">
+              <ShieldAlert className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <p className="font-semibold">Vérification mathématique échouée</p>
+                <p className="text-amber-800 mt-0.5">
+                  Les montants extraits sont incohérents (la somme des lignes ne correspond pas au
+                  sous-total HT, ou HT + TVA ≠ TTC). Corrigez les valeurs avant de créer la commande.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Formulaire de données extraites */}
           <div className="card p-6 space-y-5">
-            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-blue-600" />
+            <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-blue-600" />
               Données extraites
             </h2>
 
@@ -305,54 +338,111 @@ export default function ScanPage() {
               </div>
             </div>
 
-            {/* Lignes */}
+            {/* Lignes de commande */}
             {extracted.line_items && extracted.line_items.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <label className="label mb-0">Lignes de commande ({extracted.line_items.length})</label>
+                  <label className="label mb-0">
+                    Lignes de commande ({extracted.line_items.length})
+                  </label>
                 </div>
-                <div className="space-y-2">
-                  {extracted.line_items.map((l, i) => (
-                    <div key={i} className="grid grid-cols-12 gap-2">
-                      <div className="col-span-6">
-                        <input defaultValue={l.description} className="input text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-2">
-                        <input defaultValue={l.quantity} type="number" className="input text-sm" placeholder="Qté" />
-                      </div>
-                      <div className="col-span-2">
-                        <input defaultValue={l.unit ?? ""} className="input text-sm" placeholder="Unité" />
-                      </div>
-                      <div className="col-span-2">
-                        <input defaultValue={l.unit_price} type="number" className="input text-sm" placeholder="Prix" />
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="table-header text-left w-1/2">Description</th>
+                        <th className="table-header text-right">Qté</th>
+                        <th className="table-header text-right">Unité</th>
+                        <th className="table-header text-right">Prix U.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {extracted.line_items.map((l, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-2">
+                            <input
+                              defaultValue={l.description}
+                              className="input text-sm py-1.5"
+                              placeholder="Description"
+                            />
+                          </td>
+                          <td className="px-2 py-2 w-20">
+                            <input
+                              defaultValue={l.quantity}
+                              type="number"
+                              className="input text-sm py-1.5 text-right"
+                              placeholder="Qté"
+                            />
+                          </td>
+                          <td className="px-2 py-2 w-24">
+                            <input
+                              defaultValue={l.unit ?? ""}
+                              className="input text-sm py-1.5"
+                              placeholder="Unité"
+                            />
+                          </td>
+                          <td className="px-2 py-2 w-28">
+                            <input
+                              defaultValue={l.unit_price}
+                              type="number"
+                              className="input text-sm py-1.5 text-right"
+                              placeholder="Prix"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
 
             {/* Totaux */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {extracted.subtotal !== undefined && (
                 <div>
-                  <label className="label">Sous-total HT</label>
-                  <input defaultValue={extracted.subtotal} type="number" className="input" />
+                  <label className="label">
+                    Sous-total HT
+                    {extracted.needs_review && (
+                      <span className="ml-1 text-amber-500 text-xs font-normal">⚠ à vérifier</span>
+                    )}
+                  </label>
+                  <input
+                    defaultValue={extracted.subtotal}
+                    type="number"
+                    className={`input ${extracted.needs_review ? "border-amber-300 focus:ring-amber-400" : ""}`}
+                  />
                 </div>
               )}
               {extracted.tax_amount !== undefined && (
                 <div>
-                  <label className="label">TVA</label>
-                  <input defaultValue={extracted.tax_amount} type="number" className="input" />
+                  <label className="label">
+                    TVA
+                    {extracted.needs_review && (
+                      <span className="ml-1 text-amber-500 text-xs font-normal">⚠ à vérifier</span>
+                    )}
+                  </label>
+                  <input
+                    defaultValue={extracted.tax_amount}
+                    type="number"
+                    className={`input ${extracted.needs_review ? "border-amber-300 focus:ring-amber-400" : ""}`}
+                  />
                 </div>
               )}
               {extracted.total_amount !== undefined && (
                 <div>
-                  <label className="label">Total TTC</label>
+                  <label className="label">
+                    Total TTC
+                    {extracted.needs_review && (
+                      <span className="ml-1 text-amber-500 text-xs font-normal">⚠ à vérifier</span>
+                    )}
+                  </label>
                   <input
                     defaultValue={extracted.total_amount}
                     type="number"
-                    className="input font-semibold text-blue-700"
+                    className={`input font-semibold text-blue-700 ${
+                      extracted.needs_review ? "border-amber-300 focus:ring-amber-400" : ""
+                    }`}
                   />
                 </div>
               )}
@@ -366,13 +456,13 @@ export default function ScanPage() {
             )}
           </div>
 
-          {/* Raw text accordion */}
+          {/* Texte brut (debug) */}
           {rawText && (
             <details className="card p-4">
-              <summary className="text-sm font-medium text-gray-600 cursor-pointer select-none">
+              <summary className="text-sm font-medium text-slate-600 cursor-pointer select-none">
                 Texte brut extrait (debug)
               </summary>
-              <pre className="mt-3 text-xs text-gray-500 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+              <pre className="mt-3 text-xs text-slate-500 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
                 {rawText}
               </pre>
             </details>

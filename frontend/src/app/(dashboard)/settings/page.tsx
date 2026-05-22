@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usersApi, type IssuerProfileUpdate } from "@/lib/api/users";
 import { organizationsApi, type OrganizationUpdate } from "@/lib/api/organizations";
 import { useForm } from "react-hook-form";
@@ -19,9 +19,11 @@ type SettingsForm = {
   postal_code: string;
   country: string;
   signature_title: string;
+  signature_text: string;
   footer_notes: string;
   document_email: string;
   auto_send_documents: boolean;
+  tax_included: boolean;
   primary_color: string;
   secondary_color: string;
   font_family: string;
@@ -46,6 +48,8 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
+
   const { data, isLoading } = useQuery({
     queryKey: ["users", "me", "issuer-profile"],
     queryFn: usersApi.getMyIssuerProfile,
@@ -68,9 +72,11 @@ export default function SettingsPage() {
       postal_code: "",
       country: "",
       signature_title: "",
+      signature_text: "",
       footer_notes: "",
       document_email: "",
       auto_send_documents: true,
+      tax_included: true,
       primary_color: "#1a56db",
       secondary_color: "#eff6ff",
       font_family: "Helvetica",
@@ -103,14 +109,17 @@ export default function SettingsPage() {
       postal_code: data.postal_code ?? "",
       country: data.country ?? "",
       signature_title: data.signature_title ?? "",
+      signature_text: data.signature_text ?? "",
       footer_notes: data.footer_notes ?? "",
       document_email: data.document_email ?? "",
       auto_send_documents: data.auto_send_documents,
+      tax_included: data.tax_included,
       primary_color: data.primary_color ?? "#1a56db",
       secondary_color: data.secondary_color ?? "#eff6ff",
       font_family: data.font_family ?? "Helvetica",
     });
   }, [data, reset]);
+
   useEffect(() => {
     if (!organization) return;
     orgForm.reset({
@@ -128,6 +137,7 @@ export default function SettingsPage() {
   const saveMutation = useMutation({
     mutationFn: usersApi.saveMyIssuerProfile,
     onSuccess: (saved) => {
+      queryClient.invalidateQueries({ queryKey: ["users", "me", "issuer-profile"] });
       reset({
         profile_type: saved.profile_type,
         display_name: saved.display_name ?? "",
@@ -140,24 +150,32 @@ export default function SettingsPage() {
         postal_code: saved.postal_code ?? "",
         country: saved.country ?? "",
         signature_title: saved.signature_title ?? "",
+        signature_text: saved.signature_text ?? "",
         footer_notes: saved.footer_notes ?? "",
         document_email: saved.document_email ?? "",
         auto_send_documents: saved.auto_send_documents,
+        tax_included: saved.tax_included,
         primary_color: saved.primary_color ?? "#1a56db",
         secondary_color: saved.secondary_color ?? "#eff6ff",
         font_family: saved.font_family ?? "Helvetica",
       });
     },
   });
+
   const uploadMutation = useMutation({
     mutationFn: ({ assetType, file }: { assetType: "logo" | "stamp" | "signature"; file: File }) =>
       usersApi.uploadIssuerAsset(assetType, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "me", "issuer-profile"] });
+    },
   });
+
   const organizationMutation = useMutation({
     mutationFn: organizationsApi.saveMine,
   });
 
   const profileType = watch("profile_type");
+  const taxIncluded = watch("tax_included");
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -168,6 +186,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* ── Société ── */}
       <div className="card p-6 space-y-5">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -223,6 +242,7 @@ export default function SettingsPage() {
         </form>
       </div>
 
+      {/* ── Mon compte ── */}
       <div className="card p-6 space-y-5">
         <h2 className="font-semibold text-gray-900 flex items-center gap-2">
           <User className="w-4 h-4 text-blue-600" />
@@ -254,7 +274,7 @@ export default function SettingsPage() {
             <div className="text-sm">
               <p className="font-medium text-amber-800">Acces et mot de passe</p>
               <p className="text-amber-700 mt-0.5">
-                Le compte sert a l’authentification. Le profil emetteur ci-dessous sert aux factures,
+                Le compte sert a l'authentification. Le profil emetteur ci-dessous sert aux factures,
                 bons de livraison et emails automatiques.
               </p>
             </div>
@@ -262,8 +282,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* ── Profil emetteur ── */}
       <form
-        onSubmit={handleSubmit((values) => saveMutation.mutate(values as IssuerProfileUpdate))}
+        onSubmit={handleSubmit((values) => saveMutation.mutate(values as unknown as IssuerProfileUpdate))}
         className="card p-6 space-y-6"
       >
         <div className="flex items-center justify-between gap-4">
@@ -290,7 +311,7 @@ export default function SettingsPage() {
             <input className="input" {...register("display_name")} placeholder="Nom visible sur les documents" />
           </div>
           <div>
-            <label className="label">Nom de l’entreprise</label>
+            <label className="label">Nom de l'entreprise</label>
             <input className="input" {...register("company_name")} placeholder="Biloz" />
           </div>
           <div>
@@ -322,7 +343,7 @@ export default function SettingsPage() {
             <input className="input" {...register("country")} />
           </div>
           <div>
-            <label className="label">Fonction / signature</label>
+            <label className="label">Fonction / titre de signature</label>
             <input className="input" {...register("signature_title")} placeholder="Directeur general" />
           </div>
           <div>
@@ -343,6 +364,32 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* ── TVA ── */}
+        <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Parametres TVA</h3>
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="tax_included"
+              className="h-4 w-4 rounded border-gray-300 mt-0.5"
+              {...register("tax_included")}
+            />
+            <label htmlFor="tax_included" className="cursor-pointer">
+              <p className="text-sm font-medium text-gray-900">Prix TTC (TVA incluse)</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Cochez si vos prix sont affiches toutes taxes comprises.
+                Decochez pour afficher les prix hors taxe (HT).
+              </p>
+            </label>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className={`px-2 py-0.5 rounded-full font-medium ${taxIncluded ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}`}>
+              {taxIncluded ? "Prix TTC — TVA incluse dans les montants" : "Prix HT — TVA calculee separement"}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Email & envoi ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="label">Email de reception des documents</label>
@@ -355,7 +402,7 @@ export default function SettingsPage() {
             <input type="checkbox" className="h-4 w-4 rounded border-gray-300" {...register("auto_send_documents")} />
             <div>
               <p className="text-sm font-medium text-gray-900">Envoi automatique par email</p>
-              <p className="text-xs text-gray-500">A chaque telechargement d’un document, le serveur envoie une copie par email.</p>
+              <p className="text-xs text-gray-500">A chaque telechargement d'un document, le serveur envoie une copie par email.</p>
             </div>
           </div>
           <div className="md:col-span-2">
@@ -364,10 +411,42 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <AssetUploader label="Logo" assetType="logo" path={data?.logo_path} onUpload={(file) => uploadMutation.mutate({ assetType: "logo", file })} />
-          <AssetUploader label="Cachet" assetType="stamp" path={data?.stamp_path} onUpload={(file) => uploadMutation.mutate({ assetType: "stamp", file })} />
-          <AssetUploader label="Signature" assetType="signature" path={data?.signature_path} onUpload={(file) => uploadMutation.mutate({ assetType: "signature", file })} />
+        {/* ── Assets (logo, cachet, signature) ── */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Visuels et signature</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AssetUploader
+              label="Logo"
+              assetType="logo"
+              hasAsset={!!data?.logo_path}
+              onUpload={(file) => uploadMutation.mutate({ assetType: "logo", file })}
+            />
+            <AssetUploader
+              label="Cachet"
+              assetType="stamp"
+              hasAsset={!!data?.stamp_path}
+              onUpload={(file) => uploadMutation.mutate({ assetType: "stamp", file })}
+            />
+            <AssetUploader
+              label="Signature (image)"
+              assetType="signature"
+              hasAsset={!!data?.signature_path}
+              onUpload={(file) => uploadMutation.mutate({ assetType: "signature", file })}
+            />
+          </div>
+
+          {/* Signature texte — alternative à l'image */}
+          <div>
+            <label className="label">Signature textuelle (alternative a l'image)</label>
+            <input
+              className="input"
+              {...register("signature_text")}
+              placeholder="Ex : Jean-Marie DUPONT"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Si aucune image de signature n'est importee, ce nom s'affichera a la place sur les documents.
+            </p>
+          </div>
         </div>
 
         <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
@@ -382,23 +461,47 @@ export default function SettingsPage() {
 function AssetUploader({
   label,
   assetType,
-  path,
+  hasAsset,
   onUpload,
 }: {
   label: string;
   assetType: "logo" | "stamp" | "signature";
-  path?: string | null;
+  hasAsset: boolean;
   onUpload: (file: File) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const previewUrl = hasAsset ? `/api/v1/users/me/profile/assets/${assetType}` : null;
+
   return (
-    <label className="rounded-xl border border-gray-200 p-4 flex flex-col gap-2 cursor-pointer hover:border-blue-300">
+    <div className="rounded-xl border border-gray-200 p-4 flex flex-col gap-3">
       <span className="text-sm font-medium text-gray-900">{label}</span>
-      <span className="text-xs text-gray-500">{path ? "Fichier configuré" : "Aucun fichier importé"}</span>
-      <span className="inline-flex items-center gap-2 text-sm text-blue-700">
+
+      {previewUrl ? (
+        <div className="relative w-full h-24 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt={label}
+            className="max-h-full max-w-full object-contain"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        </div>
+      ) : (
+        <div className="w-full h-24 bg-gray-50 rounded-lg border border-dashed border-gray-300 flex items-center justify-center">
+          <span className="text-xs text-gray-400">Aucune image</span>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 font-medium"
+      >
         <Upload className="w-4 h-4" />
-        Importer
-      </span>
+        {hasAsset ? "Remplacer" : "Importer"}
+      </button>
       <input
+        ref={inputRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
         className="hidden"
@@ -407,6 +510,6 @@ function AssetUploader({
           if (file) onUpload(file);
         }}
       />
-    </label>
+    </div>
   );
 }

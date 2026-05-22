@@ -37,7 +37,16 @@ class OrganizationModel(Base):
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     country: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Champs juridiques / commerciaux (Cameroun et zone OHADA)
+    rccm: Mapped[str | None] = mapped_column(String(100), nullable=True)   # Registre du Commerce
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Coordonnées bancaires pour mention sur factures
+    bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bank_account: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Logo affiché dans l'en-tête des documents PDF
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
@@ -55,11 +64,16 @@ class UserModel(Base):
     status: Mapped[str]     = mapped_column(String(30), nullable=False, default="active")
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     signature_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    signature_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     failed_login_count: Mapped[int] = mapped_column(SmallInteger, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_reset_token: Mapped[str | None] = mapped_column(String(128), nullable=True)
     password_reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # OTP vérification email
+    email_otp_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    email_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_otp_attempts: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
@@ -90,6 +104,7 @@ class IssuerProfileModel(Base):
     font_family: Mapped[str | None] = mapped_column(String(50), nullable=True)
     logo_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     stamp_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tax_included: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
 

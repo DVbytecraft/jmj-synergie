@@ -1,9 +1,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Biloz — Render Blueprint
+#
+#  Déploiement :
 #  1. Connecter ce repo sur https://dashboard.render.com/blueprints
-#  2. Après le premier déploiement, noter l'URL du backend et mettre à jour
-#     NEXT_PUBLIC_API_URL + ALLOWED_ORIGINS dans le dashboard Render.
-#  3. Renseigner toutes les variables marquées "sync: false" dans le dashboard.
+#  2. Déployer le backend EN PREMIER. Copier son URL publique.
+#  3. Mettre à jour BACKEND_URL, ALLOWED_ORIGINS, FRONTEND_URL dans le dashboard.
+#  4. Renseigner toutes les variables marquées "sync: false" dans le dashboard.
+#
+#  Redis : utiliser Upstash Redis (gratuit) → https://upstash.com
+#  Copier la connection string Redis et la mettre dans REDIS_URL du backend.
 # ─────────────────────────────────────────────────────────────────────────────
 
 databases:
@@ -49,6 +54,10 @@ services:
         value: /app/storage
       - key: MAX_FILE_SIZE_MB
         value: "10"
+      # ── Redis (Upstash recommandé) ────────────────────────────────────────────
+      # Obligatoire pour le rate-limiting. Obtenir une URL sur https://upstash.com
+      - key: REDIS_URL
+        sync: false           # Ex: rediss://default:xxxxx@xxx.upstash.io:6379
       # ── Brevo ────────────────────────────────────────────────────────────────
       - key: BREVO_API_KEY
         sync: false
@@ -106,16 +115,12 @@ services:
     dockerContext: ./frontend
     healthCheckPath: /
     envVars:
-      # BACKEND_URL : URL interne du backend — baked dans les rewrites Next.js au build
-      # ⚠️  Déployer le backend en premier, puis renseigner son URL ici avant de déployer le frontend
+      # BACKEND_URL : URL interne du backend — utilisée par les rewrites Next.js au build.
+      # ⚠️  Déployer le backend en premier, puis renseigner son URL ici.
       - key: BACKEND_URL
         sync: false           # Ex: https://biloz-backend.onrender.com
       - key: NEXT_PUBLIC_API_URL
         value: /api/v1        # Toujours relatif — le proxy Next.js gère la redirection
-      - key: NEXTAUTH_URL
-        sync: false           # Ex: https://biloz-frontend.onrender.com
-      - key: NEXTAUTH_SECRET
-        generateValue: true
       - key: NODE_ENV
         value: production
       - key: NEXT_TELEMETRY_DISABLED

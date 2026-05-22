@@ -100,6 +100,18 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api/v1")
 
+# ─── Dev: expose unhandled 500 errors details to speed up debugging ────
+# In production we keep a generic 500 to avoid leaking internals.
+if settings.ENVIRONMENT != "production":
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request, exc: Exception):
+        logger.exception("unhandled.exception", path=request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc), "type": exc.__class__.__name__},
+        )
+
+
 
 # ─── Health check ─────────────────────────────────────────────────────────────
 

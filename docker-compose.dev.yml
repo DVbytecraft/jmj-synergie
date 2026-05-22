@@ -5,13 +5,27 @@ version: "3.9"
 #  Usage : docker compose -f docker-compose.dev.yml up --build
 #
 #  Différences vs production :
-#   - Pas de Redis, pas de Nginx (accès direct aux ports)
+#   - Redis sans password (dev only)
+#   - Pas de Nginx (accès direct aux ports)
 #   - Hot reload backend (--reload) et frontend (next dev)
 #   - Code monté en volume (pas de COPY dans l'image)
 #   - HTTP uniquement (pas de SSL)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+
+  # ── Redis — rate limiter ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: biloz_dev_redis
+    restart: unless-stopped
+    networks:
+      - biloz_dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
@@ -54,6 +68,7 @@ services:
       ENVIRONMENT: development
       ALLOWED_ORIGINS: "http://localhost:${DEV_FRONTEND_PORT:-3001},http://localhost:3000"
       STORAGE_PATH: /app/storage
+      REDIS_URL: "redis://redis:6379/0"
     volumes:
       - ./backend:/app
       - backend_storage_dev:/app/storage
@@ -61,6 +76,8 @@ services:
       - "${DEV_BACKEND_PORT:-8001}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - biloz_dev
@@ -83,14 +100,15 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
       NEXT_PUBLIC_API_URL: /api/v1
-      NEXTAUTH_URL: ${DEV_NEXTAUTH_URL:-http://localhost:3001}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev_nextauth_secret_32chars_minimum_ok}
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
+      # File-watching polling — obligatoire sur macOS avec volumes Docker (pas d'inotify)
+      # Sans ça, Next.js détecte des changements fantômes et recompile en cours de route → ChunkLoadError
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
     ports:
       - "${DEV_FRONTEND_PORT:-3001}:3000"
     depends_on:

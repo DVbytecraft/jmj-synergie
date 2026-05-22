@@ -136,11 +136,11 @@ def client_repo(db: DB, current_user: CurrentUser) -> ClientRepository:
 def order_repo(db: DB, current_user: CurrentUser) -> OrderRepository:
     return OrderRepository(db, current_user.organization_id)
 
-def payment_repo(db: DB) -> PaymentRepository:
-    return PaymentRepository(db)
+def payment_repo(db: DB, current_user: CurrentUser) -> PaymentRepository:
+    return PaymentRepository(db, current_user.organization_id)
 
-def refund_repo(db: DB) -> RefundRepository:
-    return RefundRepository(db)
+def refund_repo(db: DB, current_user: CurrentUser) -> RefundRepository:
+    return RefundRepository(db, current_user.organization_id)
 
 def pdf_svc() -> PDFService:
     return PDFService()
@@ -203,16 +203,24 @@ def get_record_payment_uc(db: DB, current_user: CurrentUser) -> RecordPaymentUse
     return RecordPaymentUseCase(OrderRepository(db, current_user.organization_id), PaymentRepository(db))
 
 def get_request_refund_uc(db: DB, current_user: CurrentUser) -> RequestRefundUseCase:
-    return RequestRefundUseCase(OrderRepository(db, current_user.organization_id), PaymentRepository(db), RefundRepository(db))
+    return RequestRefundUseCase(
+        OrderRepository(db, current_user.organization_id),
+        PaymentRepository(db, current_user.organization_id),
+        RefundRepository(db, current_user.organization_id),
+    )
 
 def get_approve_refund_uc(db: DB, current_user: CurrentUser) -> ApproveRefundUseCase:
-    return ApproveRefundUseCase(OrderRepository(db, current_user.organization_id), PaymentRepository(db), RefundRepository(db))
+    return ApproveRefundUseCase(
+        OrderRepository(db, current_user.organization_id),
+        PaymentRepository(db, current_user.organization_id),
+        RefundRepository(db, current_user.organization_id),
+    )
 
-def get_reject_refund_uc(db: DB) -> RejectRefundUseCase:
-    return RejectRefundUseCase(RefundRepository(db))
+def get_reject_refund_uc(db: DB, current_user: CurrentUser) -> RejectRefundUseCase:
+    return RejectRefundUseCase(RefundRepository(db, current_user.organization_id))
 
-def get_list_refunds_uc(db: DB) -> ListRefundsUseCase:
-    return ListRefundsUseCase(RefundRepository(db))
+def get_list_refunds_uc(db: DB, current_user: CurrentUser) -> ListRefundsUseCase:
+    return ListRefundsUseCase(RefundRepository(db, current_user.organization_id))
 
 def get_pro_forma_uc(db: DB, current_user: CurrentUser) -> GenerateProFormaUseCase:
     return GenerateProFormaUseCase(
@@ -232,23 +240,23 @@ def get_delivery_note_uc(db: DB, current_user: CurrentUser) -> GenerateDeliveryN
 
 # ── Product use case factories ────────────────────────────────────────────────
 
-def get_create_product_uc(db: DB) -> CreateProductUseCase:
-    return CreateProductUseCase(ProductRepository(db))
+def get_create_product_uc(db: DB, current_user: CurrentUser) -> CreateProductUseCase:
+    return CreateProductUseCase(ProductRepository(db, current_user.organization_id))
 
-def get_get_product_uc(db: DB) -> GetProductUseCase:
-    return GetProductUseCase(ProductRepository(db))
+def get_get_product_uc(db: DB, current_user: CurrentUser) -> GetProductUseCase:
+    return GetProductUseCase(ProductRepository(db, current_user.organization_id))
 
-def get_list_products_uc(db: DB) -> ListProductsUseCase:
-    return ListProductsUseCase(ProductRepository(db))
+def get_list_products_uc(db: DB, current_user: CurrentUser) -> ListProductsUseCase:
+    return ListProductsUseCase(ProductRepository(db, current_user.organization_id))
 
-def get_update_product_uc(db: DB) -> UpdateProductUseCase:
-    return UpdateProductUseCase(ProductRepository(db))
+def get_update_product_uc(db: DB, current_user: CurrentUser) -> UpdateProductUseCase:
+    return UpdateProductUseCase(ProductRepository(db, current_user.organization_id))
 
-def get_delete_product_uc(db: DB) -> DeleteProductUseCase:
-    return DeleteProductUseCase(ProductRepository(db))
+def get_delete_product_uc(db: DB, current_user: CurrentUser) -> DeleteProductUseCase:
+    return DeleteProductUseCase(ProductRepository(db, current_user.organization_id))
 
-def get_activate_product_uc(db: DB) -> ActivateProductUseCase:
-    return ActivateProductUseCase(ProductRepository(db))
+def get_activate_product_uc(db: DB, current_user: CurrentUser) -> ActivateProductUseCase:
+    return ActivateProductUseCase(ProductRepository(db, current_user.organization_id))
 
-def get_deactivate_product_uc(db: DB) -> DeactivateProductUseCase:
-    return DeactivateProductUseCase(ProductRepository(db))
+def get_deactivate_product_uc(db: DB, current_user: CurrentUser) -> DeactivateProductUseCase:
+    return DeactivateProductUseCase(ProductRepository(db, current_user.organization_id))

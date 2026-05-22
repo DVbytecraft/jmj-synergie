@@ -10,7 +10,7 @@ import { formatCents } from "@/lib/utils/money";
 import Link from "next/link";
 
 export default function PDFPage() {
-  const [search, setSearch] = useState("");
+const [search, setSearch] = useState("");
   const [loading, setLoading] = useState<{ id: string; type: "facture" | "bon" } | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -26,8 +26,8 @@ export default function PDFPage() {
   const handleDownload = async (id: string, type: "facture" | "bon") => {
     setLoading({ id, type });
     try {
-      if (type === "facture") await pdfApi.downloadFacture(id);
-      else await pdfApi.downloadBonCommande(id);
+if (type === "facture") await pdfApi.downloadFacture(id);
+      else await pdfApi.downloadProForma(id);
     } finally {
       setLoading(null);
     }
@@ -131,7 +131,7 @@ export default function PDFPage() {
                         {formatCents(c.total_cents, c.currency)}
                       </td>
                       <td className="table-cell text-gray-400">
-                        {new Date(c.created_at).toLocaleDateString("fr-FR")}
+{new Date(c.created_at).toLocaleDateString("fr-FR")}
                       </td>
                       <td className="table-cell">
                         <div className="flex items-center justify-center gap-2">

@@ -3,17 +3,19 @@ Documents endpoints — pro forma generation, PDF sign, stamp, invoice scan.
 """
 from uuid import UUID
 
+from datetime import date
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import CurrentUser, ManagerUser
 
 from app.core.config import settings
 from app.infrastructure.database.session import get_db_session as get_db
-from app.infrastructure.database.models import Document, IssuerProfileModel, OrderModel, UserModel
+from app.infrastructure.database.models import ClientModel, Document, IssuerProfileModel, OrderModel, UserModel
 from app.infrastructure.external.pdf.pdf_service import PDFService
 from app.infrastructure.external.pdf.signature_service import SignatureService
 from app.infrastructure.external.ocr.ocr_service import OCRService
@@ -90,23 +92,57 @@ async def list_all_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     document_type: str | None = Query(default=None),
+    date_from: date | None = Query(default=None, description="Filtrer à partir de cette date (YYYY-MM-DD)"),
+    date_to: date | None = Query(default=None, description="Filtrer jusqu'à cette date (YYYY-MM-DD)"),
+    client_type: str | None = Query(default=None, description="Type de client: individual | business"),
 ):
-    """List all documents for the current organisation, with pagination."""
+    """List all documents for the current organisation, with pagination and filters."""
+    from datetime import datetime, timezone as tz, timedelta
+
     filters = []
     if current_user.organization_id:
         filters.append(Document.organization_id == current_user.organization_id)
     if document_type:
         filters.append(Document.document_type == document_type)
+    if date_from:
+        filters.append(Document.created_at >= datetime(date_from.year, date_from.month, date_from.day, tzinfo=tz.utc))
+    if date_to:
+        end_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=tz.utc)
+        filters.append(Document.created_at <= end_dt)
 
-    total_result = await db.execute(
-        select(func.count(Document.id)).where(*filters) if filters
-        else select(func.count(Document.id))
-    )
-    total = total_result.scalar_one()
+    # client_type filter requires joining through order → client
+    if client_type:
+        filters_with_join = filters + [
+            Document.order_id == OrderModel.id,
+            OrderModel.client_id == ClientModel.id,
+            ClientModel.client_type == client_type,
+        ]
+        total_result = await db.execute(
+            select(func.count(Document.id))
+            .select_from(Document)
+            .join(OrderModel, Document.order_id == OrderModel.id)
+            .join(ClientModel, OrderModel.client_id == ClientModel.id)
+            .where(and_(*filters), ClientModel.client_type == client_type)
+        )
+        total = total_result.scalar_one()
+        q = (
+            select(Document)
+            .join(OrderModel, Document.order_id == OrderModel.id)
+            .join(ClientModel, OrderModel.client_id == ClientModel.id)
+            .where(and_(*filters), ClientModel.client_type == client_type)
+            .order_by(Document.created_at.desc())
+            .offset(skip).limit(limit)
+        )
+    else:
+        total_result = await db.execute(
+            select(func.count(Document.id)).where(and_(*filters)) if filters
+            else select(func.count(Document.id))
+        )
+        total = total_result.scalar_one()
+        q = select(Document).order_by(Document.created_at.desc()).offset(skip).limit(limit)
+        if filters:
+            q = q.where(and_(*filters))
 
-    q = select(Document).order_by(Document.created_at.desc()).offset(skip).limit(limit)
-    if filters:
-        q = q.where(*filters)
     result = await db.execute(q)
     docs = result.scalars().all()
     return {

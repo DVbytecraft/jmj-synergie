@@ -61,12 +61,14 @@ export interface IssuerProfile {
   footer_notes: string | null;
   document_email: string | null;
   auto_send_documents: boolean;
+  tax_included: boolean;
   primary_color: string | null;
   secondary_color: string | null;
   font_family: string | null;
   logo_path: string | null;
   stamp_path: string | null;
   signature_path: string | null;
+  signature_text: string | null;
   account_email: string;
   account_name: string;
 }
@@ -80,8 +82,14 @@ export interface Organization {
   email: string | null;
   phone: string | null;
   address_line1: string | null;
+  postal_code: string | null;
   city: string | null;
   country: string | null;
+  rccm: string | null;
+  website: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  logo_url: string | null;
   is_active: boolean;
 }
 

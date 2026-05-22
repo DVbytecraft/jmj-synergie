@@ -50,8 +50,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Trop de requêtes. Réessayez plus tard."},
                     headers={"Retry-After": str(self.period)},
                 )
-        except Exception:
-            # Redis failure → fail open (don't block legitimate traffic)
-            pass
+        except Exception as exc:
+            # Redis failure → fail-open (ne pas bloquer le trafic légitime)
+            # mais logger l'erreur pour alerter l'ops
+            import structlog
+            structlog.get_logger(__name__).error(
+                "rate_limiter.redis_unavailable",
+                error=str(exc),
+                path=request.url.path,
+            )
 
         return await call_next(request)
