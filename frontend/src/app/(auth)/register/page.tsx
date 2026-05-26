@@ -71,7 +71,6 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterForm) => {
     setError(null);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { confirm_password: _cp, ...payload } = data;
       await apiClient.post("/auth/register-organization", payload);
       setSuccess(true);
