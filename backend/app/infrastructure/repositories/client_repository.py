@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,12 +101,9 @@ class ClientRepository(IClientRepository):
             await self._s.flush()
 
     async def generate_code(self) -> str:
-        q = select(func.count(ClientModel.id))
-        if self._org_id:
-            q = q.where(ClientModel.organization_id == self._org_id)
-        result = await self._s.execute(q)
-        count = result.scalar_one()
-        return f"CLT-{count + 1:05d}"
+        result = await self._s.execute(sa.text("SELECT nextval('seq_client_code')"))
+        seq = result.scalar_one()
+        return f"CLT-{seq:05d}"
 
 
 # ── Mapper helpers ─────────────────────────────────────────────────────────────

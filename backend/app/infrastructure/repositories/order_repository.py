@@ -120,17 +120,12 @@ class OrderRepository(IOrderRepository):
 
     async def generate_number(self) -> str:
         from datetime import datetime
+        import sqlalchemy as sa
         now = datetime.now(timezone.utc)
         prefix = f"CMD-{now.strftime('%Y%m')}"
-        result = await self._s.execute(
-            select(func.count(OrderModel.id))
-            .where(
-                OrderModel.order_number.like(f"{prefix}%"),
-                *( [OrderModel.organization_id == self._org_id] if self._org_id else [] ),
-            )
-        )
-        count = result.scalar_one()
-        return f"{prefix}-{count + 1:04d}"
+        result = await self._s.execute(sa.text("SELECT nextval('seq_order_number')"))
+        seq = result.scalar_one()
+        return f"{prefix}-{seq:04d}"
 
 
 def _to_entity(row: OrderModel) -> Order:

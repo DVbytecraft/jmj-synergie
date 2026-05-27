@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,33 +149,42 @@ async def get_stats(
 async def list_organizations(
     current_user=Depends(SuperAdminUser),
     db: AsyncSession = Depends(get_db),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
 ):
     """Toutes les organisations avec leurs statistiques d'utilisation."""
+    from sqlalchemy import case, literal
     since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    orgs_result = await db.execute(
-        select(OrganizationModel).order_by(OrganizationModel.created_at.desc())
+    # Single query: orgs + user counts via LEFT JOIN + GROUP BY (no N+1)
+    counts_sq = (
+        select(
+            UserModel.organization_id,
+            func.count(UserModel.id).label("user_count"),
+            func.count(
+                case((UserModel.last_login_at >= since_24h, UserModel.id))
+            ).label("active_user_count"),
+        )
+        .where(UserModel.is_deleted == False)  # noqa: E712
+        .group_by(UserModel.organization_id)
+        .subquery()
     )
-    orgs = orgs_result.scalars().all()
 
-    output: list[OrgStats] = []
-    for org in orgs:
-        user_count = await db.scalar(
-            select(func.count(UserModel.id)).where(
-                UserModel.organization_id == org.id,
-                UserModel.is_deleted == False,  # noqa: E712
-            )
-        ) or 0
+    result = await db.execute(
+        select(
+            OrganizationModel,
+            func.coalesce(counts_sq.c.user_count, 0).label("user_count"),
+            func.coalesce(counts_sq.c.active_user_count, 0).label("active_user_count"),
+        )
+        .outerjoin(counts_sq, OrganizationModel.id == counts_sq.c.organization_id)
+        .order_by(OrganizationModel.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    rows = result.all()
 
-        active_count = await db.scalar(
-            select(func.count(UserModel.id)).where(
-                UserModel.organization_id == org.id,
-                UserModel.is_deleted == False,  # noqa: E712
-                UserModel.last_login_at >= since_24h,
-            )
-        ) or 0
-
-        output.append(OrgStats(
+    return [
+        OrgStats(
             id=str(org.id),
             name=org.name,
             email=org.email,
@@ -187,10 +196,10 @@ async def list_organizations(
             is_active=org.is_active,
             created_at=org.created_at.isoformat(),
             user_count=user_count,
-            active_user_count=active_count,
-        ))
-
-    return output
+            active_user_count=active_user_count,
+        )
+        for org, user_count, active_user_count in rows
+    ]
 
 
 @router.post("/organizations", response_model=OrgStats, status_code=status.HTTP_201_CREATED)

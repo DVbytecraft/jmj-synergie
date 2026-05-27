@@ -39,11 +39,15 @@ class ScanResult(BaseModel):
 
 
 def _is_document_owner(current_user, document: Document, order: OrderModel | None) -> bool:
-    if current_user.role == "super_admin":
+    if current_user.role in ("super_admin", "admin"):
         return True
-    if not document.order_id or order is None:
-        return False
-    return document.created_by == current_user.id or order.created_by == current_user.id
+    # Créateur direct du document (couvre les scans sans commande)
+    if document.created_by == current_user.id:
+        return True
+    # Créateur de la commande associée
+    if order is not None and order.created_by == current_user.id:
+        return True
+    return False
 
 
 async def _get_document_with_order(db: AsyncSession, document_id: UUID, organization_id: UUID | None) -> tuple[Document, OrderModel | None]:
@@ -365,7 +369,12 @@ async def download_document(
         select(IssuerProfileModel).where(IssuerProfileModel.user_id == current_user.id)
     )
     issuer_profile = profile_result.scalar_one_or_none()
-    if not issuer_profile or issuer_profile.auto_send_documents:
+    # N'envoyer l'email qu'une seule fois par document (premier téléchargement)
+    auto_send = issuer_profile.auto_send_documents if issuer_profile else True
+    if auto_send and doc.last_emailed_at is None:
+        from datetime import datetime, timezone as _tz
+        doc.last_emailed_at = datetime.now(_tz.utc)
+        await db.flush()
         background_tasks.add_task(_send_document_email_safe, current_user.id, document_id)
 
     if doc.file_path and doc.file_path.startswith("http"):
@@ -386,7 +395,7 @@ async def list_order_documents(
     db: AsyncSession = Depends(get_db),
 ):
     order = await _get_order_or_404(db, order_id, current_user.organization_id)
-    if current_user.role != "super_admin" and order.created_by != current_user.id:
+    if current_user.role not in ("super_admin", "admin") and order.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
     result = await db.execute(

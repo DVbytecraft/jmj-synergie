@@ -70,6 +70,7 @@ class UserModel(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_reset_token: Mapped[str | None] = mapped_column(String(128), nullable=True)
     password_reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    refresh_token_jti: Mapped[str | None] = mapped_column(String(36), nullable=True)
     # OTP vérification email
     email_otp_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     email_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -358,6 +359,7 @@ class DocumentModel(Base):
     stamped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ocr_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ocr_confidence: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
+    last_emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
 

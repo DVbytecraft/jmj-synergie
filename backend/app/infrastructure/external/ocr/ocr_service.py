@@ -31,6 +31,12 @@ logger = structlog.get_logger(__name__)
 _TESS_CONFIG = "--oem 3 --psm 6"
 _TESS_LANG = "fra+eng"
 
+# Memory guards for Render Starter plan (512 MB RAM)
+_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024   # 15 MB hard limit
+_MAX_IMG_WIDTH_PX    = 2000               # downscale images wider than this
+_MAX_PDF_PAGES       = 3                  # analyse first N pages only
+_PDF_DPI             = 200               # lower than 300 to halve RAM usage
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # INTERFACE PUBLIQUE — drop-in replacement de l'ancien code Gemini
@@ -100,7 +106,8 @@ def _load_images(content: bytes, content_type: str) -> list[Image.Image]:
     if "pdf" in content_type:
         try:
             from pdf2image import convert_from_bytes
-            return convert_from_bytes(content, dpi=300)
+            pages = convert_from_bytes(content, dpi=_PDF_DPI, last_page=_MAX_PDF_PAGES)
+            return pages
         except Exception:
             logger.exception("ocr.pdf_convert_failed")
             return []
@@ -124,11 +131,14 @@ def _preprocess(img_pil: Image.Image) -> "np.ndarray":
     img_np = np.array(img_pil.convert("RGB"))
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
 
-    # Mise à l'échelle — Tesseract préfère les images larges
+    # Scale: upscale narrow images (Tesseract accuracy), downscale huge ones (RAM guard)
     h, w = gray.shape
     if w < 1500:
         scale = 1500.0 / w
         gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    elif w > _MAX_IMG_WIDTH_PX:
+        scale = _MAX_IMG_WIDTH_PX / w
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
 
     # CLAHE — améliore le contraste sans saturer les zones claires/sombres
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -790,6 +800,13 @@ class OCRService:
     ) -> dict[str, Any]:
         content = await file.read()
         content_type = file.content_type or "image/jpeg"
+
+        if len(content) > _MAX_FILE_SIZE_BYTES:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=413,
+                detail=f"Fichier trop volumineux : maximum {_MAX_FILE_SIZE_BYTES // (1024*1024)} Mo.",
+            )
 
         # ── Extraction Tesseract ──────────────────────────────────────────────
         try:

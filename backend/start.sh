@@ -4,7 +4,8 @@ set -e
 
 # Render provides postgres:// — SQLAlchemy asyncpg requires postgresql+asyncpg://
 if [ -n "$DATABASE_URL" ]; then
-  DATABASE_URL=$(echo "$DATABASE_URL" | sed 's|^postgres://|postgresql+asyncpg://|')
+  # Handle postgres://, postgresql://, and leave postgresql+asyncpg:// unchanged
+  DATABASE_URL=$(echo "$DATABASE_URL" | sed 's|^postgres[^+]*://|postgresql+asyncpg://|')
   export DATABASE_URL
 fi
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import bcrypt
 from jose import JWTError, jwt
@@ -39,11 +39,14 @@ def create_access_token(user_id: UUID, role: str, name: str) -> str:
     )
 
 
-def create_refresh_token(user_id: UUID) -> str:
-    return _make_token(
-        {"sub": str(user_id), "type": "refresh"},
+def create_refresh_token(user_id: UUID) -> tuple[str, str]:
+    """Returns (token_string, jti). Store jti in DB to enable revocation."""
+    jti = str(uuid4())
+    token = _make_token(
+        {"sub": str(user_id), "type": "refresh", "jti": jti},
         timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
+    return token, jti
 
 
 def decode_token(token: str, expected_type: str) -> dict[str, Any]:

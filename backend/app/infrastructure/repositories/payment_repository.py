@@ -115,12 +115,11 @@ class RefundRepository(IRefundRepository):
         return _refund_to_entity(row)
 
     async def generate_number(self) -> str:
+        import sqlalchemy as sa
         now = datetime.now(timezone.utc)
-        q = select(func.count(RefundModel.id))
-        if self._org_id is not None:
-            q = q.where(RefundModel.organization_id == self._org_id)
-        count = (await self._s.execute(q)).scalar_one()
-        return f"RMB-{now.strftime('%Y%m')}-{count + 1:04d}"
+        result = await self._s.execute(sa.text("SELECT nextval('seq_refund_number')"))
+        seq = result.scalar_one()
+        return f"RMB-{now.strftime('%Y%m')}-{seq:04d}"
 
 
 # ── Mappers ────────────────────────────────────────────────────────────────────

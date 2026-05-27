@@ -193,6 +193,16 @@ def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> None:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
+def _issue_tokens(user: UserModel) -> TokenResponse:
+    """Crée access + refresh token, stocke le JTI sur l'utilisateur (flush à la charge de l'appelant)."""
+    refresh_token_str, jti = create_refresh_token(user.id)
+    user.refresh_token_jti = jti
+    return TokenResponse(
+        access_token=create_access_token(user.id, user.role, user.full_name),
+        refresh_token=refresh_token_str,
+    )
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     form: OAuth2PasswordRequestForm = Depends(),
@@ -238,12 +248,9 @@ async def login(
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
+    tokens = _issue_tokens(user)
     await db.flush()
-
-    return TokenResponse(
-        access_token=create_access_token(user.id, user.role, user.full_name),
-        refresh_token=create_refresh_token(user.id),
-    )
+    return tokens
 
 
 @router.post("/register-organization", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
@@ -355,10 +362,9 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
     if user.is_email_verified:
         if user.status != "active":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Compte désactivé")
-        return TokenResponse(
-            access_token=create_access_token(user.id, user.role, user.full_name),
-            refresh_token=create_refresh_token(user.id),
-        )
+        tokens = _issue_tokens(user)
+        await db.flush()
+        return tokens
 
     now = datetime.now(timezone.utc)
 
@@ -406,11 +412,9 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
     except Exception:
         pass
     _send_welcome_email(user.email, user.full_name, org_name)
-
-    return TokenResponse(
-        access_token=create_access_token(user.id, user.role, user.full_name),
-        refresh_token=create_refresh_token(user.id),
-    )
+    tokens = _issue_tokens(user)
+    await db.flush()
+    return tokens
 
 
 @router.post("/resend-verification", status_code=status.HTTP_200_OK)
@@ -539,6 +543,7 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     user.password_reset_expires_at = None
     user.failed_login_count = 0
     user.locked_until = None
+    user.refresh_token_jti = None  # invalider toutes les sessions actives
     await db.flush()
 
     return {"message": "Mot de passe mis à jour avec succès. Vous pouvez maintenant vous connecter."}
@@ -560,7 +565,30 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     if not user or user.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
 
-    return TokenResponse(
-        access_token=create_access_token(user.id, user.role, user.full_name),
-        refresh_token=create_refresh_token(user.id),
+    # Vérifier que le JTI correspond au dernier refresh token émis (révocation)
+    token_jti = payload.get("jti")
+    if not token_jti or user.refresh_token_jti != token_jti:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token révoqué ou expiré")
+
+    tokens = _issue_tokens(user)
+    await db.flush()
+    return tokens
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Révoquer le refresh token — invalide toutes les sessions actives de l'utilisateur."""
+    try:
+        payload = decode_refresh_token(body.refresh_token)
+    except JWTError:
+        # Token déjà invalide → succès silencieux
+        return {"message": "Déconnecté"}
+
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == payload["sub"], UserModel.is_deleted == False)
     )
+    user = result.scalar_one_or_none()
+    if user:
+        user.refresh_token_jti = None
+        await db.flush()
+    return {"message": "Déconnecté"}
