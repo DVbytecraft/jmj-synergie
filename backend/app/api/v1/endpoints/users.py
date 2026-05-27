@@ -249,7 +249,12 @@ async def list_users(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(UserModel).where(UserModel.is_deleted == False).order_by(UserModel.full_name))
+    result = await db.execute(
+        select(UserModel).where(
+            UserModel.is_deleted == False,  # noqa: E712
+            UserModel.organization_id == current_user.organization_id,
+        ).order_by(UserModel.full_name)
+    )
     return [_to_response(u) for u in result.scalars().all()]
 
 
@@ -284,7 +289,13 @@ async def delete_user(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(UserModel).where(UserModel.id == user_id, UserModel.is_deleted == False))
+    result = await db.execute(
+        select(UserModel).where(
+            UserModel.id == user_id,
+            UserModel.is_deleted == False,  # noqa: E712
+            UserModel.organization_id == current_user.organization_id,
+        )
+    )
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")

@@ -89,7 +89,7 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[UserModel, Depends(get_current_user)]
-CurrentOrgId = Annotated[UUID, Depends(lambda current_user=Depends(get_current_user): current_user.organization_id)]
+CurrentOrgId = Annotated[UUID, Depends(lambda current_user=Depends(get_current_user): _require_org(current_user))]
 
 
 def require_roles(*roles: str):
@@ -130,17 +130,27 @@ def require_permission(permission_code: str):
 
 # ── Repository factories ──────────────────────────────────────────────────────
 
+def _require_org(current_user: UserModel) -> UUID:
+    """Raise 403 if the user has no organization (e.g. a super_admin calling business endpoints)."""
+    if current_user.organization_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cet endpoint requiert un compte rattaché à une organisation.",
+        )
+    return current_user.organization_id
+
+
 def client_repo(db: DB, current_user: CurrentUser) -> ClientRepository:
-    return ClientRepository(db, current_user.organization_id)
+    return ClientRepository(db, _require_org(current_user))
 
 def order_repo(db: DB, current_user: CurrentUser) -> OrderRepository:
-    return OrderRepository(db, current_user.organization_id)
+    return OrderRepository(db, _require_org(current_user))
 
 def payment_repo(db: DB, current_user: CurrentUser) -> PaymentRepository:
-    return PaymentRepository(db, current_user.organization_id)
+    return PaymentRepository(db, _require_org(current_user))
 
 def refund_repo(db: DB, current_user: CurrentUser) -> RefundRepository:
-    return RefundRepository(db, current_user.organization_id)
+    return RefundRepository(db, _require_org(current_user))
 
 def pdf_svc() -> PDFService:
     return PDFService()
@@ -149,90 +159,90 @@ def pdf_svc() -> PDFService:
 # ── Use case factories ────────────────────────────────────────────────────────
 
 def get_create_client_uc(db: DB, current_user: CurrentUser) -> CreateClientUseCase:
-    return CreateClientUseCase(ClientRepository(db, current_user.organization_id))
+    return CreateClientUseCase(ClientRepository(db, _require_org(current_user)))
 
 def get_update_client_uc(db: DB, current_user: CurrentUser) -> UpdateClientUseCase:
-    return UpdateClientUseCase(ClientRepository(db, current_user.organization_id))
+    return UpdateClientUseCase(ClientRepository(db, _require_org(current_user)))
 
 def get_get_client_uc(db: DB, current_user: CurrentUser) -> GetClientUseCase:
-    return GetClientUseCase(ClientRepository(db, current_user.organization_id))
+    return GetClientUseCase(ClientRepository(db, _require_org(current_user)))
 
 def get_list_clients_uc(db: DB, current_user: CurrentUser) -> ListClientsUseCase:
-    return ListClientsUseCase(ClientRepository(db, current_user.organization_id))
+    return ListClientsUseCase(ClientRepository(db, _require_org(current_user)))
 
 def get_delete_client_uc(db: DB, current_user: CurrentUser) -> DeleteClientUseCase:
     return DeleteClientUseCase(
-        ClientRepository(db, current_user.organization_id),
-        OrderRepository(db, current_user.organization_id),
+        ClientRepository(db, _require_org(current_user)),
+        OrderRepository(db, _require_org(current_user)),
     )
 
 def get_create_order_uc(db: DB, current_user: CurrentUser) -> CreateOrderUseCase:
     return CreateOrderUseCase(
-        OrderRepository(db, current_user.organization_id),
-        ClientRepository(db, current_user.organization_id),
+        OrderRepository(db, _require_org(current_user)),
+        ClientRepository(db, _require_org(current_user)),
     )
 
 def get_order_uc(db: DB, current_user: CurrentUser) -> GetOrderUseCase:
-    return GetOrderUseCase(OrderRepository(db, current_user.organization_id))
+    return GetOrderUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_list_orders_uc(db: DB, current_user: CurrentUser) -> ListOrdersUseCase:
-    return ListOrdersUseCase(OrderRepository(db, current_user.organization_id))
+    return ListOrdersUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_update_order_uc(db: DB, current_user: CurrentUser) -> UpdateOrderUseCase:
-    return UpdateOrderUseCase(OrderRepository(db, current_user.organization_id))
+    return UpdateOrderUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_confirm_order_uc(db: DB, current_user: CurrentUser) -> ConfirmOrderUseCase:
-    return ConfirmOrderUseCase(OrderRepository(db, current_user.organization_id))
+    return ConfirmOrderUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_cancel_order_uc(db: DB, current_user: CurrentUser) -> CancelOrderUseCase:
-    return CancelOrderUseCase(OrderRepository(db, current_user.organization_id))
+    return CancelOrderUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_delete_order_uc(db: DB, current_user: CurrentUser) -> DeleteOrderUseCase:
-    return DeleteOrderUseCase(OrderRepository(db, current_user.organization_id))
+    return DeleteOrderUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_add_item_uc(db: DB, current_user: CurrentUser) -> AddOrderItemUseCase:
-    return AddOrderItemUseCase(OrderRepository(db, current_user.organization_id))
+    return AddOrderItemUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_remove_item_uc(db: DB, current_user: CurrentUser) -> RemoveOrderItemUseCase:
-    return RemoveOrderItemUseCase(OrderRepository(db, current_user.organization_id))
+    return RemoveOrderItemUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_record_delivery_uc(db: DB, current_user: CurrentUser) -> RecordDeliveryUseCase:
-    return RecordDeliveryUseCase(OrderRepository(db, current_user.organization_id))
+    return RecordDeliveryUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_record_payment_uc(db: DB, current_user: CurrentUser) -> RecordPaymentUseCase:
-    return RecordPaymentUseCase(OrderRepository(db, current_user.organization_id), PaymentRepository(db))
+    return RecordPaymentUseCase(OrderRepository(db, _require_org(current_user)), PaymentRepository(db, _require_org(current_user)))
 
 def get_request_refund_uc(db: DB, current_user: CurrentUser) -> RequestRefundUseCase:
     return RequestRefundUseCase(
-        OrderRepository(db, current_user.organization_id),
-        PaymentRepository(db, current_user.organization_id),
-        RefundRepository(db, current_user.organization_id),
+        OrderRepository(db, _require_org(current_user)),
+        PaymentRepository(db, _require_org(current_user)),
+        RefundRepository(db, _require_org(current_user)),
     )
 
 def get_approve_refund_uc(db: DB, current_user: CurrentUser) -> ApproveRefundUseCase:
     return ApproveRefundUseCase(
-        OrderRepository(db, current_user.organization_id),
-        PaymentRepository(db, current_user.organization_id),
-        RefundRepository(db, current_user.organization_id),
+        OrderRepository(db, _require_org(current_user)),
+        PaymentRepository(db, _require_org(current_user)),
+        RefundRepository(db, _require_org(current_user)),
     )
 
 def get_reject_refund_uc(db: DB, current_user: CurrentUser) -> RejectRefundUseCase:
-    return RejectRefundUseCase(RefundRepository(db, current_user.organization_id))
+    return RejectRefundUseCase(RefundRepository(db, _require_org(current_user)))
 
 def get_list_refunds_uc(db: DB, current_user: CurrentUser) -> ListRefundsUseCase:
-    return ListRefundsUseCase(RefundRepository(db, current_user.organization_id))
+    return ListRefundsUseCase(RefundRepository(db, _require_org(current_user)))
 
 def get_pro_forma_uc(db: DB, current_user: CurrentUser) -> GenerateProFormaUseCase:
     return GenerateProFormaUseCase(
-        OrderRepository(db, current_user.organization_id),
-        ClientRepository(db, current_user.organization_id),
+        OrderRepository(db, _require_org(current_user)),
+        ClientRepository(db, _require_org(current_user)),
         PDFService(),
     )
 
 def get_delivery_note_uc(db: DB, current_user: CurrentUser) -> GenerateDeliveryNoteUseCase:
     return GenerateDeliveryNoteUseCase(
-        OrderRepository(db, current_user.organization_id),
-        ClientRepository(db, current_user.organization_id),
+        OrderRepository(db, _require_org(current_user)),
+        ClientRepository(db, _require_org(current_user)),
         PDFService(),
     )
 
@@ -241,22 +251,22 @@ def get_delivery_note_uc(db: DB, current_user: CurrentUser) -> GenerateDeliveryN
 # ── Product use case factories ────────────────────────────────────────────────
 
 def get_create_product_uc(db: DB, current_user: CurrentUser) -> CreateProductUseCase:
-    return CreateProductUseCase(ProductRepository(db, current_user.organization_id))
+    return CreateProductUseCase(ProductRepository(db, _require_org(current_user)))
 
 def get_get_product_uc(db: DB, current_user: CurrentUser) -> GetProductUseCase:
-    return GetProductUseCase(ProductRepository(db, current_user.organization_id))
+    return GetProductUseCase(ProductRepository(db, _require_org(current_user)))
 
 def get_list_products_uc(db: DB, current_user: CurrentUser) -> ListProductsUseCase:
-    return ListProductsUseCase(ProductRepository(db, current_user.organization_id))
+    return ListProductsUseCase(ProductRepository(db, _require_org(current_user)))
 
 def get_update_product_uc(db: DB, current_user: CurrentUser) -> UpdateProductUseCase:
-    return UpdateProductUseCase(ProductRepository(db, current_user.organization_id))
+    return UpdateProductUseCase(ProductRepository(db, _require_org(current_user)))
 
 def get_delete_product_uc(db: DB, current_user: CurrentUser) -> DeleteProductUseCase:
-    return DeleteProductUseCase(ProductRepository(db, current_user.organization_id))
+    return DeleteProductUseCase(ProductRepository(db, _require_org(current_user)))
 
 def get_activate_product_uc(db: DB, current_user: CurrentUser) -> ActivateProductUseCase:
-    return ActivateProductUseCase(ProductRepository(db, current_user.organization_id))
+    return ActivateProductUseCase(ProductRepository(db, _require_org(current_user)))
 
 def get_deactivate_product_uc(db: DB, current_user: CurrentUser) -> DeactivateProductUseCase:
-    return DeactivateProductUseCase(ProductRepository(db, current_user.organization_id))
+    return DeactivateProductUseCase(ProductRepository(db, _require_org(current_user)))
