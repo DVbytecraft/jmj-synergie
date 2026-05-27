@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
-    verify_password,
+    verify_password_async,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
-    hash_password,
+    hash_password_async,
 )
 from app.infrastructure.database.models import OrganizationModel, UserModel
 import structlog as _log
@@ -42,6 +42,19 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+def _validate_password_complexity(v: str) -> str:
+    import re
+    if len(v) < 8:
+        raise ValueError("Le mot de passe doit contenir au moins 8 caractères")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("Le mot de passe doit contenir au moins une majuscule")
+    if not re.search(r"[a-z]", v):
+        raise ValueError("Le mot de passe doit contenir au moins une minuscule")
+    if not re.search(r"\d", v):
+        raise ValueError("Le mot de passe doit contenir au moins un chiffre")
+    return v
+
+
 class RegisterOrganizationRequest(BaseModel):
     organization_name: str = Field(..., min_length=2, max_length=255)
     legal_name: str | None = Field(default=None, max_length=255)
@@ -57,6 +70,13 @@ class RegisterOrganizationRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     password: str = Field(..., min_length=8)
+
+    from pydantic import field_validator
+
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        return _validate_password_complexity(v)
 
 
 class RegisterResponse(BaseModel):
@@ -81,6 +101,13 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(..., min_length=8)
 
+    from pydantic import field_validator
+
+    @field_validator("new_password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        return _validate_password_complexity(v)
+
 
 # ─── Helpers OTP ──────────────────────────────────────────────────────────────
 
@@ -91,7 +118,7 @@ def _generate_otp() -> tuple[str, str]:
     return code, code_hash
 
 
-def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
+async def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
     html_body = f"""
 <!DOCTYPE html>
 <html lang="fr">
@@ -126,7 +153,7 @@ def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
 </html>"""
     try:
         from app.infrastructure.services.email.brevo_service import BrevoEmailService
-        BrevoEmailService().send_custom(
+        await BrevoEmailService().send_custom(
             to_email=to_email,
             to_name=full_name,
             subject=f"Biloz — votre code de vérification : {code}",
@@ -136,7 +163,7 @@ def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
         _logger.warning("email.otp.send_failed", to_email=to_email, error=str(exc))
 
 
-def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> None:
+async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> None:
     dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
     html_body = f"""
 <!DOCTYPE html>
@@ -181,7 +208,7 @@ def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> None:
 </html>"""
     try:
         from app.infrastructure.services.email.brevo_service import BrevoEmailService
-        BrevoEmailService().send_custom(
+        await BrevoEmailService().send_custom(
             to_email=to_email,
             to_name=full_name,
             subject=f"Bienvenue sur Biloz — votre espace {org_name} est prêt",
@@ -222,7 +249,7 @@ async def login(
             detail=f"Compte verrouillé jusqu'au {user.locked_until.isoformat()}",
         )
 
-    if not user or not verify_password(form.password, user.hashed_password):
+    if not user or not await verify_password_async(form.password, user.hashed_password):
         if user:
             user.failed_login_count += 1
             if user.failed_login_count >= settings.MAX_LOGIN_ATTEMPTS:
@@ -313,7 +340,7 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
         organization_id=organization.id,
         email=body.email,
         full_name=body.full_name.strip(),
-        hashed_password=hash_password(body.password),
+        hashed_password=await hash_password_async(body.password),
         role="admin",
         is_email_verified=False,
         email_otp_hash=otp_hash,
@@ -323,8 +350,8 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
     db.add(user)
     await db.flush()
 
-    # Envoyer le code OTP (non bloquant)
-    _send_otp_email(body.email, body.full_name.strip(), otp_plain)
+    # Envoyer le code OTP
+    await _send_otp_email(body.email, body.full_name.strip(), otp_plain)
 
     import structlog as _sl
     if settings.ENVIRONMENT == "development":
@@ -360,11 +387,10 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
         raise invalid_exc
 
     if user.is_email_verified:
-        if user.status != "active":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Compte désactivé")
-        tokens = _issue_tokens(user)
-        await db.flush()
-        return tokens
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="EMAIL_ALREADY_VERIFIED",
+        )
 
     now = datetime.now(timezone.utc)
 
@@ -411,7 +437,7 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
             org_name = org.name
     except Exception:
         pass
-    _send_welcome_email(user.email, user.full_name, org_name)
+    await _send_welcome_email(user.email, user.full_name, org_name)
     tokens = _issue_tokens(user)
     await db.flush()
     return tokens
@@ -428,13 +454,19 @@ async def resend_verification(body: ResendVerificationRequest, db: AsyncSession 
     user = result.scalar_one_or_none()
 
     if user and not user.is_email_verified and user.status == "active":
-        otp_plain, otp_hash = _generate_otp()
         now = datetime.now(timezone.utc)
+        # Cooldown: refuse if OTP was sent less than 60 s ago
+        if (
+            user.email_otp_expires_at
+            and user.email_otp_expires_at > now + timedelta(minutes=OTP_EXPIRE_MINUTES - 1)
+        ):
+            return {"message": "Si cet email est associé à un compte non vérifié, un nouveau code a été envoyé."}
+        otp_plain, otp_hash = _generate_otp()
         user.email_otp_hash = otp_hash
         user.email_otp_expires_at = now + timedelta(minutes=OTP_EXPIRE_MINUTES)
         user.email_otp_attempts = 0
         await db.flush()
-        _send_otp_email(user.email, user.full_name, otp_plain)
+        await _send_otp_email(user.email, user.full_name, otp_plain)
 
         import structlog as _sl
         if settings.ENVIRONMENT == "development":
@@ -505,7 +537,7 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
 
         try:
             from app.infrastructure.services.email.brevo_service import BrevoEmailService
-            BrevoEmailService().send_custom(
+            await BrevoEmailService().send_custom(
                 to_email=user.email,
                 to_name=user.full_name,
                 subject="Réinitialisation de votre mot de passe Biloz",
@@ -538,7 +570,7 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
             detail="Lien invalide ou expiré. Faites une nouvelle demande.",
         )
 
-    user.hashed_password = hash_password(body.new_password)
+    user.hashed_password = await hash_password_async(body.new_password)
     user.password_reset_token = None
     user.password_reset_expires_at = None
     user.failed_login_count = 0

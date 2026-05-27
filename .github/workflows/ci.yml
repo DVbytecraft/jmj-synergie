@@ -48,8 +48,8 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/jmj_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci-minimum-32chars
-          ENVIRONMENT: test
-        run: pytest tests/ -v --cov=app --cov-report=xml
+          ENVIRONMENT: testing
+        run: pytest tests/ -v --cov=app --cov-report=xml --cov-fail-under=40
 
   frontend-checks:
     name: Frontend Type Check & Lint

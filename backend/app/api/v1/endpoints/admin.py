@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import CurrentUser, require_roles
-from app.core.security import hash_password
+from app.core.security import hash_password_async
 from app.infrastructure.database.models import OrganizationModel, UserModel
 from app.infrastructure.database.session import get_db_session as get_db
 
@@ -239,7 +239,7 @@ async def create_organization(
         organization_id=org.id,
         email=str(body.admin_email),
         full_name=body.admin_full_name,
-        hashed_password=hash_password(body.admin_password),
+        hashed_password=await hash_password_async(body.admin_password),
         role="admin",
         status="active",
         is_email_verified=True,
@@ -293,14 +293,25 @@ async def delete_organization(
 async def list_all_users(
     current_user=Depends(SuperAdminUser),
     db: AsyncSession = Depends(get_db),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    search: str | None = Query(default=None, max_length=100),
 ):
-    """Tous les utilisateurs toutes organisations confondues."""
-    result = await db.execute(
+    """Tous les utilisateurs toutes organisations confondues (paginé)."""
+    from sqlalchemy import or_
+    q = (
         select(UserModel, OrganizationModel.name.label("org_name"))
         .outerjoin(OrganizationModel, UserModel.organization_id == OrganizationModel.id)
         .where(UserModel.is_deleted == False)  # noqa: E712
-        .order_by(UserModel.created_at.desc())
     )
+    if search:
+        term = f"%{search}%"
+        q = q.where(or_(
+            UserModel.full_name.ilike(term),
+            UserModel.email.ilike(term),
+        ))
+    q = q.order_by(UserModel.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(q)
     rows = result.all()
     return [
         AdminUserItem(

@@ -1,10 +1,11 @@
 """
 Brevo transactional email service.
-Uses the Brevo REST API directly via httpx — no extra SDK required.
-Falls back to SMTP if BREVO_API_KEY is not set.
+Uses the Brevo REST API directly via httpx.AsyncClient — no extra SDK required.
+Falls back to SMTP (via run_in_executor) if BREVO_API_KEY is not set.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import mimetypes
 import smtplib
@@ -24,9 +25,9 @@ BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 
 
 class BrevoEmailService:
-    """Send transactional emails via Brevo API with SMTP fallback."""
+    """Send transactional emails via Brevo API (async) with SMTP fallback."""
 
-    def send_document(
+    async def send_document(
         self,
         *,
         user: UserModel,
@@ -48,10 +49,10 @@ class BrevoEmailService:
         html_body = self._build_html(user, document, issuer_profile)
 
         if settings.BREVO_API_KEY:
-            return self._send_brevo(recipients, subject, html_body, file_path, document.file_name)
-        return self._send_smtp(recipients, subject, html_body, file_path, document.file_name)
+            return await self._send_brevo(recipients, subject, html_body, file_path, document.file_name)
+        return await self._send_smtp(recipients, subject, html_body, file_path, document.file_name)
 
-    def send_custom(
+    async def send_custom(
         self,
         *,
         to_email: str,
@@ -64,18 +65,18 @@ class BrevoEmailService:
         recipients = [{"email": to_email, "name": to_name}]
         path = Path(attachment_path) if attachment_path else None
         if settings.BREVO_API_KEY:
-            return self._send_brevo(
+            return await self._send_brevo(
                 recipients, subject, html_body,
                 path, attachment_name or (path.name if path else None)
             )
-        return self._send_smtp(
+        return await self._send_smtp(
             [to_email], subject, html_body,
             path, attachment_name or (path.name if path else None)
         )
 
-    # ─── Brevo REST ────────────────────────────────────────────────────────────
+    # ─── Brevo REST (async) ────────────────────────────────────────────────────
 
-    def _send_brevo(
+    async def _send_brevo(
         self,
         recipients: list[dict[str, str] | str],
         subject: str,
@@ -103,16 +104,16 @@ class BrevoEmailService:
             payload["attachment"] = [{"name": file_name, "content": content}]
 
         try:
-            resp = httpx.post(
-                BREVO_SEND_URL,
-                json=payload,
-                headers={
-                    "api-key": settings.BREVO_API_KEY,
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                timeout=30,
-            )
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    BREVO_SEND_URL,
+                    json=payload,
+                    headers={
+                        "api-key": settings.BREVO_API_KEY,
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                )
             resp.raise_for_status()
             logger.info("email.brevo.sent", to=[r.get("email") if isinstance(r, dict) else r for r in recipients])
             return True
@@ -120,9 +121,9 @@ class BrevoEmailService:
             logger.exception("email.brevo.failed", to=to_list)
             return False
 
-    # ─── SMTP fallback ─────────────────────────────────────────────────────────
+    # ─── SMTP fallback (sync wrapped in executor) ──────────────────────────────
 
-    def _send_smtp(
+    async def _send_smtp(
         self,
         recipients: list[dict[str, str] | str],
         subject: str,
@@ -134,6 +135,21 @@ class BrevoEmailService:
             logger.warning("email.skipped_no_smtp")
             return False
 
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self._send_smtp_sync,
+            recipients, subject, html_body, file_path, file_name,
+        )
+
+    def _send_smtp_sync(
+        self,
+        recipients: list[dict[str, str] | str],
+        subject: str,
+        html_body: str,
+        file_path: Path | None,
+        file_name: str | None,
+    ) -> bool:
         addresses = [
             r["email"] if isinstance(r, dict) else r
             for r in recipients

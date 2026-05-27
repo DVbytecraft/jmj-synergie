@@ -14,6 +14,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
+from fastapi import Request
+
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -100,11 +102,40 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api/v1")
 
-# ─── Dev: expose unhandled 500 errors details to speed up debugging ────
-# In production we keep a generic 500 to avoid leaking internals.
+# ─── Global domain exception handlers ─────────────────────────────────────────
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    logger.warning("domain.value_error", path=request.url.path, detail=str(exc))
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(PermissionError)
+async def permission_error_handler(request: Request, exc: PermissionError):
+    logger.warning("domain.permission_error", path=request.url.path, detail=str(exc))
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+# Map EntityNotFoundError (domain) → 404 if it exists
+try:
+    from app.core.exceptions import EntityNotFoundError, PermissionDeniedError
+
+    @app.exception_handler(EntityNotFoundError)
+    async def entity_not_found_handler(request: Request, exc: EntityNotFoundError):
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(PermissionDeniedError)
+    async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+except ImportError:
+    pass
+
+
+# ─── Dev: expose unhandled 500 error details to speed up debugging ─────────────
 if settings.ENVIRONMENT != "production":
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request, exc: Exception):
+    async def unhandled_exception_handler(request: Request, exc: Exception):
         logger.exception("unhandled.exception", path=request.url.path)
         return JSONResponse(
             status_code=500,
@@ -112,9 +143,19 @@ if settings.ENVIRONMENT != "production":
         )
 
 
-
 # ─── Health check ─────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["Health"], include_in_schema=False)
 async def health_check():
-    return JSONResponse({"status": "healthy", "version": settings.APP_VERSION})
+    try:
+        from sqlalchemy import text
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_status = "healthy"
+    except Exception:
+        db_status = "degraded"
+    return JSONResponse({
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "db": db_status,
+        "version": settings.APP_VERSION,
+    })

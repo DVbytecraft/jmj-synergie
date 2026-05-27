@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from app.api.v1.deps import CurrentUser, get_record_payment_uc, get_current_user
 from app.application.dto.payment_dto import RecordPaymentDTO, PaymentResponseDTO
 from app.application.use_cases.payment.record_payment import RecordPaymentUseCase
-from app.core.config import settings
+from app.core.redis_client import get_redis
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
 from sqlalchemy import select
@@ -24,11 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter()
 
 _IDEMPOTENCY_TTL = 86400  # 24 h
-
-
-async def _get_redis():
-    import redis.asyncio as redis
-    return await redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
 @router.post(
@@ -44,21 +39,21 @@ async def record_payment(
     x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> PaymentResponseDTO:
     # Idempotency — si la même clé est soumise dans les 24h, renvoyer la réponse initiale
+    redis_key: str | None = None
     if x_idempotency_key:
         redis_key = f"idem:pay:{current_user.organization_id}:{x_idempotency_key}"
         try:
-            r = await _get_redis()
-            cached = await r.get(redis_key)
+            cached = await get_redis().get(redis_key)
             if cached:
                 return PaymentResponseDTO(**json.loads(cached))
         except Exception:
-            pass  # Redis indisponible → on laisse passer (fail-open)
+            pass  # Redis indisponible → fail-open
 
     result = await uc.execute(body, current_user.id)
 
-    if x_idempotency_key:
+    if redis_key:
         try:
-            await r.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
+            await get_redis().set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
         except Exception:
             pass
 
@@ -76,9 +71,12 @@ async def list_all_transactions(
     limit: int = Query(20, ge=1, le=100),
     order_id: UUID | None = None,
 ):
-    q = select(PaymentTransactionModel).where(
-        PaymentTransactionModel.organization_id == current_user.organization_id
-    )
+    if current_user.organization_id is None and current_user.role != "super_admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
+    q = select(PaymentTransactionModel)
+    if current_user.organization_id is not None:
+        q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
     if order_id:
         q = q.where(PaymentTransactionModel.order_id == order_id)
     q = q.order_by(PaymentTransactionModel.transaction_date.desc()).offset(skip).limit(limit)

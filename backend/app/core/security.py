@@ -4,6 +4,7 @@ All secrets come from settings; no hardcoded values.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -17,11 +18,25 @@ from app.core.config import settings
 # ── Password ──────────────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
+    """Synchronous bcrypt hash — use hash_password_async in async route handlers."""
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    """Synchronous bcrypt verify — use verify_password_async in async route handlers."""
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+async def hash_password_async(plain: str) -> str:
+    """Non-blocking bcrypt hash — runs in a thread pool to avoid blocking the event loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, hash_password, plain)
+
+
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    """Non-blocking bcrypt verify — runs in a thread pool to avoid blocking the event loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, verify_password, plain, hashed)
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────

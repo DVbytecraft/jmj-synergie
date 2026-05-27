@@ -13,13 +13,15 @@ from uuid import UUID
 
 from app.api.v1.deps import AdminUser, CurrentUser
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password_async
 from app.infrastructure.database.models import IssuerProfileModel, OrganizationModel, UserModel
 from app.infrastructure.database.session import get_db_session as get_db
 
 router = APIRouter()
 
 VALID_ROLES = ("super_admin", "admin", "manager", "operator")
+# Roles an admin is allowed to assign (cannot assign super_admin)
+ADMIN_ASSIGNABLE_ROLES = ("admin", "manager", "operator")
 
 
 class UserCreate(BaseModel):
@@ -27,6 +29,20 @@ class UserCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
     password: str = Field(..., min_length=8)
     role: str = "operator"
+
+    from pydantic import field_validator
+
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        import re
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Le mot de passe doit contenir au moins une majuscule")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Le mot de passe doit contenir au moins une minuscule")
+        if not re.search(r"\d", v):
+            raise ValueError("Le mot de passe doit contenir au moins un chiffre")
+        return v
 
 
 class UserResponse(BaseModel):
@@ -55,8 +71,8 @@ class IssuerProfileUpdate(BaseModel):
     document_email: EmailStr | None = None
     auto_send_documents: bool = True
     tax_included: bool = True
-    primary_color: str | None = Field(default=None, max_length=20)
-    secondary_color: str | None = Field(default=None, max_length=20)
+    primary_color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{3,8}$")
+    secondary_color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{3,8}$")
     font_family: str | None = Field(default=None, max_length=50)
 
 
@@ -238,10 +254,14 @@ async def get_my_issuer_asset(
         return RedirectResponse(url=path)
 
     import os
-    if not os.path.exists(path):
+    storage_root = os.path.realpath(settings.STORAGE_PATH)
+    resolved = os.path.realpath(path)
+    if not resolved.startswith(storage_root + os.sep) and not resolved.startswith(storage_root):
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not os.path.exists(resolved):
         raise HTTPException(status_code=404, detail="Fichier introuvable")
 
-    return FileResponse(path)
+    return FileResponse(resolved)
 
 
 @router.get("/", response_model=list[UserResponse])
@@ -264,8 +284,12 @@ async def create_user(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    if body.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Rôle invalide. Valeurs acceptées : {list(VALID_ROLES)}")
+    allowed = VALID_ROLES if current_user.role == "super_admin" else ADMIN_ASSIGNABLE_ROLES
+    if body.role not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Rôle invalide ou non autorisé. Valeurs acceptées : {list(allowed)}",
+        )
     existing = await db.execute(select(UserModel).where(UserModel.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email déjà utilisé")
@@ -274,7 +298,7 @@ async def create_user(
         organization_id=current_user.organization_id,
         email=body.email,
         full_name=body.full_name,
-        hashed_password=hash_password(body.password),
+        hashed_password=await hash_password_async(body.password),
         role=body.role,
     )
     db.add(user)
@@ -304,6 +328,8 @@ async def delete_user(
     from datetime import datetime, timezone
     user.is_deleted = True
     user.deleted_at = datetime.now(timezone.utc)
+    user.deleted_by = current_user.id
+    await db.flush()
 
 
 def _to_response(u: UserModel) -> UserResponse:

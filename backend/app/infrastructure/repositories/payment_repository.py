@@ -1,7 +1,6 @@
 """SQLAlchemy implementation of IPaymentRepository & IRefundRepository."""
 from __future__ import annotations
 
-import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -64,10 +63,11 @@ class PaymentRepository(IPaymentRepository):
         return _txn_to_entity(row)
 
     async def generate_number(self) -> str:
+        import sqlalchemy as sa
         now = datetime.now(timezone.utc)
-        prefix = f"TXN-{now.strftime('%Y%m%d')}"
-        suffix = secrets.token_hex(4).upper()
-        return f"{prefix}-{suffix}"
+        result = await self._s.execute(sa.text("SELECT nextval('seq_txn_number')"))
+        seq = result.scalar_one()
+        return f"TXN-{now.strftime('%Y%m')}-{seq:06d}"
 
 
 class RefundRepository(IRefundRepository):

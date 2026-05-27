@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser
+from app.api.v1.deps import AdminUser, CurrentUser
 from app.core.config import settings
 from app.infrastructure.database.models import OrganizationModel
 from app.infrastructure.database.session import get_db_session as get_db
@@ -65,7 +65,7 @@ async def get_my_organization(
 @router.put("/me", response_model=OrganizationResponse)
 async def update_my_organization(
     body: OrganizationUpdate,
-    current_user: CurrentUser,
+    current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
     organization = await _get_org_or_404(db, current_user.organization_id)
@@ -89,7 +89,7 @@ async def update_my_organization(
 
 @router.post("/me/logo", response_model=OrganizationResponse)
 async def upload_organization_logo(
-    current_user: CurrentUser,
+    current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
     file: UploadFile = File(...),
 ):

@@ -1,6 +1,5 @@
 """
-Document email service — thin wrapper that delegates to BrevoEmailService.
-Kept for backward-compat; all logic lives in brevo_service.py.
+Document email service — thin async wrapper that delegates to BrevoEmailService.
 """
 from __future__ import annotations
 
@@ -11,7 +10,7 @@ _service = BrevoEmailService()
 
 
 class DocumentEmailService:
-    def send_document(
+    async def send_document(
         self,
         *,
         user: UserModel,
@@ -19,7 +18,7 @@ class DocumentEmailService:
         issuer_profile: IssuerProfileModel | None,
         extra_recipient: str | None = None,
     ) -> bool:
-        return _service.send_document(
+        return await _service.send_document(
             user=user,
             document=document,
             issuer_profile=issuer_profile,

@@ -24,7 +24,7 @@ from app.api.v1.deps import (
     get_update_order_uc, get_confirm_order_uc, get_cancel_order_uc,
     get_delete_order_uc, get_add_item_uc, get_remove_item_uc, get_record_delivery_uc,
 )
-from app.core.config import settings
+from app.core.redis_client import get_redis
 from app.application.dto.order_dto import (
     CreateOrderDTO, UpdateOrderDTO,
     OrderResponseDTO, OrderListResponseDTO, OrderItemInputDTO, OrderDeliveryItemDTO,
@@ -41,11 +41,6 @@ router = APIRouter(tags=["Orders"])
 _IDEMPOTENCY_TTL = 86400  # 24 h
 
 
-async def _get_redis():
-    import redis.asyncio as redis
-    return await redis.from_url(settings.REDIS_URL, decode_responses=True)
-
-
 @router.post("/", response_model=OrderResponseDTO, status_code=status.HTTP_201_CREATED)
 async def create_order(
     body: CreateOrderDTO,
@@ -53,11 +48,11 @@ async def create_order(
     uc: Annotated[CreateOrderUseCase, Depends(get_create_order_uc)],
     x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> OrderResponseDTO:
+    redis_key: str | None = None
     if x_idempotency_key:
         redis_key = f"idem:order:{current_user.organization_id}:{x_idempotency_key}"
         try:
-            r = await _get_redis()
-            cached = await r.get(redis_key)
+            cached = await get_redis().get(redis_key)
             if cached:
                 return OrderResponseDTO(**json.loads(cached))
         except Exception:
@@ -65,9 +60,9 @@ async def create_order(
 
     result = await uc.execute(body, current_user.id, current_user.organization_id)
 
-    if x_idempotency_key:
+    if redis_key:
         try:
-            await r.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
+            await get_redis().set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
         except Exception:
             pass
 

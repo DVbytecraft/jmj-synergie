@@ -103,8 +103,11 @@ async def list_all_documents(
     """List all documents for the current organisation, with pagination and filters."""
     from datetime import datetime, timezone as tz, timedelta
 
+    if current_user.organization_id is None and current_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
+
     filters = []
-    if current_user.organization_id:
+    if current_user.organization_id is not None:
         filters.append(Document.organization_id == current_user.organization_id)
     if document_type:
         filters.append(Document.document_type == document_type)
@@ -197,7 +200,7 @@ async def send_document_by_email(
 
     from app.infrastructure.services.email.document_email_service import DocumentEmailService
     service = DocumentEmailService()
-    sent = service.send_document(
+    sent = await service.send_document(
         user=user,
         document=doc,
         issuer_profile=issuer_profile,
@@ -380,8 +383,16 @@ async def download_document(
     if doc.file_path and doc.file_path.startswith("http"):
         return RedirectResponse(url=doc.file_path)
 
+    import os
+    storage_root = os.path.realpath(settings.STORAGE_PATH)
+    resolved = os.path.realpath(doc.file_path)
+    if not resolved.startswith(storage_root + os.sep) and not resolved.startswith(storage_root):
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not os.path.exists(resolved):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+
     return FileResponse(
-        path=doc.file_path,
+        path=resolved,
         filename=doc.file_name,
         media_type=doc.mime_type,
     )
@@ -440,4 +451,4 @@ async def _send_document_email_safe(user_id: UUID, document_id: UUID) -> None:
         )
         issuer_profile = profile_result.scalar_one_or_none()
         service = DocumentEmailService()
-        service.send_document(user=user, document=document, issuer_profile=issuer_profile)
+        await service.send_document(user=user, document=document, issuer_profile=issuer_profile)
