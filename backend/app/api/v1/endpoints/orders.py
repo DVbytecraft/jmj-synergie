@@ -12,10 +12,11 @@ Endpoints :
   POST   /orders/{id}/items              → Ajouter une ligne
   DELETE /orders/{id}/items/{item_id}    → Supprimer une ligne
 """
+import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Query, status
+from fastapi import APIRouter, Body, Depends, Header, Query, status
 
 from app.api.v1.deps import (
     CurrentUser, AdminUser, ManagerUser,
@@ -23,6 +24,7 @@ from app.api.v1.deps import (
     get_update_order_uc, get_confirm_order_uc, get_cancel_order_uc,
     get_delete_order_uc, get_add_item_uc, get_remove_item_uc, get_record_delivery_uc,
 )
+from app.core.config import settings
 from app.application.dto.order_dto import (
     CreateOrderDTO, UpdateOrderDTO,
     OrderResponseDTO, OrderListResponseDTO, OrderItemInputDTO, OrderDeliveryItemDTO,
@@ -36,14 +38,40 @@ from app.application.use_cases.order.manage_order import (
 
 router = APIRouter(tags=["Orders"])
 
+_IDEMPOTENCY_TTL = 86400  # 24 h
+
+
+async def _get_redis():
+    import redis.asyncio as redis
+    return await redis.from_url(settings.REDIS_URL, decode_responses=True)
+
 
 @router.post("/", response_model=OrderResponseDTO, status_code=status.HTTP_201_CREATED)
 async def create_order(
     body: CreateOrderDTO,
     current_user: CurrentUser,
     uc: Annotated[CreateOrderUseCase, Depends(get_create_order_uc)],
+    x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> OrderResponseDTO:
-    return await uc.execute(body, current_user.id, current_user.organization_id)
+    if x_idempotency_key:
+        redis_key = f"idem:order:{current_user.organization_id}:{x_idempotency_key}"
+        try:
+            r = await _get_redis()
+            cached = await r.get(redis_key)
+            if cached:
+                return OrderResponseDTO(**json.loads(cached))
+        except Exception:
+            pass
+
+    result = await uc.execute(body, current_user.id, current_user.organization_id)
+
+    if x_idempotency_key:
+        try:
+            await r.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
+        except Exception:
+            pass
+
+    return result
 
 
 @router.get("/", response_model=OrderListResponseDTO)

@@ -6,20 +6,29 @@ Endpoints :
   GET    /payments/                → Lister toutes les transactions
   GET    /payments/{id}            → Détail d'une transaction
 """
+import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from app.api.v1.deps import CurrentUser, get_record_payment_uc, get_current_user
 from app.application.dto.payment_dto import RecordPaymentDTO, PaymentResponseDTO
 from app.application.use_cases.payment.record_payment import RecordPaymentUseCase
+from app.core.config import settings
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
+
+_IDEMPOTENCY_TTL = 86400  # 24 h
+
+
+async def _get_redis():
+    import redis.asyncio as redis
+    return await redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
 @router.post(
@@ -32,8 +41,28 @@ async def record_payment(
     body: RecordPaymentDTO,
     current_user: CurrentUser,
     uc: Annotated[RecordPaymentUseCase, Depends(get_record_payment_uc)],
+    x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> PaymentResponseDTO:
-    return await uc.execute(body, current_user.id)
+    # Idempotency — si la même clé est soumise dans les 24h, renvoyer la réponse initiale
+    if x_idempotency_key:
+        redis_key = f"idem:pay:{current_user.organization_id}:{x_idempotency_key}"
+        try:
+            r = await _get_redis()
+            cached = await r.get(redis_key)
+            if cached:
+                return PaymentResponseDTO(**json.loads(cached))
+        except Exception:
+            pass  # Redis indisponible → on laisse passer (fail-open)
+
+    result = await uc.execute(body, current_user.id)
+
+    if x_idempotency_key:
+        try:
+            await r.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
+        except Exception:
+            pass
+
+    return result
 
 
 @router.get(
@@ -47,7 +76,9 @@ async def list_all_transactions(
     limit: int = Query(20, ge=1, le=100),
     order_id: UUID | None = None,
 ):
-    q = select(PaymentTransactionModel)
+    q = select(PaymentTransactionModel).where(
+        PaymentTransactionModel.organization_id == current_user.organization_id
+    )
     if order_id:
         q = q.where(PaymentTransactionModel.order_id == order_id)
     q = q.order_by(PaymentTransactionModel.transaction_date.desc()).offset(skip).limit(limit)
@@ -66,7 +97,10 @@ async def get_transaction(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     result = await db.execute(
-        select(PaymentTransactionModel).where(PaymentTransactionModel.id == transaction_id)
+        select(PaymentTransactionModel).where(
+            PaymentTransactionModel.id == transaction_id,
+            PaymentTransactionModel.organization_id == current_user.organization_id,
+        )
     )
     txn = result.scalar_one_or_none()
     if not txn:
