@@ -104,6 +104,8 @@ services:
         value: biloz@bytecraft.art
       - key: SENTRY_DSN
         sync: false
+      - key: WORKERS
+        value: "1"
 
   # ── Frontend Next.js ─────────────────────────────────────────────────────────
   - type: web

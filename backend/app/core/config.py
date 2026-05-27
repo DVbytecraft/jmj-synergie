@@ -134,19 +134,12 @@ class Settings(BaseSettings):
     @property
     def trusted_hosts_list(self) -> list[str]:
         hosts = self._parse_list_env(self.TRUSTED_HOSTS)
-        if hosts != ["*"] or not self.allowed_origins_list:
-            return hosts
-
-        derived_hosts = {
-            hostname
-            for origin in self.allowed_origins_list
-            if (hostname := urlparse(origin).hostname)
-        }
-        if self.ENVIRONMENT == "development":
-            derived_hosts.update({"localhost", "127.0.0.1", "backend", "frontend"})
-
-        derived_hosts = sorted(derived_hosts)
-        return derived_hosts or hosts
+        # Wildcard means allow all — never narrow it down automatically.
+        # Render's health probe uses an internal IP as Host header, which would
+        # otherwise be rejected when ALLOWED_ORIGINS is set.
+        if not hosts or hosts == ["*"]:
+            return ["*"]
+        return hosts
 
     @field_validator("SECRET_KEY")
     @classmethod
