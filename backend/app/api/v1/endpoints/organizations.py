@@ -109,7 +109,7 @@ async def upload_organization_logo(
 
     from app.infrastructure.services.storage.cloudinary_service import CloudinaryStorageService
     storage = CloudinaryStorageService()
-    saved_path, _ = storage.upload_asset(
+    saved_path, _ = await storage.upload_asset(
         content,
         asset_type="logo",
         user_id=str(organization.id),

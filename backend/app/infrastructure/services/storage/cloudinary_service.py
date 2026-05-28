@@ -5,6 +5,7 @@ Falls back to local filesystem when USE_CLOUDINARY=False or credentials absent.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -38,7 +39,7 @@ class CloudinaryStorageService:
         )
         return cloudinary.uploader
 
-    def upload_asset(
+    async def upload_asset(
         self,
         content: bytes,
         *,
@@ -47,11 +48,25 @@ class CloudinaryStorageService:
         filename: str,
     ) -> tuple[str, str]:
         """
-        Upload a branding asset.
+        Upload a branding asset (async).
         Returns (url_or_path, public_id).
-        - url_or_path: Cloudinary URL if configured, local filesystem path otherwise.
-        - public_id: Cloudinary public_id or empty string for local.
         """
+        return await asyncio.to_thread(
+            self._upload_asset_sync,
+            content,
+            asset_type=asset_type,
+            user_id=user_id,
+            filename=filename,
+        )
+
+    def _upload_asset_sync(
+        self,
+        content: bytes,
+        *,
+        asset_type: str,
+        user_id: str,
+        filename: str,
+    ) -> tuple[str, str]:
         if self._is_configured():
             return self._upload_cloudinary(
                 content,
@@ -61,14 +76,28 @@ class CloudinaryStorageService:
             )
         return self._save_local(content, sub_dir=f"branding/{user_id}", filename=filename)
 
-    def upload_document(
+    async def upload_document(
         self,
         content: bytes,
         *,
         filename: str,
         org_id: str,
     ) -> tuple[str, str]:
-        """Upload a generated PDF document."""
+        """Upload a generated PDF document (async)."""
+        return await asyncio.to_thread(
+            self._upload_document_sync,
+            content,
+            filename=filename,
+            org_id=org_id,
+        )
+
+    def _upload_document_sync(
+        self,
+        content: bytes,
+        *,
+        filename: str,
+        org_id: str,
+    ) -> tuple[str, str]:
         if self._is_configured():
             return self._upload_cloudinary(
                 content,
@@ -78,14 +107,28 @@ class CloudinaryStorageService:
             )
         return self._save_local(content, sub_dir=f"documents/{org_id}", filename=filename)
 
-    def upload_scan(
+    async def upload_scan(
         self,
         content: bytes,
         *,
         filename: str,
         org_id: str,
     ) -> tuple[str, str]:
-        """Upload a scanned invoice image or PDF."""
+        """Upload a scanned invoice image or PDF (async)."""
+        return await asyncio.to_thread(
+            self._upload_scan_sync,
+            content,
+            filename=filename,
+            org_id=org_id,
+        )
+
+    def _upload_scan_sync(
+        self,
+        content: bytes,
+        *,
+        filename: str,
+        org_id: str,
+    ) -> tuple[str, str]:
         if self._is_configured():
             resource_type = "raw" if filename.endswith(".pdf") else "image"
             return self._upload_cloudinary(

@@ -94,13 +94,12 @@ async def get_transaction(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    result = await db.execute(
-        select(PaymentTransactionModel).where(
-            PaymentTransactionModel.id == transaction_id,
-            PaymentTransactionModel.organization_id == current_user.organization_id,
-        )
-    )
-    txn = result.scalar_one_or_none()
+    if current_user.organization_id is None and current_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
+    q = select(PaymentTransactionModel).where(PaymentTransactionModel.id == transaction_id)
+    if current_user.organization_id is not None:
+        q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
+    txn = (await db.execute(q)).scalar_one_or_none()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction introuvable")
     return _to_dict(txn)

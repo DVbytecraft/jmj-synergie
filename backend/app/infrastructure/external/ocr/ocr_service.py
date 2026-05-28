@@ -10,6 +10,7 @@ Pipeline (zéro dépendance cloud) :
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import re
 import uuid
@@ -808,13 +809,15 @@ class OCRService:
                 detail=f"Fichier trop volumineux : maximum {_MAX_FILE_SIZE_BYTES // (1024*1024)} Mo.",
             )
 
-        # ── Extraction Tesseract ──────────────────────────────────────────────
+        # ── Extraction Tesseract (CPU-bound — run in thread pool) ─────────────
         try:
-            text, words = _ocr_pipeline(content, content_type)
-            extracted = _parse_invoice(text, words)
-            extracted = _validate_amounts(extracted)
-            confidence = _score_extraction(extracted)
-            raw_text = text
+            def _run_pipeline() -> tuple[str, dict, float]:
+                t, w = _ocr_pipeline(content, content_type)
+                ex = _parse_invoice(t, w)
+                ex = _validate_amounts(ex)
+                return t, ex, _score_extraction(ex)
+
+            raw_text, extracted, confidence = await asyncio.to_thread(_run_pipeline)
         except Exception:
             logger.exception("ocr.pipeline_failed")
             extracted = {}
@@ -833,7 +836,7 @@ class OCRService:
         file_name = f"scan_{doc_number}{ext}"
 
         from app.infrastructure.services.storage.cloudinary_service import CloudinaryStorageService
-        saved_path, _ = CloudinaryStorageService().upload_scan(
+        saved_path, _ = await CloudinaryStorageService().upload_scan(
             content, filename=file_name, org_id=org_id
         )
 

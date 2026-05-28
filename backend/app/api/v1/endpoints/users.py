@@ -210,7 +210,7 @@ async def upload_my_issuer_asset(
 
     from app.infrastructure.services.storage.cloudinary_service import CloudinaryStorageService
     storage = CloudinaryStorageService()
-    saved_path, _ = storage.upload_asset(content, asset_type=asset_type, user_id=str(current_user.id), filename=filename)
+    saved_path, _ = await storage.upload_asset(content, asset_type=asset_type, user_id=str(current_user.id), filename=filename)
 
     if asset_type == "logo":
         profile.logo_path = saved_path
@@ -269,6 +269,8 @@ async def list_users(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.organization_id is None:
+        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
     result = await db.execute(
         select(UserModel).where(
             UserModel.is_deleted == False,  # noqa: E712
@@ -284,6 +286,8 @@ async def create_user(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.organization_id is None:
+        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
     allowed = VALID_ROLES if current_user.role == "super_admin" else ADMIN_ASSIGNABLE_ROLES
     if body.role not in allowed:
         raise HTTPException(
@@ -313,6 +317,8 @@ async def delete_user(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.organization_id is None:
+        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
     result = await db.execute(
         select(UserModel).where(
             UserModel.id == user_id,

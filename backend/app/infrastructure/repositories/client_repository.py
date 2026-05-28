@@ -23,14 +23,20 @@ class ClientRepository(IClientRepository):
     # ── Read ──────────────────────────────────────────────────────────────────
 
     async def get_by_id(self, client_id: UUID) -> Client | None:
-        q = select(ClientModel).where(ClientModel.id == client_id)
+        q = select(ClientModel).where(
+            ClientModel.id == client_id,
+            ClientModel.is_deleted == False,  # noqa: E712
+        )
         if self._org_id:
             q = q.where(ClientModel.organization_id == self._org_id)
         row = (await self._s.execute(q)).scalar_one_or_none()
         return _to_entity(row) if row else None
 
     async def get_by_code(self, code: str) -> Client | None:
-        q = select(ClientModel).where(ClientModel.code == code)
+        q = select(ClientModel).where(
+            ClientModel.code == code,
+            ClientModel.is_deleted == False,  # noqa: E712
+        )
         if self._org_id:
             q = q.where(ClientModel.organization_id == self._org_id)
         row = (await self._s.execute(q)).scalar_one_or_none()

@@ -27,6 +27,7 @@ class OrderRepository(IOrderRepository):
             .options(selectinload(OrderModel.items))
             .where(
                 OrderModel.id == order_id,
+                OrderModel.is_deleted == False,  # noqa: E712
                 *( [OrderModel.organization_id == self._org_id] if self._org_id else [] ),
             )
         )).scalar_one_or_none()
