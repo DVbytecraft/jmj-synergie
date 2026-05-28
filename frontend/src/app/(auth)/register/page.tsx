@@ -26,7 +26,11 @@ const registerSchema = z.object({
   bank_account: z.string().optional(),
   email: z.string().email("Email invalide"),
   full_name: z.string().min(2, "Nom complet requis (min. 2 caractères)"),
-  password: z.string().min(8, "Mot de passe requis (min. 8 caractères)"),
+  password: z.string()
+    .min(8, "Minimum 8 caractères")
+    .regex(/[A-Z]/, "Au moins une majuscule requise")
+    .regex(/[a-z]/, "Au moins une minuscule requise")
+    .regex(/\d/, "Au moins un chiffre requis"),
   confirm_password: z.string().min(8, "Confirmation requise"),
 }).refine((d) => d.password === d.confirm_password, {
   message: "Les mots de passe ne correspondent pas",
@@ -337,7 +341,7 @@ export default function RegisterPage() {
                     type="password"
                     autoComplete="new-password"
                     className="input pl-10"
-                    placeholder="8 caractères min."
+                    placeholder="Maj + min + chiffre, 8 car. min."
                   />
                 </div>
                 {errors.password && <p className="field-error">{errors.password.message}</p>}
