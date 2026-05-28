@@ -15,7 +15,7 @@ PYTHONPATH=/app alembic upgrade head
 # The script is idempotent — does nothing if a super_admin already exists.
 if [ -n "$SUPER_ADMIN_EMAIL" ] && [ -n "$SUPER_ADMIN_PASSWORD" ]; then
   echo ">> Seeding super admin..."
-  PYTHONPATH=/app python scripts/seed.py
+  PYTHONPATH=/app python scripts/seed.py || echo ">> Seed script exited with error — startup continues."
 else
   echo ">> SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD not set — skipping seed."
 fi
