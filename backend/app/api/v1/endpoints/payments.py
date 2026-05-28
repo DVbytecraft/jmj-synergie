@@ -2,20 +2,22 @@
 Payments endpoints — enregistrer un paiement, lister les transactions.
 
 Endpoints :
-  POST   /payments/                → Enregistrer un paiement
+  POST   /payments/                → Enregistrer un paiement (+ reçu PDF en arrière-plan)
   GET    /payments/                → Lister toutes les transactions
   GET    /payments/{id}            → Détail d'une transaction
 """
 import json
+import uuid as _uuid
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 
 from app.api.v1.deps import CurrentUser, get_record_payment_uc, get_current_user
 from app.application.dto.payment_dto import RecordPaymentDTO, PaymentResponseDTO
 from app.application.use_cases.payment.record_payment import RecordPaymentUseCase
 from app.core.audit import log_audit_event
+from app.core.config import settings
 from app.core.redis_client import get_redis
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
@@ -27,6 +29,29 @@ router = APIRouter()
 _IDEMPOTENCY_TTL = 86400  # 24 h
 
 
+async def _generate_receipt_bg(order_id: UUID, payment_id: UUID, user_id: UUID) -> None:
+    """Fire-and-forget : génère le reçu de paiement PDF en arrière-plan."""
+    try:
+        from app.core.database import AsyncSessionLocal as async_session_factory
+        from app.infrastructure.external.pdf.pdf_service import PDFService
+        async with async_session_factory() as bg_db:
+            await PDFService(settings).generate_payment_receipt(
+                order_id=order_id,
+                payment_id=payment_id,
+                created_by=user_id,
+                db=bg_db,
+            )
+            await bg_db.commit()
+    except Exception as exc:
+        import structlog
+        structlog.get_logger(__name__).error(
+            "payment.receipt_bg_failed",
+            order_id=str(order_id),
+            payment_id=str(payment_id),
+            error=str(exc),
+        )
+
+
 @router.post(
     "/",
     response_model=PaymentResponseDTO,
@@ -36,6 +61,7 @@ _IDEMPOTENCY_TTL = 86400  # 24 h
 async def record_payment(
     body: RecordPaymentDTO,
     current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db_session)],
     uc: Annotated[RecordPaymentUseCase, Depends(get_record_payment_uc)],
     x_idempotency_key: Annotated[str | None, Header()] = None,
@@ -67,6 +93,15 @@ async def record_payment(
             await get_redis().set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
         except Exception:
             pass
+
+    # Génération automatique du reçu PDF en arrière-plan (fire-and-forget)
+    if result.order_id:
+        background_tasks.add_task(
+            _generate_receipt_bg,
+            order_id=result.order_id,
+            payment_id=result.id,
+            user_id=current_user.id,
+        )
 
     return result
 

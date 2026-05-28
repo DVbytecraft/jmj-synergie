@@ -33,10 +33,10 @@ class Product:
     unit: Optional[str] = None
     currency: str = "XAF"
     tax_rate: float = 0.0
-    min_order_quantity: float = 1.0
+    min_order_quantity: int = 1
     track_stock: bool = False
-    stock_quantity: Optional[float] = None
-    low_stock_threshold: Optional[float] = None
+    stock_quantity: Optional[int] = None
+    low_stock_threshold: Optional[int] = None
     image_path: Optional[str] = None
     notes: Optional[str] = None
     supplier_ref: Optional[str] = None
@@ -75,7 +75,7 @@ class Product:
         unit: Optional[str] = None,
         unit_price_cents: Optional[int] = None,
         tax_rate: Optional[float] = None,
-        min_order_quantity: Optional[float] = None,
+        min_order_quantity: Optional[int] = None,
         notes: Optional[str] = None,
         supplier_ref: Optional[str] = None,
     ) -> None:
@@ -124,11 +124,11 @@ class Product:
         self.status = ProductStatus.INACTIVE
         self.updated_at = datetime.now(timezone.utc)
 
-    def adjust_stock(self, delta: float) -> None:
+    def adjust_stock(self, delta: int) -> None:
         """Adjust stock quantity (positive = in, negative = out)."""
         if not self.track_stock:
             raise ValueError("Ce produit ne suit pas l'inventaire")
-        current = self.stock_quantity or 0.0
+        current = self.stock_quantity or 0
         new_qty = current + delta
         if new_qty < 0:
             raise ValueError(f"Stock insuffisant : disponible={current}, demandé={abs(delta)}")

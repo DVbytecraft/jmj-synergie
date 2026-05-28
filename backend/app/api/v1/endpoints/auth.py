@@ -29,6 +29,9 @@ router = APIRouter()
 
 OTP_EXPIRE_MINUTES = 15
 OTP_MAX_ATTEMPTS = 5
+RESET_OTP_EXPIRE_MINUTES = 15
+RESET_OTP_MAX_ATTEMPTS = 5
+RESET_SESSION_EXPIRE_MINUTES = 10
 
 
 # ─── Schémas ──────────────────────────────────────────────────────────────────
@@ -98,8 +101,13 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class VerifyResetOtpRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
 class ResetPasswordRequest(BaseModel):
-    token: str
+    session_token: str
     new_password: str = Field(..., min_length=8)
 
     from pydantic import field_validator
@@ -219,6 +227,51 @@ async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> N
         _logger.warning("email.welcome.send_failed", to_email=to_email, error=str(exc))
 
 
+async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> None:
+    html_body = f"""
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif;">
+  <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+    <div style="background:#dc2626;padding:28px 32px;">
+      <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">Réinitialisation du mot de passe</h1>
+    </div>
+    <div style="padding:32px;">
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;">
+        Bonjour <strong>{full_name}</strong>,
+      </p>
+      <p style="margin:0 0 24px;color:#374151;font-size:14px;line-height:1.6;">
+        Vous avez demandé la réinitialisation de votre mot de passe Biloz.<br/>
+        Entrez ce code dans l'application. Il expire dans <strong>{RESET_OTP_EXPIRE_MINUTES} minutes</strong>.
+      </p>
+      <div style="background:#fff5f5;border:2px dashed #dc2626;border-radius:12px;
+                  padding:20px;text-align:center;margin:0 0 24px;">
+        <p style="margin:0;color:#dc2626;font-size:38px;font-weight:800;
+                  letter-spacing:10px;font-family:monospace;">{code}</p>
+      </div>
+      <p style="color:#6b7280;font-size:13px;margin:0;">
+        Si vous n'avez pas demandé la réinitialisation, ignorez cet email — votre compte reste sécurisé.
+      </p>
+    </div>
+    <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;">
+      <p style="margin:0;color:#9ca3af;font-size:11px;">Message automatique — ne pas répondre.</p>
+    </div>
+  </div>
+</body>
+</html>"""
+    try:
+        from app.infrastructure.services.email.brevo_service import BrevoEmailService
+        await BrevoEmailService().send_custom(
+            to_email=to_email,
+            to_name=full_name,
+            subject=f"Biloz — code de réinitialisation : {code}",
+            html_body=html_body,
+        )
+    except Exception as exc:
+        _logger.warning("email.reset_otp.send_failed", to_email=to_email, error=str(exc))
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 def _issue_tokens(user: UserModel) -> TokenResponse:
@@ -291,12 +344,38 @@ async def login(
 
 @router.post("/register-organization", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register_organization(body: RegisterOrganizationRequest, db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select
+    from sqlalchemy import select, delete as sa_delete
 
-    # Email déjà utilisé
-    existing = await db.execute(select(UserModel).where(UserModel.email == body.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email déjà utilisé")
+    now = datetime.now(timezone.utc)
+
+    # Vérifier si un compte existe déjà pour cet email
+    existing_result = await db.execute(select(UserModel).where(UserModel.email == body.email))
+    existing_user = existing_result.scalar_one_or_none()
+
+    if existing_user:
+        # Compte pending dont l'OTP est expiré → supprimer l'utilisateur + son organisation
+        # (inscription inachevée : l'utilisateur n'a jamais vérifié son email)
+        is_pending = existing_user.status != "active" and not existing_user.is_email_verified
+        otp_expired = (
+            existing_user.email_otp_expires_at is None
+            or existing_user.email_otp_expires_at < now
+        )
+        if is_pending and otp_expired:
+            org_id = existing_user.organization_id
+            await db.delete(existing_user)
+            if org_id:
+                org_row = await db.get(OrganizationModel, org_id)
+                if org_row:
+                    await db.delete(org_row)
+            await db.flush()
+        elif is_pending:
+            # OTP encore valide → inviter à vérifier plutôt que de recréer
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Un compte en attente de vérification existe pour cet email. Vérifiez votre boîte mail ou demandez un nouveau code.",
+            )
+        else:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email déjà utilisé")
 
     # NIF déjà enregistré → même entreprise
     tax_id = body.tax_id.strip() if body.tax_id and body.tax_id.strip() else None
@@ -491,100 +570,140 @@ async def resend_verification(body: ResendVerificationRequest, db: AsyncSession 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
 async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    """Générer un token de réinitialisation. Toujours retourne 200 (anti-énumération)."""
+    """
+    Étape 1/3 du flux OTP reset.
+    Envoie un code OTP à 6 chiffres par email. Toujours 200 (anti-énumération).
+    """
     from sqlalchemy import select
     result = await db.execute(
-        select(UserModel).where(UserModel.email == body.email, UserModel.is_deleted == False)
+        select(UserModel).where(
+            UserModel.email == body.email,
+            UserModel.is_deleted == False,
+            UserModel.status == "active",
+        )
     )
     user = result.scalar_one_or_none()
 
-    if user and user.status == "active":
-        raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-        user.password_reset_token = token_hash
-        user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES
-        )
+    if user:
+        now = datetime.now(timezone.utc)
+        # Cooldown 60 s : refuser si un OTP valide a été envoyé il y a moins d'1 minute
+        if (
+            user.password_reset_expires_at is not None
+            and user.password_reset_expires_at > now + timedelta(minutes=RESET_OTP_EXPIRE_MINUTES - 1)
+        ):
+            # Silencieusement ignoré — message générique pour anti-énumération
+            return {"message": "Si cet email est associé à un compte actif, un code a été envoyé."}
+
+        otp_plain, otp_hash = _generate_otp()
+        user.password_reset_token = otp_hash
+        user.password_reset_expires_at = now + timedelta(minutes=RESET_OTP_EXPIRE_MINUTES)
+        user.reset_otp_attempts = 0
+        # Invalider toute session de reset précédente
+        user.reset_session_token = None
+        user.reset_session_expires_at = None
         await db.flush()
 
-        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
-        html_body = f"""
-<!DOCTYPE html>
-<html lang="fr">
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif;">
-  <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:12px;
-              overflow:hidden;border:1px solid #e5e7eb;">
-    <div style="background:#1a56db;padding:28px 32px;">
-      <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">
-        Réinitialisation du mot de passe
-      </h1>
-    </div>
-    <div style="padding:32px;">
-      <p style="margin:0 0 16px;color:#374151;font-size:15px;">
-        Bonjour <strong>{user.full_name}</strong>,
-      </p>
-      <p style="margin:0 0 24px;color:#374151;font-size:14px;line-height:1.6;">
-        Cliquez sur le bouton ci-dessous pour réinitialiser votre mot de passe Biloz.
-        Le lien est valable <strong>{settings.PASSWORD_RESET_EXPIRE_MINUTES} minutes</strong>.
-      </p>
-      <div style="text-align:center;margin:24px 0;">
-        <a href="{reset_url}"
-           style="display:inline-block;padding:14px 28px;background:#1a56db;color:#fff;
-                  text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
-          Réinitialiser mon mot de passe
-        </a>
-      </div>
-      <p style="color:#6b7280;font-size:12px;margin:24px 0 0;">
-        Ou copiez ce lien : {reset_url}<br/>
-        Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
-      </p>
-    </div>
-  </div>
-</body>
-</html>"""
+        await _send_reset_otp_email(user.email, user.full_name, otp_plain)
 
-        try:
-            from app.infrastructure.services.email.brevo_service import BrevoEmailService
-            await BrevoEmailService().send_custom(
-                to_email=user.email,
-                to_name=user.full_name,
-                subject="Réinitialisation de votre mot de passe Biloz",
-                html_body=html_body,
+        if settings.ENVIRONMENT == "development":
+            _logger.info(
+                "reset_otp.dev_hint",
+                email=user.email,
+                otp_code=otp_plain,
+                note="DEV ONLY — ne jamais logger en production",
             )
-        except Exception:
-            pass
 
-    return {"message": "Si cet email existe, un lien de réinitialisation a été envoyé."}
+    return {"message": "Si cet email est associé à un compte actif, un code a été envoyé."}
 
 
-@router.post("/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
-    """Valider le token et définir le nouveau mot de passe."""
+@router.post("/verify-reset-otp", status_code=status.HTTP_200_OK)
+async def verify_reset_otp(body: VerifyResetOtpRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Étape 2/3 du flux OTP reset.
+    Valide le code OTP. En cas de succès, retourne un session_token à usage unique
+    (10 min) qui autorise la définition d'un nouveau mot de passe à l'étape 3.
+    """
     from sqlalchemy import select
-    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    _INVALID = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="INVALID_OTP",
+    )
     now = datetime.now(timezone.utc)
 
     result = await db.execute(
         select(UserModel).where(
-            UserModel.password_reset_token == token_hash,
+            UserModel.email == body.email,
             UserModel.is_deleted == False,
         )
     )
     user = result.scalar_one_or_none()
 
-    if not user or user.password_reset_expires_at is None or user.password_reset_expires_at < now:
+    if not user or not user.password_reset_token or not user.password_reset_expires_at:
+        raise _INVALID
+
+    if user.password_reset_expires_at < now:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP_EXPIRED")
+
+    if user.reset_otp_attempts >= RESET_OTP_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Trop de tentatives. Faites une nouvelle demande de réinitialisation.",
+        )
+
+    code_hash = hashlib.sha256(body.code.encode()).hexdigest()
+    if code_hash != user.password_reset_token:
+        user.reset_otp_attempts += 1
+        await db.flush()
+        raise _INVALID
+
+    # OTP valide — générer un session token à usage unique (10 min)
+    raw_session = secrets.token_urlsafe(32)
+    session_hash = hashlib.sha256(raw_session.encode()).hexdigest()
+
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    user.reset_otp_attempts = 0
+    user.reset_session_token = session_hash
+    user.reset_session_expires_at = now + timedelta(minutes=RESET_SESSION_EXPIRE_MINUTES)
+    await db.flush()
+
+    return {"session_token": raw_session}
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Étape 3/3 du flux OTP reset.
+    Valide le session_token issu de verify-reset-otp et applique le nouveau mot de passe.
+    Toutes les sessions actives (refresh tokens) sont révoquées.
+    """
+    from sqlalchemy import select
+    now = datetime.now(timezone.utc)
+    session_hash = hashlib.sha256(body.session_token.encode()).hexdigest()
+
+    result = await db.execute(
+        select(UserModel).where(
+            UserModel.reset_session_token == session_hash,
+            UserModel.is_deleted == False,
+        )
+    )
+    user = result.scalar_one_or_none()
+
+    if not user or user.reset_session_expires_at is None or user.reset_session_expires_at < now:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Lien invalide ou expiré. Faites une nouvelle demande.",
+            detail="Session expirée ou invalide. Recommencez depuis l'étape 1.",
         )
 
     user.hashed_password = await hash_password_async(body.new_password)
+    user.reset_session_token = None
+    user.reset_session_expires_at = None
     user.password_reset_token = None
     user.password_reset_expires_at = None
+    user.reset_otp_attempts = 0
     user.failed_login_count = 0
     user.locked_until = None
-    user.refresh_token_jti = None  # invalider toutes les sessions actives
+    user.refresh_token_jti = None  # révoquer toutes les sessions actives
     await db.flush()
 
     return {"message": "Mot de passe mis à jour avec succès. Vous pouvez maintenant vous connecter."}

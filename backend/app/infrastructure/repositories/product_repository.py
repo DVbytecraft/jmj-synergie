@@ -112,10 +112,10 @@ def _to_entity(row: ProductModel) -> Product:
         currency=row.currency,
         unit_price_cents=row.unit_price_cents,
         tax_rate=float(row.tax_rate),
-        min_order_quantity=float(row.min_order_quantity),
+        min_order_quantity=int(row.min_order_quantity),
         track_stock=row.track_stock,
-        stock_quantity=float(row.stock_quantity) if row.stock_quantity is not None else None,
-        low_stock_threshold=float(row.low_stock_threshold) if row.low_stock_threshold is not None else None,
+        stock_quantity=int(row.stock_quantity) if row.stock_quantity is not None else None,
+        low_stock_threshold=int(row.low_stock_threshold) if row.low_stock_threshold is not None else None,
         image_path=row.image_path,
         status=ProductStatus(row.status),
         notes=row.notes,
@@ -141,10 +141,10 @@ def _copy_to_model(product: Product, row: ProductModel) -> None:
     row.currency = product.currency
     row.unit_price_cents = product.unit_price_cents
     row.tax_rate = Decimal(str(product.tax_rate))
-    row.min_order_quantity = Decimal(str(product.min_order_quantity))
+    row.min_order_quantity = int(product.min_order_quantity)
     row.track_stock = product.track_stock
-    row.stock_quantity = Decimal(str(product.stock_quantity)) if product.stock_quantity is not None else None
-    row.low_stock_threshold = Decimal(str(product.low_stock_threshold)) if product.low_stock_threshold is not None else None
+    row.stock_quantity = int(product.stock_quantity) if product.stock_quantity is not None else None
+    row.low_stock_threshold = int(product.low_stock_threshold) if product.low_stock_threshold is not None else None
     row.image_path = product.image_path
     row.status = product.status.value
     row.notes = product.notes

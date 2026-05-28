@@ -17,10 +17,10 @@ class CreateProductDTO(BaseModel):
     unit: Optional[str]              = Field(None, max_length=20, description="kg, m², pièce...")
     currency: str           = Field("XAF", min_length=3, max_length=3)
     tax_rate: float         = Field(0.0, ge=0, le=100)
-    min_order_quantity: float = Field(1.0, gt=0)
+    min_order_quantity: int = Field(1, gt=0)
     track_stock: bool       = False
-    stock_quantity: Optional[float]        = Field(None, ge=0)
-    low_stock_threshold: Optional[float]   = Field(None, ge=0)
+    stock_quantity: Optional[int]        = Field(None, ge=0)
+    low_stock_threshold: Optional[int]   = Field(None, ge=0)
     notes: Optional[str]    = Field(None, max_length=2000)
     supplier_ref: Optional[str] = Field(None, max_length=100)
     barcode: Optional[str]  = Field(None, max_length=60)
@@ -40,7 +40,7 @@ class UpdateProductDTO(BaseModel):
     sub_category: Optional[str]     = Field(None, max_length=100)
     unit: Optional[str]             = Field(None, max_length=20)
     tax_rate: Optional[float]       = Field(None, ge=0, le=100)
-    min_order_quantity: Optional[float] = Field(None, gt=0)
+    min_order_quantity: Optional[int] = Field(None, gt=0)
     notes: Optional[str]            = None
     supplier_ref: Optional[str]     = Field(None, max_length=100)
 
@@ -57,10 +57,10 @@ class ProductResponseDTO(BaseModel):
     currency: str
     unit_price_cents: int
     tax_rate: float
-    min_order_quantity: float
+    min_order_quantity: int
     track_stock: bool
-    stock_quantity: Optional[float]
-    low_stock_threshold: Optional[float]
+    stock_quantity: Optional[int]
+    low_stock_threshold: Optional[int]
     image_path: Optional[str]
     status: str
     notes: Optional[str]

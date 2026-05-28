@@ -52,14 +52,14 @@ ALLOWED_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
 @dataclass
 class OrderItem:
     description: str
-    quantity: Decimal
+    quantity: int
     unit_price: Money
     unit: Optional[str] = None
     item_code: Optional[str] = None
     notes: Optional[str] = None
     sort_order: int = 0
-    delivered_quantity: Decimal = Decimal("0")
-    invoiced_quantity: Decimal = Decimal("0")
+    delivered_quantity: int = 0
+    invoiced_quantity: int = 0
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -82,11 +82,11 @@ class OrderItem:
         return self.unit_price * self.delivered_quantity
 
     @property
-    def remaining_quantity(self) -> Decimal:
+    def remaining_quantity(self) -> int:
         return self.quantity - self.delivered_quantity
 
     @property
-    def invoiceable_quantity(self) -> Decimal:
+    def invoiceable_quantity(self) -> int:
         return self.delivered_quantity - self.invoiced_quantity
 
 
@@ -262,7 +262,7 @@ class Order:
         self._transition_to(OrderStatus.DELIVERED, actor)
         self.delivered_at = datetime.now(timezone.utc)
 
-    def record_delivery(self, actor: UUID, deliveries: list[tuple[UUID, Decimal]]) -> None:
+    def record_delivery(self, actor: UUID, deliveries: list[tuple[UUID, int]]) -> None:
         if self.status not in (
             OrderStatus.CONFIRMED,
             OrderStatus.IN_PRODUCTION,
@@ -295,8 +295,8 @@ class Order:
             self.status = OrderStatus.PARTIALLY_DELIVERED
         self._touch()
 
-    def mark_delivered_quantities_invoiced(self) -> Decimal:
-        total_qty = Decimal("0")
+    def mark_delivered_quantities_invoiced(self) -> int:
+        total_qty = 0
         for item in self.items:
             pending = item.invoiceable_quantity
             if pending > 0:

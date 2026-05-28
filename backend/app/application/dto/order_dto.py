@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class OrderItemInputDTO(BaseModel):
     description: str = Field(..., min_length=1, max_length=1000)
-    quantity: Decimal = Field(..., gt=0, decimal_places=4)
+    quantity: int = Field(..., gt=0)
     unit_price_cents: int = Field(..., ge=0)
     unit: Optional[str] = Field(None, max_length=20)
     item_code: Optional[str] = Field(None, max_length=50)
@@ -20,7 +20,7 @@ class OrderItemInputDTO(BaseModel):
 
 class OrderDeliveryItemDTO(BaseModel):
     item_id: UUID
-    quantity: Decimal = Field(..., gt=0, decimal_places=4)
+    quantity: int = Field(..., gt=0)
 
 
 class CreateOrderDTO(BaseModel):
@@ -49,11 +49,11 @@ class UpdateOrderDTO(BaseModel):
 class OrderItemResponseDTO(BaseModel):
     id: UUID
     description: str
-    quantity: Decimal
-    delivered_quantity: Decimal
-    invoiced_quantity: Decimal
-    remaining_quantity: Decimal
-    invoiceable_quantity: Decimal
+    quantity: int
+    delivered_quantity: int
+    invoiced_quantity: int
+    remaining_quantity: int
+    invoiceable_quantity: int
     unit_price_cents: int
     line_total_cents: int
     delivered_line_total_cents: int
