@@ -2,13 +2,16 @@
 Auth endpoints — login, register, email OTP verification, refresh, forgot/reset password.
 """
 from datetime import datetime, timedelta, timezone
+import hmac
 import hashlib
 import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import JWTError
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -123,11 +126,30 @@ class ResetPasswordRequest(BaseModel):
 def _generate_otp() -> tuple[str, str]:
     """Retourne (code_plain, code_hash)."""
     code = f"{secrets.randbelow(1_000_000):06d}"
-    code_hash = hashlib.sha256(code.encode()).hexdigest()
-    return code, code_hash
+    return code, _hash_otp(code)
 
 
-async def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
+def _hash_otp(code: str) -> str:
+    """HMAC OTP hash. A pepper prevents offline brute force if the DB leaks."""
+    return hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        code.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _otp_matches(code: str, stored_hash: str | None) -> bool:
+    if not stored_hash:
+        return False
+    if hmac.compare_digest(_hash_otp(code), stored_hash):
+        return True
+
+    # Backward compatibility for OTPs generated before the HMAC hardening.
+    legacy_hash = hashlib.sha256(code.encode()).hexdigest()
+    return hmac.compare_digest(legacy_hash, stored_hash)
+
+
+async def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
     html_body = f"""
 <!DOCTYPE html>
 <html lang="fr">
@@ -162,7 +184,7 @@ async def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
 </html>"""
     try:
         from app.infrastructure.services.email.brevo_service import BrevoEmailService
-        await BrevoEmailService().send_custom(
+        return await BrevoEmailService().send_custom(
             to_email=to_email,
             to_name=full_name,
             subject=f"Biloz — votre code de vérification : {code}",
@@ -170,9 +192,10 @@ async def _send_otp_email(to_email: str, full_name: str, code: str) -> None:
         )
     except Exception as exc:
         _logger.warning("email.otp.send_failed", to_email=to_email, error=str(exc))
+        return False
 
 
-async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> None:
+async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> bool:
     dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
     html_body = f"""
 <!DOCTYPE html>
@@ -217,7 +240,7 @@ async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> N
 </html>"""
     try:
         from app.infrastructure.services.email.brevo_service import BrevoEmailService
-        await BrevoEmailService().send_custom(
+        return await BrevoEmailService().send_custom(
             to_email=to_email,
             to_name=full_name,
             subject=f"Bienvenue sur Biloz — votre espace {org_name} est prêt",
@@ -225,9 +248,10 @@ async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> N
         )
     except Exception as exc:
         _logger.warning("email.welcome.send_failed", to_email=to_email, error=str(exc))
+        return False
 
 
-async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> None:
+async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> bool:
     html_body = f"""
 <!DOCTYPE html>
 <html lang="fr">
@@ -262,7 +286,7 @@ async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> Non
 </html>"""
     try:
         from app.infrastructure.services.email.brevo_service import BrevoEmailService
-        await BrevoEmailService().send_custom(
+        return await BrevoEmailService().send_custom(
             to_email=to_email,
             to_name=full_name,
             subject=f"Biloz — code de réinitialisation : {code}",
@@ -270,6 +294,7 @@ async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> Non
         )
     except Exception as exc:
         _logger.warning("email.reset_otp.send_failed", to_email=to_email, error=str(exc))
+        return False
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -289,7 +314,6 @@ async def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    from sqlalchemy import select
     result = await db.execute(
         select(UserModel).where(UserModel.email == form.username, UserModel.is_deleted == False)
     )
@@ -344,8 +368,6 @@ async def login(
 
 @router.post("/register-organization", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register_organization(body: RegisterOrganizationRequest, db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select, delete as sa_delete
-
     now = datetime.now(timezone.utc)
 
     # Vérifier si un compte existe déjà pour cet email
@@ -439,7 +461,12 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
     await db.flush()
 
     # Envoyer le code OTP
-    await _send_otp_email(body.email, body.full_name.strip(), otp_plain)
+    sent = await _send_otp_email(body.email, body.full_name.strip(), otp_plain)
+    if settings.is_production and not sent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Impossible d'envoyer le code de vérification. Réessayez dans quelques minutes.",
+        )
 
     import structlog as _sl
     if settings.ENVIRONMENT == "development":
@@ -459,8 +486,6 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
 @router.post("/verify-email", response_model=TokenResponse)
 async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_db)):
     """Vérifier le code OTP reçu par email et activer le compte."""
-    from sqlalchemy import select
-
     result = await db.execute(
         select(UserModel).where(UserModel.email == body.email, UserModel.is_deleted == False)
     )
@@ -497,8 +522,7 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
         )
 
     # Vérification du code
-    code_hash = hashlib.sha256(body.code.encode()).hexdigest()
-    if code_hash != user.email_otp_hash:
+    if not _otp_matches(body.code, user.email_otp_hash):
         user.email_otp_attempts += 1
         await db.flush()
         raise HTTPException(
@@ -534,8 +558,6 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
 @router.post("/resend-verification", status_code=status.HTTP_200_OK)
 async def resend_verification(body: ResendVerificationRequest, db: AsyncSession = Depends(get_db)):
     """Renvoyer un nouveau code OTP. Toujours retourne 200 (anti-énumération)."""
-    from sqlalchemy import select
-
     result = await db.execute(
         select(UserModel).where(UserModel.email == body.email, UserModel.is_deleted == False)
     )
@@ -554,7 +576,12 @@ async def resend_verification(body: ResendVerificationRequest, db: AsyncSession 
         user.email_otp_expires_at = now + timedelta(minutes=OTP_EXPIRE_MINUTES)
         user.email_otp_attempts = 0
         await db.flush()
-        await _send_otp_email(user.email, user.full_name, otp_plain)
+        sent = await _send_otp_email(user.email, user.full_name, otp_plain)
+        if settings.is_production and not sent:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Impossible d'envoyer le code de vérification. Réessayez dans quelques minutes.",
+            )
 
         import structlog as _sl
         if settings.ENVIRONMENT == "development":
@@ -574,7 +601,6 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
     Étape 1/3 du flux OTP reset.
     Envoie un code OTP à 6 chiffres par email. Toujours 200 (anti-énumération).
     """
-    from sqlalchemy import select
     result = await db.execute(
         select(UserModel).where(
             UserModel.email == body.email,
@@ -584,8 +610,6 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
     )
     user = result.scalar_one_or_none()
 
-    _logger.info("forgot_password.lookup", found=user is not None, email=body.email)
-
     if user:
         now = datetime.now(timezone.utc)
         # Cooldown 60 s : refuser si un OTP valide a été envoyé il y a moins d'1 minute
@@ -593,7 +617,6 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
             user.password_reset_expires_at is not None
             and user.password_reset_expires_at > now + timedelta(minutes=RESET_OTP_EXPIRE_MINUTES - 1)
         ):
-            _logger.info("forgot_password.cooldown_active", email=body.email)
             return {"message": "Si cet email est associé à un compte actif, un code a été envoyé."}
 
         otp_plain, otp_hash = _generate_otp()
@@ -604,8 +627,12 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
         user.reset_session_expires_at = None
         await db.flush()
 
-        _logger.info("forgot_password.sending_otp", email=body.email, brevo_configured=bool(settings.BREVO_API_KEY))
-        await _send_reset_otp_email(user.email, user.full_name, otp_plain)
+        sent = await _send_reset_otp_email(user.email, user.full_name, otp_plain)
+        if settings.is_production and not sent:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Impossible d'envoyer le code de réinitialisation. Réessayez dans quelques minutes.",
+            )
 
         if settings.ENVIRONMENT == "development":
             _logger.info(
@@ -625,7 +652,6 @@ async def verify_reset_otp(body: VerifyResetOtpRequest, db: AsyncSession = Depen
     Valide le code OTP. En cas de succès, retourne un session_token à usage unique
     (10 min) qui autorise la définition d'un nouveau mot de passe à l'étape 3.
     """
-    from sqlalchemy import select
     _INVALID = HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="INVALID_OTP",
@@ -652,15 +678,14 @@ async def verify_reset_otp(body: VerifyResetOtpRequest, db: AsyncSession = Depen
             detail="Trop de tentatives. Faites une nouvelle demande de réinitialisation.",
         )
 
-    code_hash = hashlib.sha256(body.code.encode()).hexdigest()
-    if code_hash != user.password_reset_token:
+    if not _otp_matches(body.code, user.password_reset_token):
         user.reset_otp_attempts += 1
         await db.flush()
         raise _INVALID
 
     # OTP valide — générer un session token à usage unique (10 min)
     raw_session = secrets.token_urlsafe(32)
-    session_hash = hashlib.sha256(raw_session.encode()).hexdigest()
+    session_hash = _hash_otp(raw_session)
 
     user.password_reset_token = None
     user.password_reset_expires_at = None
@@ -679,13 +704,13 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     Valide le session_token issu de verify-reset-otp et applique le nouveau mot de passe.
     Toutes les sessions actives (refresh tokens) sont révoquées.
     """
-    from sqlalchemy import select
     now = datetime.now(timezone.utc)
-    session_hash = hashlib.sha256(body.session_token.encode()).hexdigest()
+    session_hash = _hash_otp(body.session_token)
+    legacy_session_hash = hashlib.sha256(body.session_token.encode()).hexdigest()
 
     result = await db.execute(
         select(UserModel).where(
-            UserModel.reset_session_token == session_hash,
+            UserModel.reset_session_token.in_([session_hash, legacy_session_hash]),
             UserModel.is_deleted == False,
         )
     )
@@ -713,8 +738,6 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    from jose import JWTError
-    from sqlalchemy import select
     try:
         payload = decode_refresh_token(body.refresh_token)
     except JWTError:

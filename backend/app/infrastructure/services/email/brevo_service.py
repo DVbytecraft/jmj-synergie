@@ -65,12 +65,10 @@ class BrevoEmailService:
         recipients = [{"email": to_email, "name": to_name}]
         path = Path(attachment_path) if attachment_path else None
         if settings.BREVO_API_KEY:
-            logger.info("email.route", method="brevo", to=to_email)
             return await self._send_brevo(
                 recipients, subject, html_body,
                 path, attachment_name or (path.name if path else None)
             )
-        logger.warning("email.route", method="smtp_fallback", to=to_email, reason="BREVO_API_KEY_empty")
         return await self._send_smtp(
             [to_email], subject, html_body,
             path, attachment_name or (path.name if path else None)
