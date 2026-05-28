@@ -41,7 +41,7 @@ const nextConfig: NextConfig = {
           // Limite les informations envoyées dans Referer
           { key: "Referrer-Policy",          value: "strict-origin-when-cross-origin" },
           // Désactive caméra, micro, géolocalisation
-          { key: "Permissions-Policy",       value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Permissions-Policy",       value: "camera=(self), microphone=(), geolocation=()" },
           // CSP — désactivé en dev pour faciliter le debug HMR
           ...(isDev
             ? []

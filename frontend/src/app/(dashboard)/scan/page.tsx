@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useRef, useCallback } from "react";
 import {
   ScanLine, Upload, X, FileText, AlertCircle,
-  ChevronRight, Loader2, CheckCircle, ShieldAlert, Cpu,
+  ChevronRight, Loader2, CheckCircle, ShieldAlert, Cpu, Camera,
 } from "lucide-react";
 import { documentsApi } from "@/lib/api/documents";
 
@@ -54,6 +54,7 @@ export default function ScanPage() {
   const [rawText, setRawText] = useState<string>("");
   const [extractError, setExtractError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
     setFile(f);
@@ -167,39 +168,69 @@ export default function ScanPage() {
 
       {/* ── Étape : Import ── */}
       {step === "upload" && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`card p-12 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all border-2 border-dashed ${
-            dragging
-              ? "border-blue-400 bg-blue-50"
-              : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
-          }`}
-        >
-          <div className="p-4 bg-blue-100 rounded-full">
-            <Upload className="w-8 h-8 text-blue-600" />
-          </div>
-          <div className="text-center">
-            <p className="font-semibold text-slate-900">Glissez votre facture ici</p>
-            <p className="text-sm text-slate-400 mt-1">ou cliquez pour parcourir vos fichiers</p>
-            <p className="text-xs text-slate-400 mt-2">PNG, JPG, PDF — max 10 Mo</p>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full">
-            <Cpu className="w-3.5 h-3.5" />
-            OCR local — aucune donnée envoyée en ligne
-          </div>
+        <div className="space-y-4">
+          {/* Inputs cachés */}
           <input
             ref={inputRef}
             type="file"
             accept="image/*,application/pdf"
             className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFile(f);
-            }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
           />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          />
+
+          {/* Deux options */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Option caméra */}
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="card p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all border-2 border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 group"
+            >
+              <div className="p-4 bg-blue-100 rounded-full group-hover:bg-blue-200 transition-colors">
+                <Camera className="w-7 h-7 text-blue-600" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-slate-900">Prendre une photo</p>
+                <p className="text-xs text-slate-400 mt-1">Ouvrir l&apos;appareil photo</p>
+              </div>
+            </button>
+
+            {/* Option fichier avec drag-and-drop */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => inputRef.current?.click()}
+              className={`card p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all border-2 border-dashed group ${
+                dragging
+                  ? "border-blue-400 bg-blue-50"
+                  : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/40"
+              }`}
+            >
+              <div className="p-4 bg-slate-100 rounded-full group-hover:bg-blue-100 transition-colors">
+                <Upload className="w-7 h-7 text-slate-500 group-hover:text-blue-600 transition-colors" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-slate-900">Choisir un fichier</p>
+                <p className="text-xs text-slate-400 mt-1">PNG, JPG, PDF — max 10 Mo</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center">
+            <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full">
+              <Cpu className="w-3.5 h-3.5" />
+              OCR local — aucune donnée envoyée en ligne
+            </div>
+          </div>
         </div>
       )}
 
