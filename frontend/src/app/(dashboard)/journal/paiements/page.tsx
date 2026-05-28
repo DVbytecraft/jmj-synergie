@@ -20,8 +20,8 @@ export default function JournalPaiementsPage() {
 
   const { data, isLoading } = useJournalPaiements({ skip: page * limit, limit });
 
-  const paiements = Array.isArray(data) ? data : [];
-  const totalCents = paiements.reduce((s, e) => s + e.amount_cents, 0);
+  const paiements = data?.items ?? [];
+  const totalCents = data?.total_completed_cents ?? 0;
   const currency = paiements[0]?.currency ?? "XAF";
 
   return (
@@ -32,7 +32,7 @@ export default function JournalPaiementsPage() {
           <p className="text-sm text-gray-500 mt-1">{paiements.length} entrées</p>
         </div>
         <div className="card px-4 py-2 text-right">
-          <p className="text-xs text-gray-500">Total encaissé (page)</p>
+          <p className="text-xs text-gray-500">Total encaissé</p>
           <p className="text-lg font-bold text-emerald-700">{formatCents(totalCents, currency)}</p>
         </div>
       </div>
@@ -96,10 +96,10 @@ export default function JournalPaiementsPage() {
           </table>
         </div>
         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-          <p className="text-sm text-gray-400">{paiements.length} résultats</p>
+          <p className="text-sm text-gray-400">{data?.total ?? 0} résultats</p>
           <div className="flex gap-2">
             <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="btn-secondary py-1.5">Précédent</button>
-            <button onClick={() => setPage((p) => p + 1)} disabled={paiements.length < limit} className="btn-secondary py-1.5">Suivant</button>
+            <button onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= (data?.total ?? 0)} className="btn-secondary py-1.5">Suivant</button>
           </div>
         </div>
       </div>

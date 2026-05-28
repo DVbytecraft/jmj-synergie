@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.core.redis_client import get_redis
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -53,7 +53,7 @@ async def _generate_receipt_bg(order_id: UUID, payment_id: UUID, user_id: UUID) 
 
 
 @router.post(
-    "/",
+    "",
     response_model=PaymentResponseDTO,
     status_code=status.HTTP_201_CREATED,
     summary="Enregistrer un paiement",
@@ -107,7 +107,7 @@ async def record_payment(
 
 
 @router.get(
-    "/",
+    "",
     summary="Lister toutes les transactions",
 )
 async def list_all_transactions(
@@ -120,15 +120,43 @@ async def list_all_transactions(
     if current_user.organization_id is None and current_user.role != "super_admin":
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
-    q = select(PaymentTransactionModel)
-    if current_user.organization_id is not None:
-        q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
-    if order_id:
-        q = q.where(PaymentTransactionModel.order_id == order_id)
-    q = q.order_by(PaymentTransactionModel.transaction_date.desc()).offset(skip).limit(limit)
-    result = await db.execute(q)
-    txns = result.scalars().all()
-    return [_to_dict(t) for t in txns]
+
+    def _base(q):
+        if current_user.organization_id is not None:
+            q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
+        if order_id:
+            q = q.where(PaymentTransactionModel.order_id == order_id)
+        return q
+
+    # total count + aggregates (completed / refunded) — single query
+    agg_q = _base(
+        select(
+            func.count(PaymentTransactionModel.id).label("total"),
+            func.coalesce(
+                func.sum(PaymentTransactionModel.amount_cents).filter(
+                    PaymentTransactionModel.status == "completed"
+                ), 0
+            ).label("total_completed_cents"),
+            func.coalesce(
+                func.sum(PaymentTransactionModel.amount_cents).filter(
+                    PaymentTransactionModel.status == "refunded"
+                ), 0
+            ).label("total_refunded_cents"),
+        )
+    )
+    agg = (await db.execute(agg_q)).one()
+
+    items_q = _base(select(PaymentTransactionModel)).order_by(
+        PaymentTransactionModel.transaction_date.desc()
+    ).offset(skip).limit(limit)
+    txns = (await db.execute(items_q)).scalars().all()
+
+    return {
+        "items": [_to_dict(t) for t in txns],
+        "total": agg.total,
+        "total_completed_cents": agg.total_completed_cents,
+        "total_refunded_cents": agg.total_refunded_cents,
+    }
 
 
 @router.get(

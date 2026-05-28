@@ -8,7 +8,7 @@ import type { Payment, Refund } from "@/types";
 export const journalApi = {
   paiements: (params?: { skip?: number; limit?: number; order_id?: string }) =>
     apiClient
-      .get<Payment[]>("/payments", { params })
+      .get<{ items: Payment[]; total: number; total_completed_cents: number; total_refunded_cents: number }>("/payments", { params })
       .then((r) => r.data),
 
   remboursements: (params?: { skip?: number; limit?: number; status?: string }) =>

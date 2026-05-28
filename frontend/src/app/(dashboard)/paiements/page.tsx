@@ -4,10 +4,15 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { paiementsApi } from "@/lib/api/paiements";
 import type { PaymentMethod } from "@/types";
-import { RotateCcw, Search, CreditCard, TrendingDown, Banknote, ArrowRight } from "lucide-react";
+import {
+  RotateCcw, Search, CreditCard, TrendingDown, Banknote, ArrowRight,
+  ChevronLeft, ChevronRight as ChevronRightIcon,
+} from "lucide-react";
 import { formatCents } from "@/lib/utils/money";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+
+const LIMIT = 20;
 
 const STATUS_CFG: Record<string, { label: string; dot: string; bg: string; text: string }> = {
   pending:   { label: "En attente", dot: "bg-orange-400", bg: "bg-orange-50",  text: "text-orange-700"  },
@@ -37,25 +42,29 @@ function SkeletonRow() {
 }
 
 export default function PaiementsPage() {
-  const [search, setSearch] = useState("");
+  const [page, setPage]             = useState(0);
+  const [search, setSearch]         = useState("");
   const [showRefundModal, setShowRefundModal] = useState<string | null>(null);
   const qc = useQueryClient();
 
-  const { data: paiements, isLoading } = useQuery({
-    queryKey: ["paiements"],
-    queryFn: () => paiementsApi.list({ limit: 100 }),
+  const { data, isLoading } = useQuery({
+    queryKey: ["paiements", page],
+    queryFn: () => paiementsApi.list({ skip: page * LIMIT, limit: LIMIT }),
   });
 
-  const filtered = paiements?.filter(
+  const items    = data?.items ?? [];
+  const total    = data?.total ?? 0;
+  const currency = items[0]?.currency ?? "XAF";
+
+  const filtered = items.filter(
     (p) =>
       p.id.toLowerCase().includes(search.toLowerCase()) ||
       (p.order_id ?? "").toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
+  );
 
-  const currency = paiements?.[0]?.currency ?? "XAF";
-
-  const totalCompleted = paiements?.filter((p) => p.status === "completed").reduce((s, p) => s + p.amount_cents, 0) ?? 0;
-  const totalRefunded  = paiements?.filter((p) => p.status === "refunded").reduce((s, p) => s + p.amount_cents, 0) ?? 0;
+  // KPI totals come from server aggregates — always reflect ALL transactions
+  const totalCompleted = data?.total_completed_cents ?? 0;
+  const totalRefunded  = data?.total_refunded_cents  ?? 0;
   const totalNet       = totalCompleted - totalRefunded;
 
   return (
@@ -64,7 +73,7 @@ export default function PaiementsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Paiements</h1>
-          <p className="page-subtitle">{paiements?.length ?? 0} transactions</p>
+          <p className="page-subtitle">{total} transactions</p>
         </div>
       </div>
 
@@ -104,7 +113,7 @@ export default function PaiementsPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           placeholder="Rechercher par transaction ou commande…"
           className="input pl-10"
         />
@@ -195,14 +204,42 @@ export default function PaiementsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {total > LIMIT && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+            <p className="text-sm text-slate-500">
+              {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} sur {total}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium text-slate-700 px-2">
+                {page + 1} / {Math.ceil(total / LIMIT)}
+              </span>
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={(page + 1) * LIMIT >= total}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Refund modal */}
       {showRefundModal && (
         <RefundModal
           transactionId={showRefundModal}
-          orderId={paiements?.find((p) => p.id === showRefundModal)?.order_id ?? ""}
-          amountCents={paiements?.find((p) => p.id === showRefundModal)?.amount_cents ?? 0}
+          orderId={items.find((p) => p.id === showRefundModal)?.order_id ?? ""}
+          amountCents={items.find((p) => p.id === showRefundModal)?.amount_cents ?? 0}
           currency={currency}
           onClose={() => setShowRefundModal(null)}
           onSuccess={() => {

@@ -8,7 +8,12 @@ export type MethodePaiement = Payment["method"];
 
 export const paiementsApi = {
   list: async (params?: { skip?: number; limit?: number; order_id?: string }) => {
-    const res = await apiClient.get<Payment[]>("/payments", { params });
+    const res = await apiClient.get<{
+      items: Payment[];
+      total: number;
+      total_completed_cents: number;
+      total_refunded_cents: number;
+    }>("/payments", { params });
     return res.data;
   },
 
