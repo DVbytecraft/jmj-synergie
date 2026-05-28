@@ -394,6 +394,6 @@ class AuditEventModel(Base):
     action: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     entity_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
     entity_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    event_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False, index=True)

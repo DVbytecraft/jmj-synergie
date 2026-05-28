@@ -32,7 +32,7 @@ async def log_audit_event(
             action=action,
             entity_type=entity_type,
             entity_id=str(entity_id) if entity_id else None,
-            metadata=metadata,
+            event_metadata=metadata,
             ip_address=ip_address,
         ))
         await db.flush()
