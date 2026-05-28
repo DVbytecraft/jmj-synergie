@@ -25,6 +25,7 @@ from reportlab.platypus import (
     Spacer, Image, HRFlowable,
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -178,8 +179,10 @@ class PDFService:
                 f"(statut actuel: {order.status})"
             )
 
-        doc_number = f"FAC-{datetime.now(timezone.utc).strftime('%Y%m')}-{order.order_number}"
-        file_name = f"facture_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        seq_result = await db.execute(sa.text("SELECT nextval('seq_invoice_number')"))
+        invoice_seq = seq_result.scalar_one()
+        doc_number = f"FAC-{datetime.now(timezone.utc).strftime('%Y%m')}-{invoice_seq:05d}"
+        file_name = f"facture_{doc_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
         file_path = self.output_dir / file_name
 
         has_delivery = any(item.delivered_quantity > 0 for item in order.items)

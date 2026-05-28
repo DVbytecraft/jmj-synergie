@@ -24,7 +24,9 @@ from app.api.v1.deps import (
     get_update_order_uc, get_confirm_order_uc, get_cancel_order_uc,
     get_delete_order_uc, get_add_item_uc, get_remove_item_uc, get_record_delivery_uc,
 )
+from app.core.audit import log_audit_event
 from app.core.redis_client import get_redis
+from app.api.v1.deps import DB
 from app.application.dto.order_dto import (
     CreateOrderDTO, UpdateOrderDTO,
     OrderResponseDTO, OrderListResponseDTO, OrderItemInputDTO, OrderDeliveryItemDTO,
@@ -45,6 +47,7 @@ _IDEMPOTENCY_TTL = 86400  # 24 h
 async def create_order(
     body: CreateOrderDTO,
     current_user: CurrentUser,
+    db: DB,
     uc: Annotated[CreateOrderUseCase, Depends(get_create_order_uc)],
     x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> OrderResponseDTO:
@@ -59,6 +62,14 @@ async def create_order(
             pass
 
     result = await uc.execute(body, current_user.id, current_user.organization_id)
+    await log_audit_event(
+        db,
+        action="order.created",
+        actor_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entity_type="order",
+        entity_id=str(result.id),
+    )
 
     if redis_key:
         try:

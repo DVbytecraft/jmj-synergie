@@ -54,6 +54,14 @@ if settings.SENTRY_DSN:
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("Starting Biloz API", version=settings.APP_VERSION)
+    if settings.is_production and not settings.USE_CLOUDINARY:
+        logger.warning(
+            "storage.local_in_production",
+            message=(
+                "USE_CLOUDINARY=False en production — les fichiers sont stockés localement "
+                "et seront perdus à chaque redéploiement. Activez Cloudinary."
+            ),
+        )
     if settings.ENVIRONMENT == "testing":
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

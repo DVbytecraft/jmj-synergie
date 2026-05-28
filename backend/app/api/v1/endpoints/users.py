@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
 from app.api.v1.deps import AdminUser, CurrentUser
+from app.core.audit import log_audit_event
 from app.core.config import settings
 from app.core.security import hash_password_async
 from app.infrastructure.database.models import IssuerProfileModel, OrganizationModel, UserModel
@@ -268,6 +269,8 @@ async def get_my_issuer_asset(
 async def list_users(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
+    skip: int = 0,
+    limit: int = 50,
 ):
     if current_user.organization_id is None:
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
@@ -275,7 +278,7 @@ async def list_users(
         select(UserModel).where(
             UserModel.is_deleted == False,  # noqa: E712
             UserModel.organization_id == current_user.organization_id,
-        ).order_by(UserModel.full_name)
+        ).order_by(UserModel.full_name).offset(skip).limit(limit)
     )
     return [_to_response(u) for u in result.scalars().all()]
 
@@ -336,6 +339,14 @@ async def delete_user(
     user.deleted_at = datetime.now(timezone.utc)
     user.deleted_by = current_user.id
     await db.flush()
+    await log_audit_event(
+        db,
+        action="user.deleted",
+        actor_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entity_type="user",
+        entity_id=str(user_id),
+    )
 
 
 def _to_response(u: UserModel) -> UserResponse:

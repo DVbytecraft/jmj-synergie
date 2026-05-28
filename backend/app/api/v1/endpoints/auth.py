@@ -21,6 +21,7 @@ from app.core.security import (
     hash_password_async,
 )
 from app.infrastructure.database.models import OrganizationModel, UserModel
+from app.core.audit import log_audit_event
 import structlog as _log
 
 _logger = _log.get_logger(__name__)
@@ -277,6 +278,14 @@ async def login(
     user.last_login_at = now
     tokens = _issue_tokens(user)
     await db.flush()
+    await log_audit_event(
+        db,
+        action="auth.login",
+        actor_id=user.id,
+        organization_id=user.organization_id,
+        entity_type="user",
+        entity_id=str(user.id),
+    )
     return tokens
 
 

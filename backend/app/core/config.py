@@ -73,12 +73,6 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str = ""
     USE_CLOUDINARY: bool = False
 
-    # ── Google Gemini (AI-powered OCR — gratuit jusqu'à 1500 req/jour) ──────────
-    GEMINI_API_KEY: str = ""
-
-    # ── Anthropic Claude (alternatif IA OCR — optionnel) ─────────────────────
-    ANTHROPIC_API_KEY: str = ""
-
     # ── Company (PDF headers) ─────────────────────────────────────────────────
     COMPANY_NAME: str = "Biloz"
     COMPANY_ADDRESS: str = ""

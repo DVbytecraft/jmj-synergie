@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from app.api.v1.deps import CurrentUser, get_record_payment_uc, get_current_user
 from app.application.dto.payment_dto import RecordPaymentDTO, PaymentResponseDTO
 from app.application.use_cases.payment.record_payment import RecordPaymentUseCase
+from app.core.audit import log_audit_event
 from app.core.redis_client import get_redis
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
@@ -35,6 +36,7 @@ _IDEMPOTENCY_TTL = 86400  # 24 h
 async def record_payment(
     body: RecordPaymentDTO,
     current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     uc: Annotated[RecordPaymentUseCase, Depends(get_record_payment_uc)],
     x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> PaymentResponseDTO:
@@ -50,6 +52,15 @@ async def record_payment(
             pass  # Redis indisponible → fail-open
 
     result = await uc.execute(body, current_user.id)
+    await log_audit_event(
+        db,
+        action="payment.recorded",
+        actor_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entity_type="payment_transaction",
+        entity_id=str(result.id),
+        metadata={"amount_cents": body.amount_cents, "method": body.method},
+    )
 
     if redis_key:
         try:

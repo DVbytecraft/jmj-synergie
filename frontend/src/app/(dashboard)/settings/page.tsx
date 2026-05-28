@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usersApi, type IssuerProfileUpdate } from "@/lib/api/users";
 import { organizationsApi, type OrganizationUpdate } from "@/lib/api/organizations";
+import { apiClient } from "@/lib/api/client";
 import { useForm } from "react-hook-form";
 import { Building2, Lock, Save, Upload, User } from "lucide-react";
 
@@ -38,13 +39,6 @@ type OrganizationForm = {
   address_line1: string;
   city: string;
   country: string;
-};
-
-const roleLabels: Record<string, string> = {
-  super_admin: "Super Administrateur",
-  admin: "Administrateur",
-  manager: "Manager",
-  operator: "Operateur",
 };
 
 export default function SettingsPage() {
@@ -470,25 +464,47 @@ function AssetUploader({
   onUpload: (file: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const previewUrl = hasAsset ? `/api/v1/users/me/profile/assets/${assetType}` : null;
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  // Fetch via the authenticated axios client — <img src> cannot send Bearer tokens.
+  const { data: blob } = useQuery({
+    queryKey: ["users", "me", "asset", assetType],
+    queryFn: async () => {
+      const resp = await apiClient.get<Blob>(
+        `/users/me/profile/assets/${assetType}`,
+        { responseType: "blob" },
+      );
+      return resp.data;
+    },
+    enabled: hasAsset,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [blob]);
 
   return (
     <div className="rounded-xl border border-gray-200 p-4 flex flex-col gap-3">
       <span className="text-sm font-medium text-gray-900">{label}</span>
 
-      {previewUrl ? (
+      {objectUrl ? (
         <div className="relative w-full h-24 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={previewUrl}
+            src={objectUrl}
             alt={label}
             className="max-h-full max-w-full object-contain"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
         </div>
       ) : (
         <div className="w-full h-24 bg-gray-50 rounded-lg border border-dashed border-gray-300 flex items-center justify-center">
-          <span className="text-xs text-gray-400">Aucune image</span>
+          <span className="text-xs text-gray-400">
+            {hasAsset ? "Chargement…" : "Aucune image"}
+          </span>
         </div>
       )}
 

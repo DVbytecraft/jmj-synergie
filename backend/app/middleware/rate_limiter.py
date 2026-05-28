@@ -3,13 +3,14 @@ Token-bucket rate limiter via Redis sliding window.
 """
 import time
 
+import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-import redis.asyncio as redis
+from app.core.redis_client import get_redis
 
-from app.core.config import settings
+logger = structlog.get_logger(__name__)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -17,16 +18,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.calls = calls
         self.period = period
-        self._redis: redis.Redis | None = None
-
-    async def _get_redis(self) -> redis.Redis:
-        if not self._redis:
-            self._redis = await redis.from_url(settings.REDIS_URL, decode_responses=True)
-        return self._redis
 
     async def dispatch(self, request: Request, call_next):
-        # Skip health checks
-        if request.url.path in ("/health", "/api/docs", "/api/redoc"):
+        if request.url.path in ("/health", "/api/docs", "/api/redoc", "/metrics"):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -35,7 +29,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         window_start = now - self.period
 
         try:
-            r = await self._get_redis()
+            r = get_redis()
             async with r.pipeline(transaction=True) as pipe:
                 pipe.zremrangebyscore(key, 0, window_start)
                 pipe.zadd(key, {str(now): now})
@@ -51,10 +45,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     headers={"Retry-After": str(self.period)},
                 )
         except Exception as exc:
-            # Redis failure → fail-open (ne pas bloquer le trafic légitime)
-            # mais logger l'erreur pour alerter l'ops
-            import structlog
-            structlog.get_logger(__name__).error(
+            logger.error(
                 "rate_limiter.redis_unavailable",
                 error=str(exc),
                 path=request.url.path,

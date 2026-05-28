@@ -22,8 +22,6 @@ from app.infrastructure.repositories.order_repository import OrderRepository
 from app.infrastructure.repositories.payment_repository import PaymentRepository, RefundRepository
 from app.infrastructure.repositories.product_repository import ProductRepository
 from app.infrastructure.repositories.permission_repository import PermissionRepository
-from app.infrastructure.services.pdf.pdf_service import PDFService
-
 # Use cases
 from app.application.use_cases.client.create_client import CreateClientUseCase
 from app.application.use_cases.client.update_client import UpdateClientUseCase
@@ -39,9 +37,6 @@ from app.application.use_cases.payment.record_payment import RecordPaymentUseCas
 from app.application.use_cases.refund.manage_refund import (
     RequestRefundUseCase, ApproveRefundUseCase, RejectRefundUseCase, ListRefundsUseCase,
 )
-from app.application.use_cases.document.generate_pdf import GenerateProFormaUseCase
-from app.application.use_cases.document.generate_delivery_note import GenerateDeliveryNoteUseCase
-
 from app.application.use_cases.product.manage_product import (
     CreateProductUseCase, GetProductUseCase, ListProductsUseCase,
     UpdateProductUseCase, DeleteProductUseCase,
@@ -152,10 +147,6 @@ def payment_repo(db: DB, current_user: CurrentUser) -> PaymentRepository:
 def refund_repo(db: DB, current_user: CurrentUser) -> RefundRepository:
     return RefundRepository(db, _require_org(current_user))
 
-def pdf_svc() -> PDFService:
-    return PDFService()
-
-
 # ── Use case factories ────────────────────────────────────────────────────────
 
 def get_create_client_uc(db: DB, current_user: CurrentUser) -> CreateClientUseCase:
@@ -231,21 +222,6 @@ def get_reject_refund_uc(db: DB, current_user: CurrentUser) -> RejectRefundUseCa
 
 def get_list_refunds_uc(db: DB, current_user: CurrentUser) -> ListRefundsUseCase:
     return ListRefundsUseCase(RefundRepository(db, _require_org(current_user)))
-
-def get_pro_forma_uc(db: DB, current_user: CurrentUser) -> GenerateProFormaUseCase:
-    return GenerateProFormaUseCase(
-        OrderRepository(db, _require_org(current_user)),
-        ClientRepository(db, _require_org(current_user)),
-        PDFService(),
-    )
-
-def get_delivery_note_uc(db: DB, current_user: CurrentUser) -> GenerateDeliveryNoteUseCase:
-    return GenerateDeliveryNoteUseCase(
-        OrderRepository(db, _require_org(current_user)),
-        ClientRepository(db, _require_org(current_user)),
-        PDFService(),
-    )
-
 
 
 # ── Product use case factories ────────────────────────────────────────────────
