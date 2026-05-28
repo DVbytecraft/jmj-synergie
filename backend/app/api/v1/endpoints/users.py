@@ -108,9 +108,81 @@ class SignatureTextUpdate(BaseModel):
     signature_text: str | None = Field(default=None, max_length=255)
 
 
+class UpdateNameRequest(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=100)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+    from pydantic import field_validator
+
+    @field_validator("new_password")
+    @classmethod
+    def _pwd_complexity(cls, v: str) -> str:
+        import re
+        errors = []
+        if not re.search(r"[A-Z]", v):
+            errors.append("au moins une majuscule")
+        if not re.search(r"[a-z]", v):
+            errors.append("au moins une minuscule")
+        if not re.search(r"\d", v):
+            errors.append("au moins un chiffre")
+        if errors:
+            raise ValueError(" ; ".join(errors))
+        return v
+
+
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: CurrentUser):
     return _to_response(current_user)
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_my_name(
+    body: UpdateNameRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    current_user.full_name = body.full_name.strip()
+    current_user.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    await db.flush()
+    await db.refresh(current_user)
+    await log_audit_event(
+        db,
+        action="user.name_updated",
+        actor_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entity_type="user",
+        entity_id=str(current_user.id),
+        metadata={"new_name": body.full_name.strip()},
+    )
+    return _to_response(current_user)
+
+
+@router.post("/me/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_my_password(
+    body: ChangePasswordRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.security import verify_password
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mot de passe actuel incorrect.")
+    current_user.hashed_password = await hash_password_async(body.new_password)
+    current_user.refresh_token_jti = None  # invalide toutes les sessions actives
+    current_user.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    await db.flush()
+    await log_audit_event(
+        db,
+        action="user.password_changed",
+        actor_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entity_type="user",
+        entity_id=str(current_user.id),
+        metadata={},
+    )
 
 
 @router.get("/me/profile", response_model=IssuerProfileResponse)

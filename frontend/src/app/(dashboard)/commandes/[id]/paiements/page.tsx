@@ -1,16 +1,16 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commandesApi } from "@/lib/api/commandes";
 import { paiementsApi } from "@/lib/api/paiements";
+import { refundsApi } from "@/lib/api/refunds";
 import { useEnregistrerPaiement } from "@/lib/hooks/use-paiements";
 import { PaymentStatusBadge } from "@/components/ui/PaymentStatusBadge";
 import { formatCents } from "@/lib/utils/money";
 import type { PaymentMethod } from "@/types";
 import {
-  ArrowLeft, CreditCard, Loader2, Plus,
-  Banknote, Receipt, Smartphone,
+  ArrowLeft, CreditCard, Loader2, Plus, RotateCcw, X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -22,9 +22,136 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   card:          "Carte bancaire",
 };
 
+const REFUND_REASONS = [
+  { value: "product_defect",    label: "Produit défectueux" },
+  { value: "wrong_item",        label: "Mauvais article" },
+  { value: "not_delivered",     label: "Non livré" },
+  { value: "customer_request",  label: "Demande client" },
+  { value: "duplicate_payment", label: "Paiement en double" },
+  { value: "billing_error",     label: "Erreur de facturation" },
+  { value: "other",             label: "Autre" },
+];
+
+// ─── Refund request modal ─────────────────────────────────────────────────────
+
+function RefundModal({
+  orderId,
+  transaction,
+  onClose,
+}: {
+  orderId: string;
+  transaction: { id: string; amount_cents: number; currency: string; transaction_number: string };
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("customer_request");
+  const [detail, setDetail] = useState("");
+  const [amount, setAmount] = useState(String(transaction.amount_cents));
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const mut = useMutation({
+    mutationFn: () =>
+      refundsApi.request({
+        order_id: orderId,
+        original_transaction_id: transaction.id,
+        amount_cents: parseInt(amount, 10),
+        reason,
+        reason_detail: detail,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["remboursements"] });
+      setSuccess(true);
+      setTimeout(onClose, 1500);
+    },
+    onError: (e: any) => setError(e?.response?.data?.detail ?? "Erreur lors de la demande."),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">Demande de remboursement</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-sm text-slate-500">
+          Transaction <span className="font-mono font-medium text-slate-700">{transaction.transaction_number}</span>
+          {" — "}<strong>{formatCents(transaction.amount_cents, transaction.currency)}</strong>
+        </p>
+
+        {success ? (
+          <div className="py-4 text-center text-emerald-600 font-medium">
+            Demande enregistrée. En attente de traitement.
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="label">Motif <span className="text-red-500">*</span></label>
+              <select value={reason} onChange={(e) => setReason(e.target.value)} className="input">
+                {REFUND_REASONS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Détail <span className="text-red-500">*</span></label>
+              <textarea
+                value={detail}
+                onChange={(e) => setDetail(e.target.value)}
+                rows={3}
+                minLength={10}
+                placeholder="Décrivez la raison en détail (min. 10 caractères)…"
+                className="input resize-none"
+              />
+              {detail.length > 0 && detail.length < 10 && (
+                <p className="field-error">Minimum 10 caractères</p>
+              )}
+            </div>
+
+            <div>
+              <label className="label">Montant à rembourser ({transaction.currency})</label>
+              <input
+                type="number"
+                min={1}
+                max={transaction.amount_cents}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="input"
+              />
+            </div>
+
+            {error && <div className="alert-error">{error}</div>}
+
+            <div className="flex gap-3 justify-end">
+              <button onClick={onClose} className="btn-secondary">Annuler</button>
+              <button
+                onClick={() => mut.mutate()}
+                disabled={mut.isPending || detail.length < 10 || !parseInt(amount, 10)}
+                className="btn-primary bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+              >
+                {mut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                Soumettre la demande
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function CommandePaiementsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [showModal, setShowModal] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<{
+    id: string; amount_cents: number; currency: string; transaction_number: string;
+  } | null>(null);
 
   const { data: commande, isLoading: loadingCmd } = useQuery({
     queryKey: ["commandes", id],
@@ -65,7 +192,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
           </p>
         </div>
         {commande.status === "confirmed" && commande.balance_due_cents > 0 && (
-          <button onClick={() => setShowModal(true)} className="btn-primary">
+          <button onClick={() => setShowPayModal(true)} className="btn-primary">
             <Plus className="w-4 h-4" />
             Nouveau paiement
           </button>
@@ -106,6 +233,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
                 <th className="table-header">Statut</th>
                 <th className="table-header text-right">Montant</th>
                 <th className="table-header">Date</th>
+                <th className="table-header"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -116,6 +244,22 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
                   <td className="table-cell"><PaymentStatusBadge status={p.status} /></td>
                   <td className="table-cell text-right font-semibold">{formatCents(p.amount_cents, p.currency)}</td>
                   <td className="table-cell text-gray-400">{new Date(p.transaction_date).toLocaleDateString("fr-FR")}</td>
+                  <td className="table-cell">
+                    {p.status === "completed" && (
+                      <button
+                        onClick={() => setRefundTarget({
+                          id: p.id,
+                          amount_cents: p.amount_cents,
+                          currency: p.currency,
+                          transaction_number: p.transaction_number,
+                        })}
+                        className="text-xs text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Rembourser
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -123,19 +267,29 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
         )}
       </div>
 
-      {showModal && (
+      {showPayModal && (
         <PaymentModal
           orderId={id}
           currency={currency}
           balanceCents={commande.balance_due_cents}
-          onClose={() => setShowModal(false)}
-          onSuccess={() => setShowModal(false)}
+          onClose={() => setShowPayModal(false)}
+          onSuccess={() => setShowPayModal(false)}
           enregistrerMut={enregistrerMut}
+        />
+      )}
+
+      {refundTarget && (
+        <RefundModal
+          orderId={id}
+          transaction={refundTarget}
+          onClose={() => setRefundTarget(null)}
         />
       )}
     </div>
   );
 }
+
+// ─── Payment modal (unchanged) ────────────────────────────────────────────────
 
 function PaymentModal({
   orderId, currency, balanceCents, onClose, onSuccess, enregistrerMut,

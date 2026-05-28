@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, ShoppingCart, FileText,
   CreditCard, ScanLine, Settings, LogOut, Package,
-  BookOpen, RotateCcw, ShieldCheck, X,
+  BookOpen, RotateCcw, ShieldCheck, X, UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
@@ -151,6 +151,14 @@ function NavContent({ onClose }: { onClose?: () => void }) {
 
       {/* Footer */}
       <div className="px-3 pb-4 border-t border-white/5 pt-3 flex-shrink-0 space-y-0.5">
+        <Link
+          href="/profil"
+          onClick={onClose}
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-colors"
+        >
+          <UserCircle className="w-4 h-4 flex-shrink-0 text-slate-500" />
+          Mon profil
+        </Link>
         <Link
           href="/settings"
           onClick={onClose}
