@@ -584,6 +584,8 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
     )
     user = result.scalar_one_or_none()
 
+    _logger.info("forgot_password.lookup", found=user is not None, email=body.email)
+
     if user:
         now = datetime.now(timezone.utc)
         # Cooldown 60 s : refuser si un OTP valide a été envoyé il y a moins d'1 minute
@@ -591,18 +593,18 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
             user.password_reset_expires_at is not None
             and user.password_reset_expires_at > now + timedelta(minutes=RESET_OTP_EXPIRE_MINUTES - 1)
         ):
-            # Silencieusement ignoré — message générique pour anti-énumération
+            _logger.info("forgot_password.cooldown_active", email=body.email)
             return {"message": "Si cet email est associé à un compte actif, un code a été envoyé."}
 
         otp_plain, otp_hash = _generate_otp()
         user.password_reset_token = otp_hash
         user.password_reset_expires_at = now + timedelta(minutes=RESET_OTP_EXPIRE_MINUTES)
         user.reset_otp_attempts = 0
-        # Invalider toute session de reset précédente
         user.reset_session_token = None
         user.reset_session_expires_at = None
         await db.flush()
 
+        _logger.info("forgot_password.sending_otp", email=body.email, brevo_configured=bool(settings.BREVO_API_KEY))
         await _send_reset_otp_email(user.email, user.full_name, otp_plain)
 
         if settings.ENVIRONMENT == "development":
