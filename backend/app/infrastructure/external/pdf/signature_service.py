@@ -2,6 +2,7 @@
 PDF Signature & Stamp Service — PyHanko + image overlay.
 Supports: digital signature, visible signature image, company stamp.
 """
+import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
@@ -41,7 +42,8 @@ class SignatureService:
         profile_result = await db.execute(select(IssuerProfileModel).where(IssuerProfileModel.user_id == user_id))
         profile = profile_result.scalar_one_or_none()
 
-        signed_path = self._apply_visual_signature(
+        signed_path = await asyncio.to_thread(
+            self._apply_visual_signature,
             source_path=document.file_path,
             user=user,
             include_stamp=include_stamp,
