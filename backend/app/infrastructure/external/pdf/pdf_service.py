@@ -8,6 +8,7 @@ Documents produced:
   4. Bon de livraison  (delivery_note)    — when goods are shipped
   5. Reçu de paiement  (payment_receipt)  — after payment recorded
 """
+import asyncio
 import io
 import os
 import uuid
@@ -142,7 +143,7 @@ class PDFService:
         file_name = f"bon_commande_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
         file_path = self.output_dir / file_name
 
-        self._build_purchase_order_pdf(str(file_path), order, doc_number, issuer)
+        await asyncio.to_thread(self._build_purchase_order_pdf, str(file_path), order, doc_number, issuer)
         return await self._upsert_document(db, order, created_by, "purchase_order", doc_number, file_path, file_name)
 
     async def generate_pro_forma(
@@ -158,7 +159,7 @@ class PDFService:
         file_name = f"proforma_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
         file_path = self.output_dir / file_name
 
-        self._build_pro_forma_pdf(str(file_path), order, doc_number, issuer)
+        await asyncio.to_thread(self._build_pro_forma_pdf, str(file_path), order, doc_number, issuer)
         return await self._upsert_document(db, order, created_by, "pro_forma", doc_number, file_path, file_name)
 
     async def generate_invoice(
@@ -182,7 +183,7 @@ class PDFService:
         file_path = self.output_dir / file_name
 
         has_delivery = any(item.delivered_quantity > 0 for item in order.items)
-        self._build_invoice_pdf(str(file_path), order, doc_number, issuer, delivered_only=has_delivery)
+        await asyncio.to_thread(self._build_invoice_pdf, str(file_path), order, doc_number, issuer, delivered_only=has_delivery)
 
         if has_delivery:
             for item in order.items:
@@ -212,7 +213,7 @@ class PDFService:
         file_name = f"bon_livraison_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
         file_path = self.output_dir / file_name
 
-        self._build_delivery_note_pdf(str(file_path), order, doc_number, issuer)
+        await asyncio.to_thread(self._build_delivery_note_pdf, str(file_path), order, doc_number, issuer)
         return await self._upsert_document(db, order, created_by, "delivery_note", doc_number, file_path, file_name)
 
     async def generate_payment_receipt(
@@ -236,7 +237,7 @@ class PDFService:
         file_name = f"recu_paiement_{order.order_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
         file_path = self.output_dir / file_name
 
-        self._build_payment_receipt_pdf(str(file_path), order, payment, doc_number, issuer)
+        await asyncio.to_thread(self._build_payment_receipt_pdf, str(file_path), order, payment, doc_number, issuer)
 
         doc = Document(
             id=uuid.uuid4(),
