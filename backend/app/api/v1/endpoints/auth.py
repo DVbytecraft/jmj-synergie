@@ -723,6 +723,7 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
         )
 
     user.hashed_password = await hash_password_async(body.new_password)
+    user.is_email_verified = True  # OTP prouve la possession de l'email
     user.reset_session_token = None
     user.reset_session_expires_at = None
     user.password_reset_token = None
