@@ -1,16 +1,24 @@
 #!/bin/sh
-# Startup script — converts DATABASE_URL and runs migrations before serving.
+# Startup script — converts DATABASE_URL, runs migrations, seeds super admin, starts server.
 set -e
 
 # Render provides postgres:// — SQLAlchemy asyncpg requires postgresql+asyncpg://
 if [ -n "$DATABASE_URL" ]; then
-  # Handle postgres://, postgresql://, and leave postgresql+asyncpg:// unchanged
   DATABASE_URL=$(echo "$DATABASE_URL" | sed 's|^postgres[^+]*://|postgresql+asyncpg://|')
   export DATABASE_URL
 fi
 
 echo ">> Running Alembic migrations..."
 PYTHONPATH=/app alembic upgrade head
+
+# Seed super admin only if credentials are provided in environment.
+# The script is idempotent — does nothing if a super_admin already exists.
+if [ -n "$SUPER_ADMIN_EMAIL" ] && [ -n "$SUPER_ADMIN_PASSWORD" ]; then
+  echo ">> Seeding super admin..."
+  PYTHONPATH=/app python scripts/seed.py
+else
+  echo ">> SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD not set — skipping seed."
+fi
 
 echo ">> Starting Biloz API..."
 exec uvicorn app.main:app \
