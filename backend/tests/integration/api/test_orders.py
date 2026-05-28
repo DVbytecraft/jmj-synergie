@@ -126,7 +126,7 @@ async def test_create_order_returns_201():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=dto)
 
-    app.dependency_overrides[get_create_order_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_create_order_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.post("/api/v1/orders", json={
@@ -162,7 +162,7 @@ async def test_list_orders_returns_200():
         return_value=OrderListResponseDTO(items=[], total=0, skip=0, limit=20)
     )
 
-    app.dependency_overrides[get_list_orders_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_list_orders_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.get("/api/v1/orders")
@@ -183,7 +183,7 @@ async def test_get_order_returns_200():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=dto)
 
-    app.dependency_overrides[get_order_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_order_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.get(f"/api/v1/orders/{ORDER_ID}")
@@ -204,7 +204,7 @@ async def test_get_order_not_found_returns_404():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(side_effect=EntityNotFoundError("Order", ORDER_ID))
 
-    app.dependency_overrides[get_order_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_order_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.get(f"/api/v1/orders/{ORDER_ID}")
@@ -224,7 +224,7 @@ async def test_confirm_order_returns_200():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=dto)
 
-    app.dependency_overrides[get_confirm_order_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_confirm_order_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.post(f"/api/v1/orders/{ORDER_ID}/confirm")
@@ -244,7 +244,7 @@ async def test_delete_order_returns_204():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=None)
 
-    app.dependency_overrides[get_delete_order_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_delete_order_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.delete(f"/api/v1/orders/{ORDER_ID}")

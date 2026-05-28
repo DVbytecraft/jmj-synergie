@@ -35,7 +35,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/",
+    "",
     response_model=ProductResponseDTO,
     status_code=status.HTTP_201_CREATED,
     summary="Créer un produit",
@@ -49,7 +49,7 @@ async def create_product(
 
 
 @router.get(
-    "/",
+    "",
     response_model=ProductListResponseDTO,
     summary="Lister le catalogue produits",
 )

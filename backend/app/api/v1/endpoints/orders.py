@@ -43,7 +43,7 @@ router = APIRouter(tags=["Orders"])
 _IDEMPOTENCY_TTL = 86400  # 24 h
 
 
-@router.post("/", response_model=OrderResponseDTO, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=OrderResponseDTO, status_code=status.HTTP_201_CREATED)
 async def create_order(
     body: CreateOrderDTO,
     current_user: CurrentUser,
@@ -80,7 +80,7 @@ async def create_order(
     return result
 
 
-@router.get("/", response_model=OrderListResponseDTO)
+@router.get("", response_model=OrderListResponseDTO)
 async def list_orders(
     current_user: CurrentUser,
     uc: Annotated[ListOrdersUseCase, Depends(get_list_orders_uc)],

@@ -19,6 +19,7 @@ from fastapi import Request
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.core.redis_client import close_redis
 from app.middleware.logging import LoggingMiddleware
 import app.infrastructure.database.models  # noqa: F401 — register all ORM models on Base.metadata
 from app.middleware.rate_limiter import RateLimitMiddleware
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
     yield
     logger.info("Shutting down Biloz API")
+    await close_redis()
     await engine.dispose()
 
 

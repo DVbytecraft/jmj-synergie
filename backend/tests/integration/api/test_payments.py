@@ -111,7 +111,7 @@ async def test_record_payment_returns_201():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=dto)
 
-    app.dependency_overrides[get_record_payment_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_record_payment_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.post("/api/v1/payments", json={

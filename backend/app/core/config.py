@@ -149,6 +149,30 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def validate_production_settings(self) -> "Settings":
+        if not self.is_production:
+            return self
+
+        if not self.allowed_origins_list:
+            raise ValueError("ALLOWED_ORIGINS must be set in production")
+
+        if self.trusted_hosts_list == ["*"]:
+            raise ValueError("TRUSTED_HOSTS must not be '*' in production")
+
+        has_brevo = bool(self.BREVO_API_KEY and self.BREVO_SENDER_EMAIL)
+        has_smtp = bool(self.SMTP_HOST and self.SMTP_FROM)
+        if not (has_brevo or has_smtp):
+            raise ValueError(
+                "Transactional email must be configured in production "
+                "(BREVO_API_KEY + BREVO_SENDER_EMAIL or SMTP_HOST + SMTP_FROM)"
+            )
+
+        if self.FRONTEND_URL.startswith("http://localhost"):
+            raise ValueError("FRONTEND_URL must point to the public frontend in production")
+
+        return self
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -115,7 +115,7 @@ async def test_list_clients_returns_200():
         return_value=ClientListResponseDTO(items=[], total=0, skip=0, limit=20)
     )
 
-    app.dependency_overrides[get_list_clients_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_list_clients_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.get("/api/v1/clients")
@@ -138,7 +138,7 @@ async def test_create_client_returns_201():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=dto)
 
-    app.dependency_overrides[get_create_client_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_create_client_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.post("/api/v1/clients", json={
@@ -165,7 +165,7 @@ async def test_get_client_returns_200():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=dto)
 
-    app.dependency_overrides[get_get_client_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_get_client_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.get(f"/api/v1/clients/{CLIENT_ID}")
@@ -186,7 +186,7 @@ async def test_get_client_not_found_returns_404():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(side_effect=EntityNotFoundError("Client", CLIENT_ID))
 
-    app.dependency_overrides[get_get_client_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_get_client_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.get(f"/api/v1/clients/{CLIENT_ID}")
@@ -205,7 +205,7 @@ async def test_delete_client_returns_204():
     mock_uc = AsyncMock()
     mock_uc.execute = AsyncMock(return_value=None)
 
-    app.dependency_overrides[get_delete_client_uc] = lambda *_: mock_uc
+    app.dependency_overrides[get_delete_client_uc] = lambda: mock_uc
     try:
         async with _app_client(user) as client:
             resp = await client.delete(f"/api/v1/clients/{CLIENT_ID}")
