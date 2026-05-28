@@ -220,9 +220,9 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
       {/* Liste paiements */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Transactions ({paiements?.length ?? 0})</h2>
+          <h2 className="font-semibold text-gray-900">Transactions ({paiements?.total ?? 0})</h2>
         </div>
-        {!paiements?.length ? (
+        {!paiements?.items?.length ? (
           <div className="py-10 text-center text-gray-400 text-sm">Aucun paiement enregistré</div>
         ) : (
           <table className="w-full text-sm">
@@ -237,7 +237,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {paiements.map((p) => (
+              {paiements.items.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="table-cell font-mono text-xs">{p.transaction_number}</td>
                   <td className="table-cell">{METHOD_LABELS[p.method as PaymentMethod] ?? p.method}</td>

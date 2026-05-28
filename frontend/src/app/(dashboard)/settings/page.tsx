@@ -6,7 +6,7 @@ import { usersApi, type IssuerProfileUpdate } from "@/lib/api/users";
 import { organizationsApi, type OrganizationUpdate } from "@/lib/api/organizations";
 import { apiClient } from "@/lib/api/client";
 import { useForm } from "react-hook-form";
-import { Building2, Lock, Save, Upload, User } from "lucide-react";
+import { Building2, Lock, Save, Upload, User, CheckCircle2, AlertCircle } from "lucide-react";
 
 type SettingsForm = {
   profile_type: "business" | "individual";
@@ -166,6 +166,7 @@ export default function SettingsPage() {
 
   const organizationMutation = useMutation({
     mutationFn: organizationsApi.saveMine,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["organizations", "me"] }),
   });
 
   const profileType = watch("profile_type");
@@ -174,9 +175,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Parametres</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Paramètres</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Compte, identite emettrice et envoi automatique des documents par email.
+          Compte, identité émettrice et envoi automatique des documents par email.
         </p>
       </div>
 
@@ -227,7 +228,18 @@ export default function SettingsPage() {
             <label className="label">Ville</label>
             <input className="input" {...orgForm.register("city")} />
           </div>
-          <div className="md:col-span-2 flex justify-end">
+          <div className="md:col-span-2 flex items-center justify-end gap-3">
+            {organizationMutation.isSuccess && (
+              <span className="flex items-center gap-1 text-emerald-600 text-sm">
+                <CheckCircle2 className="w-4 h-4" /> Enregistré
+              </span>
+            )}
+            {organizationMutation.isError && (
+              <span className="flex items-center gap-1 text-red-600 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {(organizationMutation.error as any)?.response?.data?.detail ?? "Erreur lors de l'enregistrement"}
+              </span>
+            )}
             <button type="submit" className="btn-secondary" disabled={organizationMutation.isPending}>
               <Save className="w-4 h-4" />
               Enregistrer la société
@@ -284,12 +296,25 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
             <Building2 className="w-4 h-4 text-blue-600" />
-            Profil emetteur
+            Profil émetteur
           </h2>
-          <button type="submit" className="btn-primary" disabled={isSubmitting || saveMutation.isPending}>
-            <Save className="w-4 h-4" />
-            Enregistrer
-          </button>
+          <div className="flex items-center gap-3">
+            {saveMutation.isSuccess && (
+              <span className="flex items-center gap-1 text-emerald-600 text-sm">
+                <CheckCircle2 className="w-4 h-4" /> Enregistré
+              </span>
+            )}
+            {saveMutation.isError && (
+              <span className="flex items-center gap-1 text-red-600 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {(saveMutation.error as any)?.response?.data?.detail ?? "Erreur"}
+              </span>
+            )}
+            <button type="submit" className="btn-primary" disabled={isSubmitting || saveMutation.isPending}>
+              <Save className="w-4 h-4" />
+              Enregistrer
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

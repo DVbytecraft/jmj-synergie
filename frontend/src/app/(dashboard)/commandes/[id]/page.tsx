@@ -101,7 +101,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const isConfirmed = ["confirmed", "in_progress", "in_production", "ready", "partially_delivered", "delivered"].includes(commande.status);
   const hasPaid = commande.paid_cents > 0;
 
-  const latestPayment = payments?.find((p: any) => p.status === "completed") ?? payments?.[0];
+  const latestPayment = payments?.items?.find((p) => p.status === "completed") ?? payments?.items?.[0];
 
   return (
     <div className="space-y-6 max-w-4xl">

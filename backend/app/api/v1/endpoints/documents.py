@@ -98,7 +98,7 @@ async def list_all_documents(
     document_type: str | None = Query(default=None),
     date_from: date | None = Query(default=None, description="Filtrer à partir de cette date (YYYY-MM-DD)"),
     date_to: date | None = Query(default=None, description="Filtrer jusqu'à cette date (YYYY-MM-DD)"),
-    client_type: str | None = Query(default=None, description="Type de client: individual | business"),
+    client_type: str | None = Query(default=None, description="Type de client: individual | company | government | ngo"),
 ):
     """List all documents for the current organisation, with pagination and filters."""
     from datetime import datetime, timezone as tz, timedelta

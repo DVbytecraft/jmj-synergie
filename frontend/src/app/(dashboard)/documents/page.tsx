@@ -43,7 +43,9 @@ const DOC_TYPE_OPTIONS = [
 const CLIENT_TYPE_OPTIONS = [
   { value: "", label: "Tous les clients" },
   { value: "individual", label: "Particuliers" },
-  { value: "business", label: "Entreprises" },
+  { value: "company", label: "Entreprises" },
+  { value: "government", label: "Administrations" },
+  { value: "ngo", label: "ONG" },
 ];
 
 export default function DocumentsPage() {

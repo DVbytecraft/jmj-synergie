@@ -32,7 +32,7 @@ type FormData = z.infer<typeof schema>;
 const newClientSchema = z.object({
   full_name: z.string().min(1, "Nom requis"),
   phone: z.string().min(1, "Téléphone requis"),
-  client_type: z.enum(["individual", "company"]),
+  client_type: z.enum(["individual", "company", "government", "ngo"]),
   company_name: z.string().optional(),
   email: z.string().email("Email invalide").optional().or(z.literal("")),
 });
@@ -89,6 +89,8 @@ function CreateClientModal({
             <select {...register("client_type")} className="input">
               <option value="individual">Particulier</option>
               <option value="company">Entreprise</option>
+              <option value="government">Administration</option>
+              <option value="ngo">ONG</option>
             </select>
           </div>
 

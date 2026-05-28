@@ -83,7 +83,7 @@ export default function DashboardPage() {
     totalClients:        clients?.total ?? 0,
     totalCommandes:      commandes?.total ?? 0,
     caTotal:             commandes?.items.reduce((s, c) => s + c.total_cents, 0) ?? 0,
-    paiementsCompletes:  paiements?.filter((p) => p.status === "completed").reduce((s, p) => s + p.amount_cents, 0) ?? 0,
+    paiementsCompletes:  paiements?.total_completed_cents ?? 0,
   };
 
   const commandesByStatut: Record<string, number> = {
