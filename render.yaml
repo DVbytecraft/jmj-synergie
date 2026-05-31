@@ -136,3 +136,9 @@ services:
         value: production
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
+      # KEEPALIVE_SECRET : secret partagé pour l'endpoint /api/keepalive.
+      # Configurer un cron externe (ex: cron-job.org) toutes les 10 min sur
+      # https://biloz-frontend.onrender.com/api/keepalive?secret=<valeur>
+      # pour éviter le cold-start du backend sur le plan starter.
+      - key: KEEPALIVE_SECRET
+        sync: false           # Générer un token aléatoire fort (32+ chars)
