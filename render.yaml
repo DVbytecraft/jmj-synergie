@@ -119,12 +119,19 @@ services:
     dockerContext: ./frontend
     healthCheckPath: /
     envVars:
-      # BACKEND_URL : URL interne du backend — utilisée par les rewrites Next.js au build.
+      # BACKEND_URL : URL interne du backend (server-side uniquement, rewrites Next.js).
       # ⚠️  Déployer le backend en premier, puis renseigner son URL ici.
       - key: BACKEND_URL
         sync: false           # Ex: https://biloz-backend.onrender.com
+      # NEXT_PUBLIC_API_URL : TOUJOURS /api/v1 (relatif).
+      # Ne JAMAIS mettre une URL absolue ici — le navigateur ferait des
+      # requêtes directement au backend, bypassant le proxy et violant le CSP.
       - key: NEXT_PUBLIC_API_URL
-        value: /api/v1        # Toujours relatif — le proxy Next.js gère la redirection
+        value: /api/v1
+      # RENDER_BACKEND_URL : URL publique du backend — ajoutée au connect-src du CSP
+      # frontend pour couvrir les cas où NEXT_PUBLIC_API_URL serait mal configuré.
+      - key: RENDER_BACKEND_URL
+        sync: false           # Ex: https://biloz-backend.onrender.com
       - key: NODE_ENV
         value: production
       - key: NEXT_TELEMETRY_DISABLED

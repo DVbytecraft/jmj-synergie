@@ -3,14 +3,20 @@ import type { NextConfig } from "next";
 const isDev = process.env.NODE_ENV === "development";
 
 // ── Content Security Policy ───────────────────────────────────────────────────
-// Autoriser : self, Google Fonts (polices), données inline pour les SVG
+// 'unsafe-inline' requis par Next.js pour les scripts.
+// connect-src inclut le backend Render pour les déploiements où
+// NEXT_PUBLIC_API_URL pourrait pointer directement vers le backend.
+const RENDER_BACKEND = process.env.RENDER_BACKEND_URL ?? "";
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",          // 'unsafe-inline' requis par Next.js
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https://res.cloudinary.com",
-  "connect-src 'self' https://res.cloudinary.com",
+  [
+    "connect-src 'self' https://res.cloudinary.com",
+    RENDER_BACKEND ? RENDER_BACKEND : "",
+  ].filter(Boolean).join(" "),
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

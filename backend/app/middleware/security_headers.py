@@ -1,5 +1,11 @@
 """
 Security HTTP headers middleware — OWASP best practices.
+
+Note: Content-Security-Policy is intentionally NOT set here.
+This server only returns JSON API responses — CSP on JSON is meaningless
+and causes problems when Next.js proxies these responses to the browser
+(the browser may apply the CSP from proxied responses, blocking frontend
+connections). CSP is handled by the Next.js frontend in next.config.ts.
 """
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -15,15 +21,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "font-src 'self'; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none';"
-        )
         # Remove server fingerprint
         if "Server" in response.headers:
             del response.headers["Server"]

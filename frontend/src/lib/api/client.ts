@@ -11,7 +11,10 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/store/auth.store";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
+// Always use a relative path so the browser never bypasses the Next.js proxy.
+// NEXT_PUBLIC_API_URL in Render's dashboard can accidentally be set to the
+// absolute backend URL, which breaks CSP and same-origin assumptions.
+const BASE_URL = "/api/v1";
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,

@@ -62,6 +62,12 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
+  // Super_admin sans organisation → le renvoyer vers son panneau admin
+  // (toutes les pages dashboard sont scoped à une org → 403 systématique sinon)
+  if (payload.role === "super_admin" && !pathname.startsWith("/admin") && !pathname.startsWith("/profil") && !pathname.startsWith("/settings")) {
+    return NextResponse.redirect(new URL("/admin/users", request.url));
+  }
+
   // Vérifications RBAC
   const isAdminOnly = ADMIN_ONLY_ROUTES.some((r) => pathname.startsWith(r));
   if (isAdminOnly && payload.role !== "super_admin") {
