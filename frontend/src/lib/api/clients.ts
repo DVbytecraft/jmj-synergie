@@ -15,7 +15,7 @@ export const clientsApi = {
   },
 
   create: async (payload: ClientCreate) => {
-    const res = await apiClient.post<Client>("/clients/", payload);
+    const res = await apiClient.post<Client>("/clients", payload);
     return res.data;
   },
 

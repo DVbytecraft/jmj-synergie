@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str
     DATABASE_URL_SYNC: str = ""   # Pour Alembic (psycopg2)
-    DB_POOL_SIZE: int = 10
-    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_SIZE: int = 5        # 1 worker × 5 = 5 connections max de base
+    DB_MAX_OVERFLOW: int = 10   # bursts jusqu'à 15 connexions max
     DB_POOL_TIMEOUT: int = 30
     DB_ECHO: bool = False
 

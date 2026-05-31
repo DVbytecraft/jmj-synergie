@@ -19,7 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from app.api.v1.deps import (
     CurrentUser, AdminUser, ManagerUser,
