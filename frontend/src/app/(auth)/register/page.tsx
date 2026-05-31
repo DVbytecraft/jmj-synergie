@@ -84,6 +84,10 @@ export default function RegisterPage() {
     } catch (e: unknown) {
       const status = (e as any)?.response?.status;
       const detail = (e as any)?.response?.data?.detail;
+      if (status === 502 || status === 503 || status === 504) {
+        setError("Le serveur se réveille — réessayez dans 30 secondes.");
+        return;
+      }
       if (status === 409) {
         if (typeof detail === "string" && detail.includes("NIF")) {
           setError(detail);

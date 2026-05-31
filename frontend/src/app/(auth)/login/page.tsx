@@ -18,6 +18,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
+  const [isWaking, setIsWaking] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { setAuth } = useAuthStore();
@@ -30,6 +31,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     setError(null);
+    setIsWaking(false);
     try {
       const form = new URLSearchParams();
       form.append("username", data.email);
@@ -41,8 +43,13 @@ export default function LoginPage() {
       router.replace("/dashboard");
     } catch (e: unknown) {
       const err = e as { response?: { status?: number; data?: { detail?: unknown } } };
+      const status = err.response?.status;
+      if (status === 502 || status === 503 || status === 504) {
+        setIsWaking(true);
+        return;
+      }
       const detail = err.response?.data?.detail;
-      if (err.response?.status === 403 && detail === "EMAIL_NOT_VERIFIED") {
+      if (status === 403 && detail === "EMAIL_NOT_VERIFIED") {
         router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
         return;
       }
@@ -177,6 +184,16 @@ export default function LoginPage() {
                 <p className="field-error">{errors.password.message}</p>
               )}
             </div>
+
+            {/* Server waking up notice */}
+            {isWaking && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-medium">Le serveur se réveille…</p>
+                <p className="mt-0.5 text-amber-700">
+                  Première connexion du jour — réessayez dans 30 secondes.
+                </p>
+              </div>
+            )}
 
             {/* Server error */}
             {error && <div className="alert-error">{error}</div>}

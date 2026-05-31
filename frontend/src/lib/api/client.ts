@@ -7,9 +7,19 @@
  *   all callers await the same promise instead of each making their own request.
  *   This prevents JTI-rotation conflicts where the 2nd refresh call would fail
  *   because the first one already rotated the token.
+ *
+ * 502/503/504 retry:
+ *   On Render.com free tier, the backend spins down after inactivity and takes
+ *   ~30-60s to cold-start. Requests during this window get 502 from the proxy.
+ *   We retry up to 2 times with exponential backoff (2s, 4s) so the user doesn't
+ *   have to manually refresh the page.
  */
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/store/auth.store";
+
+const GATEWAY_ERRORS = new Set([502, 503, 504]);
+const MAX_RETRIES = 2;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Always use a relative path so the browser never bypasses the Next.js proxy.
 // NEXT_PUBLIC_API_URL in Render's dashboard can accidentally be set to the
@@ -69,6 +79,16 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Retry on gateway errors (Render.com cold start)
+    if (GATEWAY_ERRORS.has(error.response?.status)) {
+      const retries: number = originalRequest._retryCount ?? 0;
+      if (retries < MAX_RETRIES) {
+        originalRequest._retryCount = retries + 1;
+        await sleep(2000 * (retries + 1));
+        return apiClient(originalRequest);
+      }
+    }
 
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
