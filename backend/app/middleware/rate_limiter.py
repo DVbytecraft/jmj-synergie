@@ -5,9 +5,17 @@ Provides two mechanisms:
   1. RateLimitMiddleware — global per-IP limit applied to every request.
   2. rate_limit_dependency() — FastAPI Depends() factory for per-endpoint limits,
      used on sensitive auth routes (forgot-password, resend-verification, etc.).
+
+Failure mode:
+  If Redis is unavailable, an in-memory sliding window takes over (fail-closed).
+  The in-memory store is process-local and resets on restart, but it prevents
+  brute-force attacks during transient Redis outages instead of silently passing
+  all requests through (fail-open).
 """
-import time
+import asyncio
 import os
+import time
+from collections import defaultdict
 
 import structlog
 from fastapi import HTTPException, Request, status
@@ -17,6 +25,24 @@ from starlette.responses import JSONResponse
 from app.core.redis_client import get_redis
 
 logger = structlog.get_logger(__name__)
+
+# ─── In-memory fallback sliding window ───────────────────────────────────────
+# Keyed by (key_prefix + client_ip). List of float timestamps (epoch seconds).
+_mem_store: dict[str, list[float]] = defaultdict(list)
+_mem_lock = asyncio.Lock()
+
+
+async def _mem_check(key: str, calls: int, period: int, now: float) -> bool:
+    """Returns True if the request is allowed (within limit), False if exceeded."""
+    window_start = now - period
+    async with _mem_lock:
+        ts = _mem_store[key]
+        # Prune expired entries in-place
+        _mem_store[key] = [t for t in ts if t > window_start]
+        if len(_mem_store[key]) >= calls:
+            return False
+        _mem_store[key].append(now)
+        return True
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -37,6 +63,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
         window_start = now - self.period
 
+        redis_ok = False
         try:
             r = get_redis()
             async with r.pipeline(transaction=True) as pipe:
@@ -46,6 +73,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 pipe.expire(key, self.period)
                 results = await pipe.execute()
             count = results[2]
+            redis_ok = True
 
             if count > self.calls:
                 return JSONResponse(
@@ -54,11 +82,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     headers={"Retry-After": str(self.period)},
                 )
         except Exception as exc:
-            logger.error(
-                "rate_limiter.redis_unavailable",
+            logger.warning(
+                "rate_limiter.redis_unavailable.fallback_to_memory",
                 error=str(exc),
                 path=request.url.path,
             )
+
+        if not redis_ok:
+            allowed = await _mem_check(key, self.calls, self.period, now)
+            if not allowed:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Trop de requêtes. Réessayez plus tard."},
+                    headers={"Retry-After": str(self.period)},
+                )
 
         return await call_next(request)
 
@@ -66,6 +103,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 def rate_limit_dependency(calls: int, period: int, key_prefix: str = "rl"):
     """
     FastAPI dependency factory — per-endpoint sliding-window rate limiter.
+
+    Falls back to in-memory counting if Redis is unavailable (fail-closed).
 
     Usage:
         @router.post("/forgot-password")
@@ -83,6 +122,7 @@ def rate_limit_dependency(calls: int, period: int, key_prefix: str = "rl"):
         now = time.time()
         window_start = now - period
 
+        redis_ok = False
         try:
             r = get_redis()
             async with r.pipeline(transaction=True) as pipe:
@@ -92,6 +132,8 @@ def rate_limit_dependency(calls: int, period: int, key_prefix: str = "rl"):
                 pipe.expire(key, period)
                 results = await pipe.execute()
             count = results[2]
+            redis_ok = True
+
             if count > calls:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -101,6 +143,19 @@ def rate_limit_dependency(calls: int, period: int, key_prefix: str = "rl"):
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error("rate_limiter.dep_redis_unavailable", error=str(exc))
+            logger.warning(
+                "rate_limiter.dep_redis_unavailable.fallback_to_memory",
+                error=str(exc),
+                key_prefix=key_prefix,
+            )
+
+        if not redis_ok:
+            allowed = await _mem_check(key, calls, period, now)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Trop de requêtes. Réessayez plus tard.",
+                    headers={"Retry-After": str(period)},
+                )
 
     return _check

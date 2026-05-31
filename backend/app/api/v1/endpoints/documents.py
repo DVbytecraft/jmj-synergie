@@ -330,6 +330,22 @@ async def sign_document(
 
 
 
+_MAGIC_BYTES: dict[bytes, str] = {
+    b"\x89PNG\r\n\x1a\n": "image/png",
+    b"\xff\xd8\xff": "image/jpeg",
+    b"%PDF": "application/pdf",
+}
+_MAGIC_MAX_READ = 8  # bytes needed to detect all supported formats
+
+
+def _detect_upload_type(header: bytes) -> str | None:
+    """Return MIME type based on magic bytes, or None if unrecognised."""
+    for magic, mime in _MAGIC_BYTES.items():
+        if header[: len(magic)] == magic:
+            return mime
+    return None
+
+
 @router.post("/scan-invoice", status_code=status.HTTP_201_CREATED)
 async def scan_invoice(
     current_user: CurrentUser,
@@ -344,9 +360,12 @@ async def scan_invoice(
     if file.size and file.size > settings.max_file_size_bytes:
         raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {settings.MAX_FILE_SIZE_MB}MB)")
 
-    allowed_types = {"image/png", "image/jpeg", "application/pdf"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=415, detail="Type de fichier non supporté (PNG, JPEG, PDF uniquement)")
+    # Validate by magic bytes — content_type is client-supplied and untrustworthy.
+    header = await file.read(_MAGIC_MAX_READ)
+    await file.seek(0)
+    detected = _detect_upload_type(header)
+    if detected is None:
+        raise HTTPException(status_code=415, detail="Type de fichier non supporté. Seuls PNG, JPEG et PDF sont acceptés.")
 
     ocr_service = OCRService(settings)
     try:

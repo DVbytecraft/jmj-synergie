@@ -157,6 +157,21 @@ class Settings(BaseSettings):
         if not self.allowed_origins_list:
             raise ValueError("ALLOWED_ORIGINS must be set in production")
 
+        # A wildcard mixed with specific origins is a misconfiguration:
+        # the browser honours the specific origin, not the wildcard,
+        # but the intent is clearly wrong and can mask a security hole.
+        origins = self.allowed_origins_list
+        if "*" in origins and len(origins) > 1:
+            raise ValueError(
+                "ALLOWED_ORIGINS must not mix '*' with specific origins in production. "
+                "Either allow all origins ('*') or list specific ones — not both."
+            )
+        if "*" in origins:
+            raise ValueError(
+                "ALLOWED_ORIGINS must not be '*' in production. "
+                "List the exact frontend origin(s) instead."
+            )
+
         if self.trusted_hosts_list == ["*"]:
             raise ValueError("TRUSTED_HOSTS must not be '*' in production")
 

@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { Toaster, toast } from "@/components/ui/Toaster";
 
 /**
  * Handler global pour les ChunkLoadError.
@@ -129,18 +130,35 @@ export function Providers({ children }: { children: React.ReactNode }) {
         }),
 
         /**
-         * MutationCache.onError — idem pour les mutations.
+         * MutationCache.onError — global fallback toast for mutations that
+         * don't provide their own error UI. Per-mutation handlers take priority;
+         * this only fires when no onError is supplied to useMutation().
          */
         mutationCache: new MutationCache({
-          onError: (error: unknown) => {
+          onError: (error: unknown, _variables, _context, mutation) => {
+            // Skip if the mutation already has a per-call onError handler.
+            if (mutation.options.onError) return;
+
+            const status =
+              (error as any)?.response?.status ??
+              (error as any)?.status;
+
+            // 401/403 are handled by the Axios interceptor (redirect to login).
+            if (status === 401 || status === 403) return;
+
+            const detail =
+              (error as any)?.response?.data?.detail ??
+              (error as any)?.message;
+
+            const message =
+              typeof detail === "string"
+                ? detail
+                : "Une erreur est survenue. Réessayez.";
+
+            toast.error(message);
+
             if (process.env.NODE_ENV === "development") {
-              const status =
-                (error as any)?.response?.status ??
-                (error as any)?.status ??
-                (error as any)?.code;
-              if (status !== 401 && status !== 403) {
-                console.warn("[Mutation] Erreur :", error);
-              }
+              console.warn("[Mutation] Erreur :", error);
             }
           },
         }),
@@ -164,6 +182,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
+      <Toaster />
       {process.env.NODE_ENV === "development" && <ReactQueryDevtools />}
     </QueryClientProvider>
   );

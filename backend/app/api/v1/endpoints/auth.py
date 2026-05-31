@@ -4,6 +4,7 @@ Auth endpoints — login, register, email OTP verification, refresh, forgot/rese
 from datetime import datetime, timedelta, timezone
 import hmac
 import hashlib
+import html
 import secrets
 import uuid
 
@@ -147,6 +148,7 @@ def _otp_matches(code: str, stored_hash: str | None) -> bool:
 
 
 async def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
+    safe_name = html.escape(full_name)
     html_body = f"""
 <!DOCTYPE html>
 <html lang="fr">
@@ -158,7 +160,7 @@ async def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
     </div>
     <div style="padding:32px;">
       <p style="margin:0 0 16px;color:#374151;font-size:15px;">
-        Bonjour <strong>{full_name}</strong>,
+        Bonjour <strong>{safe_name}</strong>,
       </p>
       <p style="margin:0 0 24px;color:#374151;font-size:14px;line-height:1.6;">
         Utilisez le code ci-dessous pour activer votre compte Biloz.
@@ -193,7 +195,9 @@ async def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
 
 
 async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> bool:
-    dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
+    safe_name = html.escape(full_name)
+    safe_org = html.escape(org_name)
+    dashboard_url = html.escape(f"{settings.FRONTEND_URL}/dashboard")
     html_body = f"""
 <!DOCTYPE html>
 <html lang="fr">
@@ -211,10 +215,10 @@ async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> b
     </div>
     <div style="padding:32px;">
       <p style="margin:0 0 12px;color:#374151;font-size:15px;">
-        Bonjour <strong>{full_name}</strong>,
+        Bonjour <strong>{safe_name}</strong>,
       </p>
       <p style="margin:0 0 20px;color:#374151;font-size:14px;line-height:1.6;">
-        Votre compte administrateur pour <strong>{org_name}</strong> est activé.
+        Votre compte administrateur pour <strong>{safe_org}</strong> est activé.
         Vous pouvez dès maintenant gérer vos clients, commandes, paiements et documents.
       </p>
       <div style="text-align:center;margin:28px 0;">
@@ -249,6 +253,7 @@ async def _send_welcome_email(to_email: str, full_name: str, org_name: str) -> b
 
 
 async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> bool:
+    safe_name = html.escape(full_name)
     html_body = f"""
 <!DOCTYPE html>
 <html lang="fr">
@@ -260,7 +265,7 @@ async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> boo
     </div>
     <div style="padding:32px;">
       <p style="margin:0 0 16px;color:#374151;font-size:15px;">
-        Bonjour <strong>{full_name}</strong>,
+        Bonjour <strong>{safe_name}</strong>,
       </p>
       <p style="margin:0 0 24px;color:#374151;font-size:14px;line-height:1.6;">
         Vous avez demandé la réinitialisation de votre mot de passe Biloz.<br/>
@@ -513,10 +518,11 @@ async def verify_email(
         raise invalid_exc
 
     if user.is_email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="EMAIL_ALREADY_VERIFIED",
-        )
+        # Return 200 silently — exposing which emails are verified enables account enumeration.
+        # The frontend treats /verify-email success as "redirect to login".
+        tokens = _issue_tokens(user, response)
+        await db.flush()
+        return tokens
 
     now = datetime.now(timezone.utc)
 
