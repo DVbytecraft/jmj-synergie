@@ -12,11 +12,14 @@ Endpoints :
   POST   /orders/{id}/items              → Ajouter une ligne
   DELETE /orders/{id}/items/{item_id}    → Supprimer une ligne
 """
+import asyncio
 import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Header, Query, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import case, func, select
 
 from app.api.v1.deps import (
     CurrentUser, AdminUser, ManagerUser,
@@ -37,10 +40,152 @@ from app.application.use_cases.order.manage_order import (
     ConfirmOrderUseCase, CancelOrderUseCase, DeleteOrderUseCase,
     AddOrderItemUseCase, RemoveOrderItemUseCase, RecordDeliveryUseCase,
 )
+from app.infrastructure.database.models import (
+    ClientModel, OrderModel, OrderItemModel, PaymentTransactionModel,
+)
 
 router = APIRouter(tags=["Orders"])
 
 _IDEMPOTENCY_TTL = 86400  # 24 h
+
+
+# ─── Dashboard KPI ────────────────────────────────────────────────────────────
+
+class OrdersByStatus(BaseModel):
+    draft:       int = 0
+    confirmed:   int = 0
+    in_progress: int = 0
+    delivered:   int = 0
+    cancelled:   int = 0
+    refunded:    int = 0
+
+
+class RecentOrderKPI(BaseModel):
+    id:           str
+    order_number: str
+    status:       str
+    total_cents:  int
+    currency:     str
+    created_at:   str
+
+
+class DashboardKPIResponse(BaseModel):
+    total_orders:        int
+    total_clients:       int
+    ca_total_cents:      int
+    total_paid_cents:    int
+    orders_by_status:    OrdersByStatus
+    recent_orders:       list[RecentOrderKPI]
+
+
+@router.get("/kpi", response_model=DashboardKPIResponse)
+async def get_dashboard_kpi(current_user: CurrentUser, db: DB):
+    """
+    Single-request dashboard KPI — all aggregates computed server-side.
+    Replaces 3 separate list calls (orders + clients + payments) with 5
+    targeted SQL queries run in parallel.
+    """
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Organisation requise")
+
+    async def _total_orders():
+        return await db.scalar(
+            select(func.count(OrderModel.id)).where(
+                OrderModel.organization_id == org_id,
+                OrderModel.is_deleted == False,  # noqa: E712
+            )
+        ) or 0
+
+    async def _total_clients():
+        return await db.scalar(
+            select(func.count(ClientModel.id)).where(
+                ClientModel.organization_id == org_id,
+                ClientModel.is_deleted == False,  # noqa: E712
+                ClientModel.status == "active",
+            )
+        ) or 0
+
+    async def _ca_and_status():
+        # Compute CA as SUM(paid_cents) per confirmed/in_progress/delivered order
+        # and status breakdown in a single query.
+        rows = await db.execute(
+            select(
+                OrderModel.status,
+                func.count(OrderModel.id).label("cnt"),
+                func.coalesce(func.sum(OrderModel.paid_cents), 0).label("paid"),
+            )
+            .where(
+                OrderModel.organization_id == org_id,
+                OrderModel.is_deleted == False,  # noqa: E712
+            )
+            .group_by(OrderModel.status)
+        )
+        status_counts: dict[str, int] = {}
+        ca_total = 0
+        for row in rows.all():
+            status_counts[row.status] = row.cnt
+            ca_total += int(row.paid)
+        return status_counts, ca_total
+
+    async def _total_paid():
+        return await db.scalar(
+            select(func.coalesce(func.sum(PaymentTransactionModel.amount_cents), 0)).where(
+                PaymentTransactionModel.organization_id == org_id,
+                PaymentTransactionModel.status == "completed",
+                PaymentTransactionModel.transaction_type == "payment",
+            )
+        ) or 0
+
+    async def _recent_orders():
+        result = await db.execute(
+            select(OrderModel)
+            .where(
+                OrderModel.organization_id == org_id,
+                OrderModel.is_deleted == False,  # noqa: E712
+            )
+            .order_by(OrderModel.created_at.desc())
+            .limit(6)
+        )
+        return result.scalars().all()
+
+    total_orders, total_clients, (status_counts, ca_total), total_paid, recent = (
+        await asyncio.gather(
+            _total_orders(),
+            _total_clients(),
+            _ca_and_status(),
+            _total_paid(),
+            _recent_orders(),
+        )
+    )
+
+    by_status = OrdersByStatus(
+        draft=status_counts.get("draft", 0),
+        confirmed=status_counts.get("confirmed", 0),
+        in_progress=status_counts.get("in_progress", 0),
+        delivered=status_counts.get("delivered", 0),
+        cancelled=status_counts.get("cancelled", 0),
+        refunded=status_counts.get("refunded", 0),
+    )
+
+    return DashboardKPIResponse(
+        total_orders=total_orders,
+        total_clients=total_clients,
+        ca_total_cents=ca_total,
+        total_paid_cents=int(total_paid),
+        orders_by_status=by_status,
+        recent_orders=[
+            RecentOrderKPI(
+                id=str(o.id),
+                order_number=o.order_number,
+                status=o.status,
+                total_cents=o.paid_cents,
+                currency=o.currency,
+                created_at=o.created_at.isoformat(),
+            )
+            for o in recent
+        ],
+    )
 
 
 @router.post("", response_model=OrderResponseDTO, status_code=status.HTTP_201_CREATED)

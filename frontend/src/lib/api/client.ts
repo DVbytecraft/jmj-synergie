@@ -1,14 +1,49 @@
 /**
- * Axios instance — auto-attaches JWT, handles token refresh.
+ * Axios instance — auto-attaches JWT Bearer token, handles silent token refresh.
+ *
+ * Refresh flow:
+ *   On 401, performRefresh() is called. It is a singleton: if a refresh is already
+ *   in-flight (e.g. React StrictMode double-invoke, or concurrent 401 responses),
+ *   all callers await the same promise instead of each making their own request.
+ *   This prevents JTI-rotation conflicts where the 2nd refresh call would fail
+ *   because the first one already rotated the token.
  */
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/store/auth.store";
 
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
+
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "/api/v1",
+  baseURL: BASE_URL,
   timeout: 30_000,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
+
+// ─── Singleton refresh — one in-flight request shared by all callers ──────────
+let _refreshPromise: Promise<string> | null = null;
+
+/**
+ * Attempt a silent token refresh using the HttpOnly 'rt' cookie.
+ * Returns the new access token, or throws on failure.
+ * Concurrent calls share the same in-flight request.
+ */
+export async function performRefresh(): Promise<string> {
+  if (_refreshPromise) return _refreshPromise;
+
+  _refreshPromise = axios
+    .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+    .then((res) => {
+      const token: string = res.data.access_token;
+      useAuthStore.getState().setAuth(token);
+      return token;
+    })
+    .finally(() => {
+      _refreshPromise = null;
+    });
+
+  return _refreshPromise;
+}
 
 // ─── Request interceptor — attach Bearer token ────────────────────────────────
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -19,12 +54,11 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-// ─── Response interceptor — refresh on 401 ────────────────────────────────────
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: Function; reject: Function }> = [];
+// ─── Response interceptor — silent refresh on 401 ────────────────────────────
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = [];
 
-const processQueue = (error: any, token: string | null) => {
-  failedQueue.forEach(({ resolve, reject }) => (error ? reject(error) : resolve(token)));
+const processQueue = (error: unknown, token: string | null) => {
+  failedQueue.forEach(({ resolve, reject }) => (error ? reject(error) : resolve(token!)));
   failedQueue = [];
 };
 
@@ -33,45 +67,32 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return apiClient(originalRequest);
-        });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      const refreshToken = useAuthStore.getState().refreshToken;
-      if (!refreshToken) {
-        useAuthStore.getState().clearAuth();
-        return Promise.reject(error);
-      }
-
-      try {
-        const res = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/auth/refresh`,
-          { refresh_token: refreshToken }
-        );
-        const { access_token, refresh_token } = res.data;
-        useAuthStore.getState().setAuth(access_token, refresh_token);
-        apiClient.defaults.headers.common.Authorization = `Bearer ${access_token}`;
-        processQueue(null, access_token);
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        return apiClient(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        useAuthStore.getState().clearAuth();
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    originalRequest._retry = true;
+
+    // If a refresh is already in-flight, queue this request
+    if (_refreshPromise) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      }).then((token) => {
+        originalRequest.headers.Authorization = `Bearer ${token}`;
+        return apiClient(originalRequest);
+      });
+    }
+
+    try {
+      const newToken = await performRefresh();
+      apiClient.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+      processQueue(null, newToken);
+      originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      return apiClient(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      useAuthStore.getState().clearAuth();
+      return Promise.reject(refreshError);
+    }
   }
 );

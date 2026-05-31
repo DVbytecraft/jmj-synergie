@@ -28,7 +28,7 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 logger = structlog.get_logger()
 
 # ─── Sentry ───────────────────────────────────────────────────────────────────
-
+ 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,

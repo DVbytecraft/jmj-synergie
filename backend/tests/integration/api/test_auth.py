@@ -1,7 +1,8 @@
 """
-Integration tests for auth endpoints.
-Tests focus on the JTI refresh-token revocation we introduced in Fix 3.
-The DB layer is mocked so no real PostgreSQL is required.
+Integration tests for auth endpoints — cookie-based refresh token flow.
+
+The refresh token is now stored as an HttpOnly cookie 'rt' (not in the
+response body). Tests send the cookie via httpx cookies= parameter.
 """
 from __future__ import annotations
 
@@ -10,12 +11,13 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.core.security import create_refresh_token
 from app.infrastructure.database.models import UserModel
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_active_user(user_id: uuid.UUID | None = None, jti: str | None = None) -> UserModel:
     u = UserModel()
@@ -33,41 +35,30 @@ def _make_active_user(user_id: uuid.UUID | None = None, jti: str | None = None) 
     return u
 
 
-def _mock_db_returning(user: UserModel | None) -> AsyncMock:
-    """Build a minimal AsyncSession mock whose execute() returns the given user."""
+def _mock_db(user: UserModel | None) -> AsyncMock:
     result = MagicMock()
     result.scalar_one_or_none.return_value = user
-    result.scalars.return_value.first.return_value = user
-
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
     db.flush = AsyncMock()
+    db.add = MagicMock()
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
-    db.add = MagicMock()
     db.close = AsyncMock()
     return db
 
 
-@pytest_asyncio.fixture
-async def anon_client() -> AsyncClient:
-    """Unauthenticated client — for auth-level endpoints (login, refresh, logout)."""
-    from app.main import app
-    from app.core.database import get_db
-
-    # We'll set the override per-test via a factory helper
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-    ) as ac:
-        yield ac
+def _db_override(user: UserModel | None):
+    async def _yield():
+        yield _mock_db(user)
+    return _yield
 
 
-# ── /refresh — JTI revocation ─────────────────────────────────────────────────
+# ── /refresh — cookie-based ───────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_refresh_valid_jti_returns_new_tokens():
-    """A refresh token whose JTI matches the stored JTI must succeed."""
+async def test_refresh_valid_cookie_returns_new_access_token():
+    """Valid 'rt' cookie with matching JTI → returns new access_token."""
     from app.main import app
     from app.core.database import get_db
 
@@ -75,31 +66,58 @@ async def test_refresh_valid_jti_returns_new_tokens():
     token, jti = create_refresh_token(user_id)
     user = _make_active_user(user_id, jti=jti)
 
-    # After _issue_tokens the user's JTI will be updated; we allow flush to succeed
-    db = _mock_db_returning(user)
-
-    async def _override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/api/v1/auth/refresh", json={"refresh_token": token}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/refresh", cookies={"rt": token})
         assert resp.status_code == 200
         data = resp.json()
         assert "access_token" in data
-        assert "refresh_token" in data
+        # refresh_token must NOT appear in the body anymore
+        assert "refresh_token" not in data
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_refresh_sets_new_rt_cookie():
+    """After refresh, response must set a new 'rt' HttpOnly cookie."""
+    from app.main import app
+    from app.core.database import get_db
+
+    user_id = uuid.uuid4()
+    token, jti = create_refresh_token(user_id)
+    user = _make_active_user(user_id, jti=jti)
+
+    app.dependency_overrides[get_db] = _db_override(user)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/refresh", cookies={"rt": token})
+        assert resp.status_code == 200
+        # Cookie must be present in Set-Cookie header
+        assert "rt" in resp.cookies
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_refresh_no_cookie_returns_401():
+    """No cookie at all → 401 (session expired)."""
+    from app.main import app
+    from app.core.database import get_db
+
+    app.dependency_overrides[get_db] = _db_override(None)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/refresh")
+        assert resp.status_code == 401
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio
 async def test_refresh_wrong_jti_returns_401():
-    """A revoked refresh token (JTI mismatch) must be rejected."""
+    """Cookie with revoked JTI (user logged out or re-logged elsewhere) → 401."""
     from app.main import app
     from app.core.database import get_db
 
@@ -107,49 +125,11 @@ async def test_refresh_wrong_jti_returns_401():
     old_token, _old_jti = create_refresh_token(user_id)
     _new_token, new_jti = create_refresh_token(user_id)
 
-    # DB has the NEW jti stored (old one is revoked)
-    user = _make_active_user(user_id, jti=new_jti)
-    db = _mock_db_returning(user)
-
-    async def _override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _override_db
+    user = _make_active_user(user_id, jti=new_jti)  # DB stores NEW jti
+    app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/api/v1/auth/refresh", json={"refresh_token": old_token}
-            )
-        assert resp.status_code == 401
-        assert "révoqué" in resp.json()["detail"].lower() or "expir" in resp.json()["detail"].lower()
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-
-
-@pytest.mark.asyncio
-async def test_refresh_no_jti_stored_returns_401():
-    """If the user has no JTI in DB (was logged out), refresh must fail."""
-    from app.main import app
-    from app.core.database import get_db
-
-    user_id = uuid.uuid4()
-    token, _jti = create_refresh_token(user_id)
-    user = _make_active_user(user_id, jti=None)  # no JTI in DB
-    db = _mock_db_returning(user)
-
-    async def _override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _override_db
-    try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/api/v1/auth/refresh", json={"refresh_token": token}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/refresh", cookies={"rt": old_token})
         assert resp.status_code == 401
     finally:
         app.dependency_overrides.pop(get_db, None)
@@ -157,77 +137,88 @@ async def test_refresh_no_jti_stored_returns_401():
 
 @pytest.mark.asyncio
 async def test_refresh_invalid_token_returns_401():
-    """A completely invalid (garbage) refresh token must return 401."""
+    """Garbage cookie value → 401."""
     from app.main import app
     from app.core.database import get_db
 
-    db = _mock_db_returning(None)
-
-    async def _override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_db] = _db_override(None)
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/api/v1/auth/refresh", json={"refresh_token": "not.a.token"}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/refresh", cookies={"rt": "not.a.jwt.token"})
         assert resp.status_code == 401
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 
-# ── /logout ───────────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_refresh_no_jti_in_db_returns_401():
+    """User's refresh_token_jti is None in DB (was explicitly logged out) → 401."""
+    from app.main import app
+    from app.core.database import get_db
+
+    user_id = uuid.uuid4()
+    token, _jti = create_refresh_token(user_id)
+    user = _make_active_user(user_id, jti=None)
+
+    app.dependency_overrides[get_db] = _db_override(user)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/refresh", cookies={"rt": token})
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+# ── /logout — cookie-based ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_logout_clears_jti():
-    """Logout must set user.refresh_token_jti to None."""
+async def test_logout_clears_jti_and_deletes_cookie():
+    """Valid 'rt' cookie → JTI set to None, Set-Cookie clears 'rt'."""
     from app.main import app
     from app.core.database import get_db
 
     user_id = uuid.uuid4()
     token, jti = create_refresh_token(user_id)
     user = _make_active_user(user_id, jti=jti)
-    db = _mock_db_returning(user)
 
-    async def _override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/api/v1/auth/logout", json={"refresh_token": token}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/logout", cookies={"rt": token})
         assert resp.status_code == 200
         assert user.refresh_token_jti is None
+        # Cookie should be cleared (Max-Age=0 or expires in past)
+        cookie_header = resp.headers.get("set-cookie", "")
+        assert "rt=" in cookie_header or "rt" in resp.cookies
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio
-async def test_logout_with_invalid_token_still_succeeds():
-    """Logout with an already-invalid token must return 200 (idempotent)."""
+async def test_logout_no_cookie_still_succeeds():
+    """Logout without any cookie → 200 (idempotent, nothing to revoke)."""
     from app.main import app
     from app.core.database import get_db
 
-    db = _mock_db_returning(None)
-
-    async def _override_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_db] = _db_override(None)
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/api/v1/auth/logout", json={"refresh_token": "garbage.token.here"}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/logout")
+        assert resp.status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_logout_invalid_token_still_succeeds():
+    """Logout with garbage cookie → 200 (no crash)."""
+    from app.main import app
+    from app.core.database import get_db
+
+    app.dependency_overrides[get_db] = _db_override(None)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/api/v1/auth/logout", cookies={"rt": "garbage.token.here"})
         assert resp.status_code == 200
     finally:
         app.dependency_overrides.pop(get_db, None)

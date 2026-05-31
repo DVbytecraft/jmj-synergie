@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Lock, Mail, ArrowRight, Users, ShoppingCart, TrendingUp } from "lucide-react";
+import { Loader2, Lock, Mail, ArrowRight, Users, ShoppingCart, TrendingUp, Eye, EyeOff } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { apiClient } from "@/lib/api/client";
 
@@ -18,6 +18,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { setAuth } = useAuthStore();
 
@@ -36,7 +37,7 @@ export default function LoginPage() {
       const res = await apiClient.post("/auth/login", form, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      setAuth(res.data.access_token, res.data.refresh_token);
+      setAuth(res.data.access_token);
       router.replace("/dashboard");
     } catch (e: unknown) {
       const err = e as { response?: { status?: number; data?: { detail?: unknown } } };
@@ -157,11 +158,20 @@ export default function LoginPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <input
                   {...register("password")}
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="input pl-10"
+                  className="input pl-10 pr-10"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
               {errors.password && (
                 <p className="field-error">{errors.password.message}</p>

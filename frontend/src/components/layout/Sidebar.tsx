@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
+import { apiClient } from "@/lib/api/client";
 import { useRouter } from "next/navigation";
 import { useSidebar } from "./sidebar-context";
 import type { RoleUtilisateur } from "@/types";
@@ -75,7 +76,13 @@ function NavContent({ onClose }: { onClose?: () => void }) {
   const router = useRouter();
   const { clearAuth, user } = useAuthStore();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Revoke the HttpOnly 'rt' cookie on the server before clearing local state
+      await apiClient.post("/auth/logout");
+    } catch {
+      // Server unavailable — still clear client-side auth
+    }
     clearAuth();
     router.replace("/login");
   };

@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -243,7 +244,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
                   <td className="table-cell">{METHOD_LABELS[p.method as PaymentMethod] ?? p.method}</td>
                   <td className="table-cell"><PaymentStatusBadge status={p.status} /></td>
                   <td className="table-cell text-right font-semibold">{formatCents(p.amount_cents, p.currency)}</td>
-                  <td className="table-cell text-gray-400">{new Date(p.transaction_date).toLocaleDateString("fr-FR")}</td>
+                  <td className="table-cell text-gray-400">{formatDateFr(p.transaction_date)}</td>
                   <td className="table-cell">
                     {p.status === "completed" && (
                       <button

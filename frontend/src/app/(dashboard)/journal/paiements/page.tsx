@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useJournalPaiements } from "@/lib/hooks/use-journal";
@@ -86,7 +87,7 @@ export default function JournalPaiementsPage() {
                       </td>
                       <td className="table-cell text-right font-semibold">{formatCents(e.amount_cents, e.currency)}</td>
                       <td className="table-cell text-gray-400">
-                        {new Date(e.transaction_date).toLocaleDateString("fr-FR")}
+                        {formatDateFr(e.transaction_date)}
                       </td>
                     </tr>
                   );

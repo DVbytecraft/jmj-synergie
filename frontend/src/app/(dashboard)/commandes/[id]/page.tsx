@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -118,7 +119,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
             <OrderStatusBadge status={commande.status} />
           </div>
           <p className="text-sm text-gray-400 mt-0.5">
-            Créée le {new Date(commande.created_at).toLocaleDateString("fr-FR", { dateStyle: "long" })}
+            Créée le {formatDateFr(commande.created_at)}
           </p>
         </div>
 

@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -184,7 +185,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               )}
               <div className="flex items-center gap-3 text-gray-400">
                 <Calendar className="w-4 h-4 flex-shrink-0" />
-                <span>Créé le {new Date(client.created_at).toLocaleDateString("fr-FR")}</span>
+                <span>Créé le {formatDateFr(client.created_at)}</span>
               </div>
             </div>
           )}
@@ -240,7 +241,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     <td className="table-cell text-right">{formatCents(c.subtotal_cents, c.currency)}</td>
                     <td className="table-cell text-right font-semibold">{formatCents(c.total_cents, c.currency)}</td>
                     <td className="table-cell text-gray-400">
-                      {new Date(c.created_at).toLocaleDateString("fr-FR")}
+                      {formatDateFr(c.created_at)}
                     </td>
                   </tr>
                 ))}

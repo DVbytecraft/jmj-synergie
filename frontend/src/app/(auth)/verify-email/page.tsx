@@ -54,7 +54,7 @@ function VerifyEmailContent() {
       setError(null);
       try {
         const res = await apiClient.post("/auth/verify-email", { email, code });
-        setAuth(res.data.access_token, res.data.refresh_token);
+        setAuth(res.data.access_token);
         await uploadPendingLogo();
         setSuccess(true);
         setTimeout(() => router.replace("/dashboard"), 1200);

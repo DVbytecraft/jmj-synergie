@@ -17,6 +17,17 @@ from app.infrastructure.database.session import get_db_session as get_db
 router = APIRouter()
 
 
+def _detect_image_type(content: bytes) -> str | None:
+    """Return real MIME type via magic bytes, or None if unrecognised."""
+    if content[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if content[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 class OrganizationResponse(BaseModel):
     id: UUID
     code: str
@@ -104,6 +115,11 @@ async def upload_organization_logo(
 
     organization = await _get_org_or_404(db, current_user.organization_id)
     content = await file.read()
+
+    actual_type = _detect_image_type(content)
+    if actual_type is None or actual_type != file.content_type:
+        raise HTTPException(status_code=415, detail="Le contenu du fichier ne correspond pas au type déclaré")
+
     ext = Path(file.filename or "logo").suffix or ".png"
     filename = f"logo_{organization.id}{ext}"
 

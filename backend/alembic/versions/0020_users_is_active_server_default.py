@@ -13,9 +13,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE users ALTER COLUMN is_active SET DEFAULT true")
-    op.execute("UPDATE users SET is_active = true WHERE is_active IS NULL")
+    # users.is_active does not exist — users use the 'status' varchar column.
+    # organizations.is_active already has a server default.
+    # This migration is a no-op kept only for revision continuity.
+    pass
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE users ALTER COLUMN is_active DROP DEFAULT")
+    pass

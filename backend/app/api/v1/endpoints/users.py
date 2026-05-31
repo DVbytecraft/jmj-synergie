@@ -21,6 +21,55 @@ from app.infrastructure.database.session import get_db_session as get_db
 router = APIRouter()
 
 VALID_ROLES = ("super_admin", "admin", "manager", "operator")
+
+
+def _detect_image_type(content: bytes) -> str | None:
+    """Return the real MIME type by inspecting magic bytes, or None if unrecognised."""
+    if content[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if content[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _extract_dominant_color(content: bytes) -> str | None:
+    """
+    Extract the dominant non-white, non-transparent color from image bytes.
+    Returns an hex string like '#1a56db', or None if extraction fails.
+    Uses Pillow's quantize to find the most prominent palette color.
+    """
+    try:
+        import io
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(content)).convert("RGBA")
+        # Shrink for speed — dominant color doesn't need full resolution
+        img.thumbnail((64, 64))
+
+        # Flatten transparent pixels to white so they don't skew the result
+        bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        bg.paste(img, mask=img.split()[3])
+        rgb = bg.convert("RGB")
+
+        # Quantize to 8 colors and pick the most frequent non-white one
+        quantized = rgb.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
+        palette = quantized.getpalette()  # flat [r,g,b, r,g,b, ...]
+        counts = quantized.getcolors(maxcolors=256) or []
+        counts_sorted = sorted(counts, key=lambda x: -x[0])
+
+        for _, idx in counts_sorted:
+            r = palette[idx * 3]
+            g = palette[idx * 3 + 1]
+            b = palette[idx * 3 + 2]
+            # Skip near-white and near-black — they're backgrounds/shadows
+            brightness = (r * 299 + g * 587 + b * 114) / 1000
+            if 30 < brightness < 220:
+                return f"#{r:02x}{g:02x}{b:02x}"
+        return None
+    except Exception:
+        return None
 # Roles an admin is allowed to assign (cannot assign super_admin)
 ADMIN_ASSIGNABLE_ROLES = ("admin", "manager", "operator")
 
@@ -74,7 +123,11 @@ class IssuerProfileUpdate(BaseModel):
     tax_included: bool = True
     primary_color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{3,8}$")
     secondary_color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{3,8}$")
-    font_family: str | None = Field(default=None, max_length=50)
+    font_family: str | None = Field(
+        default=None,
+        max_length=50,
+        pattern=r"^(Helvetica|Times-Roman|Courier|Helvetica-Bold|Times-Bold|Courier-Bold)$",
+    )
 
 
 class IssuerProfileResponse(BaseModel):
@@ -277,6 +330,13 @@ async def upload_my_issuer_asset(
         db.add(profile)
 
     content = await file.read()
+
+    # Validate actual file content via magic bytes — Content-Type header is client-supplied
+    # and trivially spoofable; this check prevents disguised executables or SVG+XSS payloads.
+    actual_type = _detect_image_type(content)
+    if actual_type is None or actual_type != file.content_type:
+        raise HTTPException(status_code=415, detail="Le contenu du fichier ne correspond pas au type déclaré")
+
     _EXT_MAP = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
     ext = _EXT_MAP.get(file.content_type or "", ".png")
     filename = f"{asset_type}{ext}"
@@ -287,6 +347,21 @@ async def upload_my_issuer_asset(
 
     if asset_type == "logo":
         profile.logo_path = saved_path
+        # Auto-extract dominant color from logo and apply it if profile has no custom color yet
+        extracted = _extract_dominant_color(content)
+        if extracted:
+            if not profile.primary_color or profile.primary_color == "#1a56db":
+                profile.primary_color = extracted
+            # Secondary color = very light tint of the primary (10 % opacity approximation)
+            if not profile.secondary_color or profile.secondary_color == "#eff6ff":
+                r = int(extracted[1:3], 16)
+                g = int(extracted[3:5], 16)
+                b = int(extracted[5:7], 16)
+                # Mix 90 % white + 10 % primary
+                sr = min(255, int(r * 0.15 + 255 * 0.85))
+                sg = min(255, int(g * 0.15 + 255 * 0.85))
+                sb = min(255, int(b * 0.15 + 255 * 0.85))
+                profile.secondary_color = f"#{sr:02x}{sg:02x}{sb:02x}"
     elif asset_type == "stamp":
         profile.stamp_path = saved_path
     else:

@@ -645,21 +645,49 @@ class PDFService:
             return t
         return text
 
+    # Only these CDN hosts are trusted for remote image fetches (SSRF guard).
+    _TRUSTED_IMAGE_HOSTS = frozenset({"res.cloudinary.com"})
+
     def _load_image_asset(self, path: str, width: float, height: float) -> Image | None:
-        """Load an image from a local path or HTTP URL."""
+        """Load an image from a local path or a trusted HTTPS URL.
+
+        Remote URLs are restricted to _TRUSTED_IMAGE_HOSTS to prevent SSRF attacks.
+        Any untrusted host is silently skipped so PDF generation continues without
+        the image rather than making requests to internal network addresses.
+        """
         if not path:
             return None
-        if path.startswith("http"):
-            try:
-                import httpx
-                resp = httpx.get(path, timeout=5)
-                if resp.status_code == 200:
-                    return Image(io.BytesIO(resp.content), width=width, height=height)
-            except Exception:
+        if path.startswith("http://") or path.startswith("https://"):
+            return self._load_remote_image(path, width, height)
+        return self._load_local_image(path, width, height)
+
+    def _load_remote_image(self, url: str, width: float, height: float) -> Image | None:
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(url)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme != "https" or host not in self._TRUSTED_IMAGE_HOSTS:
                 return None
-        if os.path.exists(path):
-            return Image(path, width=width, height=height)
+            import httpx
+            resp = httpx.get(url, timeout=5, follow_redirects=False)
+            if resp.status_code == 200:
+                return Image(io.BytesIO(resp.content), width=width, height=height)
+        except Exception:
+            pass
         return None
+
+    def _load_local_image(self, path: str, width: float, height: float) -> Image | None:
+        storage_root = os.path.realpath(self.settings.STORAGE_PATH)
+        try:
+            resolved = os.path.realpath(path)
+        except Exception:
+            return None
+        if not (resolved == storage_root or resolved.startswith(storage_root + os.sep)):
+            return None
+        try:
+            return Image(resolved, width=width, height=height)
+        except Exception:
+            return None
 
     def _client_block(self, styles, client: Any, label: str = "Client", issuer: dict | None = None) -> Any:
         lines = [f"<b>{label} :</b> {client.full_name}"]
@@ -867,7 +895,12 @@ class PDFService:
             footer_extra_parts.append(f"Compte : {bank_account}")
 
         base_footer = (profile.footer_notes if profile else None) or ""
-        footer_notes = " | ".join(filter(None, [base_footer] + footer_extra_parts))
+        # Deduplicate: skip auto-added items already mentioned in footer_notes
+        extra_deduped = [
+            part for part in footer_extra_parts
+            if part.split(":")[1].strip() not in base_footer if ":" in part
+        ]
+        footer_notes = " | ".join(filter(None, [base_footer] + extra_deduped))
 
         return {
             "name":             name or self.settings.COMPANY_NAME,

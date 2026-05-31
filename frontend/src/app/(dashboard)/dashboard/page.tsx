@@ -1,17 +1,46 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { commandesApi } from "@/lib/api/commandes";
-import { clientsApi } from "@/lib/api/clients";
-import { paiementsApi } from "@/lib/api/paiements";
+import { apiClient } from "@/lib/api/client";
+import { usersApi } from "@/lib/api/users";
 import { formatCents } from "@/lib/utils/money";
+import { formatDateFr } from "@/lib/utils/format-dates";
 import { Users, ShoppingCart, CreditCard, TrendingUp, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
-import { formatDateFr } from "@/lib/utils/format-dates";
+import { OnboardingBanner } from "@/components/ui/OnboardingBanner";
 
+// ── Types ────────────────────────────────────────────────────────────────────
 
-/* ── Skeleton placeholder ──────────────────────────── */
+interface OrdersByStatus {
+  draft:       number;
+  confirmed:   number;
+  in_progress: number;
+  delivered:   number;
+  cancelled:   number;
+  refunded:    number;
+}
+
+interface RecentOrder {
+  id:           string;
+  order_number: string;
+  status:       string;
+  total_cents:  number;
+  currency:     string;
+  created_at:   string;
+}
+
+interface DashboardKPI {
+  total_orders:      number;
+  total_clients:     number;
+  ca_total_cents:    number;
+  total_paid_cents:  number;
+  orders_by_status:  OrdersByStatus;
+  recent_orders:     RecentOrder[];
+}
+
+// ── Skeleton ─────────────────────────────────────────────────────────────────
+
 function SkeletonCard() {
   return (
     <div className="card p-5 flex items-center gap-4">
@@ -25,7 +54,8 @@ function SkeletonCard() {
   );
 }
 
-/* ── KPI card ──────────────────────────────────────── */
+// ── KPI card ──────────────────────────────────────────────────────────────────
+
 function StatCard({
   icon: Icon,
   label,
@@ -53,7 +83,8 @@ function StatCard({
   );
 }
 
-/* ── Status bar ────────────────────────────────────── */
+// ── Status bar config ─────────────────────────────────────────────────────────
+
 const STATUS_CONFIG = [
   { key: "draft",       label: "Brouillon", color: "bg-slate-400" },
   { key: "confirmed",   label: "Confirmée", color: "bg-blue-500" },
@@ -62,45 +93,33 @@ const STATUS_CONFIG = [
   { key: "cancelled",   label: "Annulée",   color: "bg-red-400" },
 ] as const;
 
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-  const { data: commandes, isLoading: loadingCmds } = useQuery({
-    queryKey: ["commandes", "dashboard"],
-    queryFn: () => commandesApi.list({ limit: 100 }),
-  });
-  const { data: clients, isLoading: loadingClients } = useQuery({
-    queryKey: ["clients", "dashboard"],
-    queryFn: () => clientsApi.list({ limit: 100 }),
-  });
-  const { data: paiements, isLoading: loadingPaiements } = useQuery({
-    queryKey: ["paiements", "dashboard"],
-    queryFn: () => paiementsApi.list({ limit: 100 }),
+  const { data: kpi, isLoading } = useQuery<DashboardKPI>({
+    queryKey: ["dashboard", "kpi"],
+    queryFn: () => apiClient.get<DashboardKPI>("/orders/kpi").then((r) => r.data),
+    staleTime: 60_000,
   });
 
-  const isLoading = loadingCmds || loadingClients || loadingPaiements;
-  const currency = commandes?.items[0]?.currency ?? "XAF";
+  const { data: profile } = useQuery({
+    queryKey: ["users", "me", "issuer-profile"],
+    queryFn: usersApi.getMyIssuerProfile,
+    staleTime: 5 * 60_000,
+  });
 
-  const stats = {
-    totalClients:        clients?.total ?? 0,
-    totalCommandes:      commandes?.total ?? 0,
-    caTotal:             commandes?.items.reduce((s, c) => s + c.total_cents, 0) ?? 0,
-    paiementsCompletes:  paiements?.total_completed_cents ?? 0,
-  };
-
-  const commandesByStatut: Record<string, number> = {
-    draft:       commandes?.items.filter((c) => c.status === "draft").length ?? 0,
-    confirmed:   commandes?.items.filter((c) => c.status === "confirmed").length ?? 0,
-    in_progress: commandes?.items.filter((c) => c.status === "in_progress").length ?? 0,
-    delivered:   commandes?.items.filter((c) => c.status === "delivered").length ?? 0,
-    cancelled:   commandes?.items.filter((c) => c.status === "cancelled").length ?? 0,
-  };
-
-  const recentCommandes = commandes?.items
-    .slice()
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 6) ?? [];
+  const currency = kpi?.recent_orders[0]?.currency ?? "XAF";
 
   return (
     <div className="space-y-6">
+      {/* ── Onboarding — shown once to new users ── */}
+      <OnboardingBanner
+        hasLogo={!!profile?.logo_path}
+        hasDisplayName={!!(profile?.display_name || profile?.company_name)}
+        hasCompanyName={!!(profile?.display_name || profile?.company_name)}
+        hasSignature={!!(profile?.signature_path || profile?.signature_text)}
+      />
+
       {/* ── KPI row ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {isLoading ? (
@@ -110,28 +129,28 @@ export default function DashboardPage() {
             <StatCard
               icon={Users}
               label="Clients actifs"
-              value={stats.totalClients}
+              value={kpi?.total_clients ?? 0}
               sub="Comptes enregistrés"
               iconBg="bg-blue-600"
             />
             <StatCard
               icon={ShoppingCart}
               label="Commandes"
-              value={stats.totalCommandes}
-              sub={`${commandesByStatut.draft} en attente`}
+              value={kpi?.total_orders ?? 0}
+              sub={`${kpi?.orders_by_status.draft ?? 0} en attente`}
               iconBg="bg-violet-600"
             />
             <StatCard
               icon={TrendingUp}
-              label="CA total TTC"
-              value={formatCents(stats.caTotal, currency)}
-              sub="Toutes commandes"
+              label="CA encaissé"
+              value={formatCents(kpi?.ca_total_cents ?? 0, currency)}
+              sub="Montants collectés"
               iconBg="bg-emerald-600"
             />
             <StatCard
               icon={CreditCard}
-              label="Encaissé"
-              value={formatCents(stats.paiementsCompletes, currency)}
+              label="Total payé"
+              value={formatCents(kpi?.total_paid_cents ?? 0, currency)}
               sub="Paiements complétés"
               iconBg="bg-orange-500"
             />
@@ -141,7 +160,7 @@ export default function DashboardPage() {
 
       {/* ── Bottom row ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Recent orders table */}
+        {/* Recent orders */}
         <div className="xl:col-span-2 card overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <h2 className="font-semibold text-slate-800">Dernières commandes</h2>
@@ -165,7 +184,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : recentCommandes.length === 0 ? (
+            ) : (kpi?.recent_orders.length ?? 0) === 0 ? (
               <div className="empty-state">
                 <ShoppingCart className="empty-state-icon" />
                 <p className="empty-state-title">Aucune commande</p>
@@ -180,12 +199,12 @@ export default function DashboardPage() {
                   <tr>
                     <th className="table-header">N° commande</th>
                     <th className="table-header">Statut</th>
-                    <th className="table-header text-right">Montant TTC</th>
+                    <th className="table-header text-right">Encaissé</th>
                     <th className="table-header">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {recentCommandes.map((c) => (
+                  {kpi?.recent_orders.map((c) => (
                     <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="table-cell">
                         <Link
@@ -202,7 +221,7 @@ export default function DashboardPage() {
                         {formatCents(c.total_cents, c.currency)}
                       </td>
                       <td className="table-cell text-slate-400 tabular-nums">
-{formatDateFr(c.created_at)}
+                        {formatDateFr(c.created_at)}
                       </td>
                     </tr>
                   ))}
@@ -228,8 +247,8 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-3.5">
               {STATUS_CONFIG.map(({ key, label, color }) => {
-                const count = commandesByStatut[key] ?? 0;
-                const total = stats.totalCommandes || 1;
+                const count = kpi?.orders_by_status[key] ?? 0;
+                const total = kpi?.total_orders || 1;
                 const pct = Math.round((count / total) * 100);
                 return (
                   <div key={key}>

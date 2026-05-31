@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -159,7 +160,7 @@ export default function DocumentsPage() {
         )}
       </td>
       <td className="table-cell text-gray-500 text-xs">
-        {new Date(doc.created_at).toLocaleDateString("fr-FR")}
+        {formatDateFr(doc.created_at)}
       </td>
       <td className="table-cell">
         <div className="flex items-center justify-center gap-1">

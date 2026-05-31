@@ -34,11 +34,16 @@ type OrganizationForm = {
   name: string;
   legal_name: string;
   tax_id: string;
+  rccm: string;
   email: string;
   phone: string;
   address_line1: string;
+  postal_code: string;
   city: string;
   country: string;
+  website: string;
+  bank_name: string;
+  bank_account: string;
 };
 
 export default function SettingsPage() {
@@ -81,11 +86,16 @@ export default function SettingsPage() {
       name: "",
       legal_name: "",
       tax_id: "",
+      rccm: "",
       email: "",
       phone: "",
       address_line1: "",
+      postal_code: "",
       city: "",
       country: "",
+      website: "",
+      bank_name: "",
+      bank_account: "",
     },
   });
 
@@ -120,11 +130,16 @@ export default function SettingsPage() {
       name: organization.name ?? "",
       legal_name: organization.legal_name ?? "",
       tax_id: organization.tax_id ?? "",
+      rccm: organization.rccm ?? "",
       email: organization.email ?? "",
       phone: organization.phone ?? "",
       address_line1: organization.address_line1 ?? "",
+      postal_code: organization.postal_code ?? "",
       city: organization.city ?? "",
       country: organization.country ?? "",
+      website: organization.website ?? "",
+      bank_name: organization.bank_name ?? "",
+      bank_account: organization.bank_account ?? "",
     });
   }, [organization, orgForm]);
 
@@ -206,7 +221,11 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="label">NIF / Identifiant fiscal</label>
-            <input className="input" {...orgForm.register("tax_id")} />
+            <input className="input" {...orgForm.register("tax_id")} placeholder="M1234567890" />
+          </div>
+          <div>
+            <label className="label">RCCM</label>
+            <input className="input" {...orgForm.register("rccm")} placeholder="RC/YAO/2020/B/1234" />
           </div>
           <div>
             <label className="label">Email société</label>
@@ -216,10 +235,6 @@ export default function SettingsPage() {
             <label className="label">Téléphone société</label>
             <input className="input" {...orgForm.register("phone")} />
           </div>
-          <div>
-            <label className="label">Pays</label>
-            <input className="input" {...orgForm.register("country")} />
-          </div>
           <div className="md:col-span-2">
             <label className="label">Adresse</label>
             <input className="input" {...orgForm.register("address_line1")} />
@@ -227,6 +242,29 @@ export default function SettingsPage() {
           <div>
             <label className="label">Ville</label>
             <input className="input" {...orgForm.register("city")} />
+          </div>
+          <div>
+            <label className="label">Code postal</label>
+            <input className="input" {...orgForm.register("postal_code")} />
+          </div>
+          <div>
+            <label className="label">Pays</label>
+            <input className="input" {...orgForm.register("country")} />
+          </div>
+          <div>
+            <label className="label">Site web</label>
+            <input className="input" type="url" {...orgForm.register("website")} placeholder="https://monsociete.cm" />
+          </div>
+          <div className="md:col-span-2 border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Coordonnées bancaires (affichées sur les factures)</p>
+          </div>
+          <div>
+            <label className="label">Nom de la banque</label>
+            <input className="input" {...orgForm.register("bank_name")} placeholder="Afriland First Bank" />
+          </div>
+          <div>
+            <label className="label">Numéro de compte</label>
+            <input className="input" {...orgForm.register("bank_account")} placeholder="10005 00000 12345678901 00" />
           </div>
           <div className="md:col-span-2 flex items-center justify-end gap-3">
             {organizationMutation.isSuccess && (
@@ -377,8 +415,11 @@ export default function SettingsPage() {
             <label className="label">Police PDF</label>
             <select className="input" {...register("font_family")}>
               <option value="Helvetica">Helvetica</option>
+              <option value="Helvetica-Bold">Helvetica Bold</option>
               <option value="Times-Roman">Times Roman</option>
+              <option value="Times-Bold">Times Bold</option>
               <option value="Courier">Courier</option>
+              <option value="Courier-Bold">Courier Bold</option>
             </select>
           </div>
         </div>

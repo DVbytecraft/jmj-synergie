@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -54,7 +55,7 @@ function ClientCard({ client, onDelete }: { client: Client; onDelete: () => void
               </div>
             ) : (
               <p className="text-xs text-slate-400 mt-0.5">
-                Client depuis {new Date(client.created_at).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+                Client depuis {formatDateFr(client.created_at)}
               </p>
             )}
           </div>

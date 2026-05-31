@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -184,7 +185,7 @@ export default function PaiementsPage() {
                         {formatCents(p.amount_cents, p.currency)}
                       </td>
                       <td className="table-cell text-slate-400 tabular-nums">
-                        {new Date(p.transaction_date).toLocaleDateString("fr-FR")}
+                        {formatDateFr(p.transaction_date)}
                       </td>
                       <td className="table-cell text-center">
                         {p.status === "completed" && (

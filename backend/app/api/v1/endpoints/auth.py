@@ -7,7 +7,7 @@ import hashlib
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from pydantic import BaseModel, EmailStr, Field
@@ -15,6 +15,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.middleware.rate_limiter import rate_limit_dependency
+
+# Sensitive unauthenticated endpoints: 5 requests / 60 s per IP
+_auth_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_sensitive")
 from app.core.database import get_db
 from app.core.security import (
     verify_password_async,
@@ -36,17 +40,15 @@ RESET_OTP_EXPIRE_MINUTES = 15
 RESET_OTP_MAX_ATTEMPTS = 5
 RESET_SESSION_EXPIRE_MINUTES = 10
 
+# Refresh token cookie name — short, path-scoped to /api/v1/auth
+_RT_COOKIE = "rt"
+
 
 # ─── Schémas ──────────────────────────────────────────────────────────────────
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 
 def _validate_password_complexity(v: str) -> str:
@@ -141,12 +143,7 @@ def _hash_otp(code: str) -> str:
 def _otp_matches(code: str, stored_hash: str | None) -> bool:
     if not stored_hash:
         return False
-    if hmac.compare_digest(_hash_otp(code), stored_hash):
-        return True
-
-    # Backward compatibility for OTPs generated before the HMAC hardening.
-    legacy_hash = hashlib.sha256(code.encode()).hexdigest()
-    return hmac.compare_digest(legacy_hash, stored_hash)
+    return hmac.compare_digest(_hash_otp(code), stored_hash)
 
 
 async def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
@@ -299,18 +296,30 @@ async def _send_reset_otp_email(to_email: str, full_name: str, code: str) -> boo
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
-def _issue_tokens(user: UserModel) -> TokenResponse:
-    """Crée access + refresh token, stocke le JTI sur l'utilisateur (flush à la charge de l'appelant)."""
+def _issue_tokens(user: UserModel, response: Response) -> TokenResponse:
+    """
+    Crée access + refresh token, stocke le JTI, pose le refresh token en cookie HttpOnly.
+    Le refresh token n'est jamais exposé dans le corps de la réponse.
+    """
     refresh_token_str, jti = create_refresh_token(user.id)
     user.refresh_token_jti = jti
+    response.set_cookie(
+        key=_RT_COOKIE,
+        value=refresh_token_str,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        path="/api/v1/auth",
+    )
     return TokenResponse(
         access_token=create_access_token(user.id, user.role, user.full_name),
-        refresh_token=refresh_token_str,
     )
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
@@ -353,7 +362,7 @@ async def login(
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
-    tokens = _issue_tokens(user)
+    tokens = _issue_tokens(user, response)
     await db.flush()
     await log_audit_event(
         db,
@@ -484,7 +493,11 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
 
 
 @router.post("/verify-email", response_model=TokenResponse)
-async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_db)):
+async def verify_email(
+    body: VerifyEmailRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Vérifier le code OTP reçu par email et activer le compte."""
     result = await db.execute(
         select(UserModel).where(UserModel.email == body.email, UserModel.is_deleted == False)
@@ -550,13 +563,17 @@ async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_
     except Exception:
         pass
     await _send_welcome_email(user.email, user.full_name, org_name)
-    tokens = _issue_tokens(user)
+    tokens = _issue_tokens(user, response)
     await db.flush()
     return tokens
 
 
 @router.post("/resend-verification", status_code=status.HTTP_200_OK)
-async def resend_verification(body: ResendVerificationRequest, db: AsyncSession = Depends(get_db)):
+async def resend_verification(
+    body: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_auth_rate_limit),
+):
     """Renvoyer un nouveau code OTP. Toujours retourne 200 (anti-énumération)."""
     result = await db.execute(
         select(UserModel).where(UserModel.email == body.email, UserModel.is_deleted == False)
@@ -596,7 +613,11 @@ async def resend_verification(body: ResendVerificationRequest, db: AsyncSession 
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
-async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_auth_rate_limit),
+):
     """
     Étape 1/3 du flux OTP reset.
     Envoie un code OTP à 6 chiffres par email. Toujours 200 (anti-énumération).
@@ -646,7 +667,11 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
 
 
 @router.post("/verify-reset-otp", status_code=status.HTTP_200_OK)
-async def verify_reset_otp(body: VerifyResetOtpRequest, db: AsyncSession = Depends(get_db)):
+async def verify_reset_otp(
+    body: VerifyResetOtpRequest,
+    db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_auth_rate_limit),
+):
     """
     Étape 2/3 du flux OTP reset.
     Valide le code OTP. En cas de succès, retourne un session_token à usage unique
@@ -706,11 +731,10 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     """
     now = datetime.now(timezone.utc)
     session_hash = _hash_otp(body.session_token)
-    legacy_session_hash = hashlib.sha256(body.session_token.encode()).hexdigest()
 
     result = await db.execute(
         select(UserModel).where(
-            UserModel.reset_session_token.in_([session_hash, legacy_session_hash]),
+            UserModel.reset_session_token == session_hash,
             UserModel.is_deleted == False,
         )
     )
@@ -738,9 +762,19 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def refresh(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    rt: str | None = Cookie(default=None, alias=_RT_COOKIE),
+):
+    """
+    Renouvelle l'access token.
+    Le refresh token est lu depuis le cookie HttpOnly 'rt' — jamais transmis dans le corps.
+    """
+    if not rt:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée")
     try:
-        payload = decode_refresh_token(body.refresh_token)
+        payload = decode_refresh_token(rt)
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
 
@@ -751,23 +785,30 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     if not user or user.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
 
-    # Vérifier que le JTI correspond au dernier refresh token émis (révocation)
     token_jti = payload.get("jti")
     if not token_jti or user.refresh_token_jti != token_jti:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token révoqué ou expiré")
 
-    tokens = _issue_tokens(user)
+    tokens = _issue_tokens(user, response)
     await db.flush()
     return tokens
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def logout(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    rt: str | None = Cookie(default=None, alias=_RT_COOKIE),
+):
     """Révoquer le refresh token — invalide toutes les sessions actives de l'utilisateur."""
+    # Effacer le cookie dans tous les cas
+    response.delete_cookie(key=_RT_COOKIE, path="/api/v1/auth")
+
+    if not rt:
+        return {"message": "Déconnecté"}
     try:
-        payload = decode_refresh_token(body.refresh_token)
+        payload = decode_refresh_token(rt)
     except JWTError:
-        # Token déjà invalide → succès silencieux
         return {"message": "Déconnecté"}
 
     result = await db.execute(

@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -46,10 +47,8 @@ export default function CommandesPage() {
       commandesApi.list({ skip: page * limit, limit, status: statut || undefined }),
   });
 
-  const filtered = data?.items.filter(
-    (c) =>
-      c.order_number.toLowerCase().includes(search.toLowerCase()) ||
-      c.client_id.toLowerCase().includes(search.toLowerCase())
+  const filtered = data?.items.filter((c) =>
+    c.order_number.toLowerCase().includes(search.toLowerCase())
   ) ?? [];
 
   return (
@@ -151,7 +150,7 @@ export default function CommandesPage() {
                       {formatCents(c.total_cents, c.currency)}
                     </td>
                     <td className="table-cell text-slate-400 tabular-nums">
-                      {new Date(c.created_at).toLocaleDateString("fr-FR")}
+                      {formatDateFr(c.created_at)}
                     </td>
                     <td className="table-cell">
                       <div className="flex items-center justify-center gap-1">

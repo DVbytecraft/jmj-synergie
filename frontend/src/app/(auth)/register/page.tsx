@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Loader2, Building2, User, Mail, Lock, Phone, ArrowRight,
-  CheckCircle2, AlertCircle, MapPin, Landmark, ImagePlus, X,
+  CheckCircle2, AlertCircle, MapPin, Landmark, ImagePlus, X, Eye, EyeOff,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 
@@ -43,6 +43,8 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -338,11 +340,20 @@ export default function RegisterPage() {
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <input
                     {...register("password")}
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     autoComplete="new-password"
-                    className="input pl-10"
+                    className="input pl-10 pr-10"
                     placeholder="Maj + min + chiffre, 8 car. min."
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPassword ? "Masquer" : "Afficher"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
                 {errors.password && <p className="field-error">{errors.password.message}</p>}
               </div>
@@ -352,11 +363,20 @@ export default function RegisterPage() {
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <input
                     {...register("confirm_password")}
-                    type="password"
+                    type={showConfirm ? "text" : "password"}
                     autoComplete="new-password"
-                    className="input pl-10"
+                    className="input pl-10 pr-10"
                     placeholder="Répétez"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    tabIndex={-1}
+                    aria-label={showConfirm ? "Masquer" : "Afficher"}
+                  >
+                    {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
                 {errors.confirm_password && (
                   <p className="field-error">{errors.confirm_password.message}</p>

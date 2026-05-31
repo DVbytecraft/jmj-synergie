@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,8 +20,7 @@ const [search, setSearch] = useState("");
   });
 
   const filtered = data?.items.filter((c) =>
-    c.order_number.toLowerCase().includes(search.toLowerCase()) ||
-    c.client_id.toLowerCase().includes(search.toLowerCase())
+    c.order_number.toLowerCase().includes(search.toLowerCase())
   ) ?? [];
 
   const handleDownload = async (id: string, type: "facture" | "bon") => {
@@ -131,7 +131,7 @@ if (type === "facture") await pdfApi.downloadFacture(id);
                         {formatCents(c.total_cents, c.currency)}
                       </td>
                       <td className="table-cell text-gray-400">
-{new Date(c.created_at).toLocaleDateString("fr-FR")}
+{formatDateFr(c.created_at)}
                       </td>
                       <td className="table-cell">
                         <div className="flex items-center justify-center gap-2">

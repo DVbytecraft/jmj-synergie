@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -90,7 +91,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 function fmt(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+  return formatDateFr(iso);
 }
 
 function fmtTime(iso: string | null) {
@@ -125,7 +126,7 @@ function StatCard({
         <Icon className="w-6 h-6" />
       </div>
       <div className="min-w-0">
-        <p className="text-2xl font-bold text-slate-900 leading-none">{value.toLocaleString("fr-FR")}</p>
+        <p className="text-2xl font-bold text-slate-900 leading-none">{value}</p>
         <p className="text-sm font-medium text-slate-600 mt-0.5">{label}</p>
         {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
       </div>
@@ -687,7 +688,7 @@ function OrgUsersInline({ orgId, orgName }: { orgId: string; orgName: string }) 
                 </span>
               </td>
               <td className="px-4 py-2 text-slate-400">
-                {u.last_login_at ? new Date(u.last_login_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "Jamais"}
+                {u.last_login_at ? formatDateTimeFr(u.last_login_at) : "Jamais"}
               </td>
             </tr>
           ))}

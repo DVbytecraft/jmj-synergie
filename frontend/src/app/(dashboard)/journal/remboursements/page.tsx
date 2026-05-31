@@ -1,4 +1,5 @@
 "use client";
+import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -268,7 +269,7 @@ export default function JournalRemboursementsPage() {
                           : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="table-cell text-gray-400">
-                        {new Date(e.requested_at).toLocaleDateString("fr-FR")}
+                        {formatDateFr(e.requested_at)}
                       </td>
                       {isManager && (
                         <td className="table-cell">
