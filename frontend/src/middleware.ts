@@ -7,21 +7,51 @@ interface JWTPayload {
   exp: number;
 }
 
-// Routes accessibles uniquement à admin/super_admin
-const ADMIN_ONLY_ROUTES = ["/admin"];
+/**
+ * RBAC :
+ *   - /admin/*  → super_admin uniquement
+ *   - /commandes/new, /clients/new, /produits/new → admin + manager uniquement (pas operator)
+ *
+ * Le middleware NE redirige PAS les super_admin vers /admin/users.
+ * Leur accès aux pages métier est autorisé côté UI ; le backend renvoie
+ * 403 pour les endpoints scoped-org, ce qui est géré page par page.
+ * Forcer la redirection ici créait une boucle infinie de navigation.
+ */
 
-// Routes accessibles à admin + manager (pas operator)
-const ADMIN_MANAGER_ROUTES = ["/commandes/new", "/clients/new", "/produits/new"];
+// Routes accessibles uniquement à super_admin
+const SUPER_ADMIN_ROUTES = ["/admin"];
 
-function getTokenFromCookies(request: NextRequest): string | null {
-  // Le token est dans le cookie 'jmj-auth' (Zustand persist via localStorage)
-  // Pour le middleware SSR on utilise un cookie dédié
-  return request.cookies.get("access_token")?.value ?? null;
+// Routes inaccessibles aux operators (création de ressources)
+const MANAGER_MIN_ROUTES = ["/commandes/new", "/clients/new", "/produits/new"];
+
+// Routes publiques — pas d'auth requise
+function isPublic(pathname: string): boolean {
+  return (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/verify-email") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/api")
+  );
 }
 
-function isTokenValid(token: string): JWTPayload | null {
+function getToken(request: NextRequest): string | null {
+  const raw = request.cookies.get("access_token")?.value ?? null;
+  if (!raw) return null;
+  // Le cookie est stocké encodé via encodeURIComponent dans auth.store.ts.
+  // Next.js RequestCookies ne décode pas automatiquement — on le fait ici.
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function validateToken(token: string): JWTPayload | null {
   try {
     const payload = jwtDecode<JWTPayload>(token);
+    if (!payload.sub || !payload.role || !payload.exp) return null;
     if (Date.now() / 1000 >= payload.exp) return null;
     return payload;
   } catch {
@@ -32,54 +62,41 @@ function isTokenValid(token: string): JWTPayload | null {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Routes publiques — laisser passer
-  if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/register") ||
-    pathname.startsWith("/verify-email") ||
-    pathname.startsWith("/forgot-password") ||
-    pathname.startsWith("/reset-password") ||
-    pathname.startsWith("/api")
-  ) {
+  // 1. Routes publiques — laisser passer immédiatement
+  if (isPublic(pathname)) {
     return NextResponse.next();
   }
 
-  // Routes protégées — vérifier le token
-  const token = getTokenFromCookies(request);
-
-  if (!token) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
+  // 2. Vérifier le token
+  const raw = getToken(request);
+  if (!raw) {
+    const url = new URL("/login", request.url);
+    url.searchParams.set("from", pathname);
+    return NextResponse.redirect(url);
   }
 
-  const payload = isTokenValid(token);
+  const payload = validateToken(raw);
   if (!payload) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    const response = NextResponse.redirect(loginUrl);
-    response.cookies.delete("access_token");
-    return response;
+    const url = new URL("/login", request.url);
+    url.searchParams.set("from", pathname);
+    const res = NextResponse.redirect(url);
+    res.cookies.delete("access_token");
+    return res;
   }
 
-  // Super_admin sans organisation → le renvoyer vers son panneau admin
-  // (toutes les pages dashboard sont scoped à une org → 403 systématique sinon)
-  if (payload.role === "super_admin" && !pathname.startsWith("/admin") && !pathname.startsWith("/profil") && !pathname.startsWith("/settings")) {
-    return NextResponse.redirect(new URL("/admin/users", request.url));
-  }
-
-  // Vérifications RBAC
-  const isAdminOnly = ADMIN_ONLY_ROUTES.some((r) => pathname.startsWith(r));
-  if (isAdminOnly && payload.role !== "super_admin") {
+  // 3. RBAC — routes réservées à super_admin
+  const isSuperAdminRoute = SUPER_ADMIN_ROUTES.some((r) => pathname.startsWith(r));
+  if (isSuperAdminRoute && payload.role !== "super_admin") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  const isAdminManagerOnly = ADMIN_MANAGER_ROUTES.some((r) => pathname.startsWith(r));
-  if (isAdminManagerOnly && payload.role === "operator") {
+  // 4. RBAC — routes interdites aux operators
+  const isManagerRoute = MANAGER_MIN_ROUTES.some((r) => pathname.startsWith(r));
+  if (isManagerRoute && payload.role === "operator") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // Passer le rôle en header pour les Server Components
+  // 5. Passer les infos utilisateur via headers pour les Server Components
   const response = NextResponse.next();
   response.headers.set("x-user-id", payload.sub);
   response.headers.set("x-user-role", payload.role);
@@ -88,6 +105,13 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next|favicon\\.ico|icon|chunk-guard\\.js|login|register|verify-email|forgot-password|reset-password).*)",
+    /*
+     * Toutes les routes sauf :
+     * - fichiers statiques Next.js (_next/static, _next/image)
+     * - favicon, icon
+     * - chunk-guard.js (script de récupération sans auth)
+     * Les routes publiques (login, register…) sont gérées par isPublic().
+     */
+    "/((?!_next/static|_next/image|favicon\\.ico|icon|chunk-guard\\.js).*)",
   ],
 };

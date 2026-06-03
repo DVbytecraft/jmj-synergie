@@ -3,9 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { usersApi } from "@/lib/api/users";
+import { useAuthStore } from "@/store/auth.store";
 import { formatCents } from "@/lib/utils/money";
 import { formatDateFr } from "@/lib/utils/format-dates";
-import { Users, ShoppingCart, CreditCard, TrendingUp, ArrowRight } from "lucide-react";
+import { Users, ShoppingCart, CreditCard, TrendingUp, ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
 import { OnboardingBanner } from "@/components/ui/OnboardingBanner";
@@ -96,19 +97,53 @@ const STATUS_CONFIG = [
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { user } = useAuthStore();
+  const isSuperAdmin = user?.role === "super_admin";
+
   const { data: kpi, isLoading } = useQuery<DashboardKPI>({
     queryKey: ["dashboard", "kpi"],
     queryFn: () => apiClient.get<DashboardKPI>("/orders/kpi").then((r) => r.data),
     staleTime: 60_000,
+    // Super_admin n'a pas d'organisation → l'endpoint renvoie 403.
+    // On désactive la requête pour éviter une erreur silencieuse dans la console.
+    enabled: !isSuperAdmin,
   });
 
   const { data: profile } = useQuery({
     queryKey: ["users", "me", "issuer-profile"],
     queryFn: usersApi.getMyIssuerProfile,
     staleTime: 5 * 60_000,
+    enabled: !isSuperAdmin,
   });
 
   const currency = kpi?.recent_orders[0]?.currency ?? "XAF";
+
+  // ── Mode Super Admin ───────────────────────────────────────────────────────
+  if (isSuperAdmin) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-start gap-4 p-5 bg-violet-50 border border-violet-200 rounded-2xl">
+          <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <ShieldCheck className="w-5 h-5 text-violet-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-violet-900">Mode administrateur plateforme</p>
+            <p className="text-sm text-violet-700 mt-0.5 leading-relaxed">
+              Votre compte <strong>Super Admin</strong> n&apos;est rattaché à aucune organisation.
+              Les pages métier (commandes, clients, paiements…) afficheront des données vides.
+            </p>
+            <Link
+              href="/admin/users"
+              className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-violet-700 hover:text-violet-900 underline underline-offset-2"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Accéder au panneau d&apos;administration
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
