@@ -31,6 +31,7 @@ const passwordSchema = z
       .string()
       .min(8, "Minimum 8 caractères")
       .regex(/[A-Z]/, "Au moins une majuscule")
+      .regex(/[a-z]/, "Au moins une minuscule")
       .regex(/[0-9]/, "Au moins un chiffre"),
     confirm_password: z.string(),
   })

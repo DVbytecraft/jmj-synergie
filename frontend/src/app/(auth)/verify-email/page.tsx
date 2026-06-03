@@ -60,8 +60,13 @@ function VerifyEmailContent() {
         setTimeout(() => router.replace("/dashboard"), 1200);
       } catch (e: unknown) {
         const err = e as { response?: { data?: { detail?: unknown } } };
+        const status = (e as any)?.response?.status;
         const detail = err.response?.data?.detail;
-        if (detail === "INVALID_OTP") {
+        if (detail === "EMAIL_ALREADY_VERIFIED" || status === 409) {
+          // Account already verified — go to normal login
+          router.replace("/login");
+          return;
+        } else if (detail === "INVALID_OTP") {
           setError("Code incorrect. Vérifiez et réessayez.");
         } else if (detail === "OTP_EXPIRED") {
           setError("Ce code a expiré. Demandez-en un nouveau.");

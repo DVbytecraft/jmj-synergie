@@ -17,6 +17,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/journal/remboursements": "Journal des remboursements",
   "/admin/users":            "Gestion des utilisateurs",
   "/settings":               "Paramètres",
+  "/profil":                 "Mon profil",
+  "/pdf":                    "Génération de documents",
 };
 
 function getPageTitle(pathname: string): string {

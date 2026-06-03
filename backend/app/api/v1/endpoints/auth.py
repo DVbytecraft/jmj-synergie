@@ -502,6 +502,7 @@ async def verify_email(
     body: VerifyEmailRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_auth_rate_limit),
 ):
     """Vérifier le code OTP reçu par email et activer le compte."""
     result = await db.execute(
@@ -518,11 +519,12 @@ async def verify_email(
         raise invalid_exc
 
     if user.is_email_verified:
-        # Return 200 silently — exposing which emails are verified enables account enumeration.
-        # The frontend treats /verify-email success as "redirect to login".
-        tokens = _issue_tokens(user, response)
-        await db.flush()
-        return tokens
+        # Email already verified — do not issue tokens without proper authentication.
+        # Raise a distinct code so the frontend can redirect the user to /login.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="EMAIL_ALREADY_VERIFIED",
+        )
 
     now = datetime.now(timezone.utc)
 
