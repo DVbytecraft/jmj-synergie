@@ -7,7 +7,7 @@ import { paiementsApi } from "@/lib/api/paiements";
 import type { PaymentMethod } from "@/types";
 import {
   RotateCcw, Search, CreditCard, TrendingDown, Banknote, ArrowRight,
-  ChevronLeft, ChevronRight as ChevronRightIcon,
+  ChevronLeft, ChevronRight as ChevronRightIcon, ShoppingCart, Plus,
 } from "lucide-react";
 import { formatCents } from "@/lib/utils/money";
 import Link from "next/link";
@@ -76,6 +76,18 @@ export default function PaiementsPage() {
           <h1 className="page-title">Paiements</h1>
           <p className="page-subtitle">{total} transactions</p>
         </div>
+        <Link href="/commandes" className="btn-primary">
+          <Plus className="w-4 h-4" />
+          Enregistrer un paiement
+        </Link>
+      </div>
+
+      {/* Hint */}
+      <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5">
+        <ShoppingCart className="w-4 h-4 text-slate-400 flex-shrink-0" />
+        <span>
+          Pour enregistrer un paiement, ouvrez une <Link href="/commandes" className="text-blue-600 hover:underline font-medium">commande confirmée</Link> et cliquez sur <strong>Payer</strong>.
+        </span>
       </div>
 
       {/* KPI cards */}
@@ -144,7 +156,13 @@ export default function PaiementsPage() {
                     <div className="empty-state py-14">
                       <CreditCard className="empty-state-icon" />
                       <p className="empty-state-title">Aucun paiement trouvé</p>
-                      <p className="empty-state-desc">Les paiements apparaîtront ici</p>
+                      <p className="empty-state-desc">
+                        Confirmez une commande puis cliquez sur <strong>Payer</strong> pour enregistrer un paiement.
+                      </p>
+                      <Link href="/commandes" className="btn-secondary text-sm mt-4">
+                        <ShoppingCart className="w-4 h-4" />
+                        Voir les commandes
+                      </Link>
                     </div>
                   </td>
                 </tr>

@@ -198,6 +198,16 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
             Nouveau paiement
           </button>
         )}
+        {commande.status === "draft" && (
+          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+            Confirmez la commande pour enregistrer un paiement
+          </span>
+        )}
+        {commande.balance_due_cents === 0 && commande.status !== "draft" && (
+          <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
+            Commande entièrement payée
+          </span>
+        )}
       </div>
 
       {/* Récap */}

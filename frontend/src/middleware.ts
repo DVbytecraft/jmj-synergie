@@ -10,16 +10,19 @@ interface JWTPayload {
 /**
  * RBAC :
  *   - /admin/*  → super_admin uniquement
+ *   - Pages métier (/clients, /commandes…) → super_admin redirigé vers /admin/users
+ *     (super_admin n'a pas d'organisation → 403 backend sur tous les endpoints scoped-org)
  *   - /commandes/new, /clients/new, /produits/new → admin + manager uniquement (pas operator)
- *
- * Le middleware NE redirige PAS les super_admin vers /admin/users.
- * Leur accès aux pages métier est autorisé côté UI ; le backend renvoie
- * 403 pour les endpoints scoped-org, ce qui est géré page par page.
- * Forcer la redirection ici créait une boucle infinie de navigation.
  */
 
 // Routes accessibles uniquement à super_admin
 const SUPER_ADMIN_ROUTES = ["/admin"];
+
+// Routes métier requérant une organisation — super_admin ne peut pas y accéder
+const ORG_ROUTES = [
+  "/clients", "/commandes", "/produits",
+  "/paiements", "/journal", "/documents", "/scan",
+];
 
 // Routes inaccessibles aux operators (création de ressources)
 const MANAGER_MIN_ROUTES = ["/commandes/new", "/clients/new", "/produits/new"];
@@ -88,6 +91,13 @@ export function middleware(request: NextRequest) {
   const isSuperAdminRoute = SUPER_ADMIN_ROUTES.some((r) => pathname.startsWith(r));
   if (isSuperAdminRoute && payload.role !== "super_admin") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // 3b. RBAC — super_admin redirigé vers panneau admin pour les pages métier
+  // (les endpoints backend scoped-org retournent 403 car super_admin n'a pas d'organisation)
+  const isOrgRoute = ORG_ROUTES.some((r) => pathname.startsWith(r));
+  if (isOrgRoute && payload.role === "super_admin") {
+    return NextResponse.redirect(new URL("/admin/users", request.url));
   }
 
   // 4. RBAC — routes interdites aux operators

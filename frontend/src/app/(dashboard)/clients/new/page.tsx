@@ -19,6 +19,10 @@ const schema = z.object({
   city: z.string().max(100).optional().or(z.literal("")),
   country: z.string().length(2).optional(),
   notes: z.string().max(2000).optional().or(z.literal("")),
+}).superRefine((data, ctx) => {
+  if (data.client_type === "company" && !data.company_name?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Raison sociale requise pour une entreprise", path: ["company_name"] });
+  }
 });
 type FormData = z.infer<typeof schema>;
 
@@ -94,6 +98,7 @@ export default function NewClientPage() {
           <div>
             <label className="label">Entreprise / Raison sociale</label>
             <input {...register("company_name")} placeholder="ACME Sarl" className="input" />
+            {errors.company_name && <p className="text-red-500 text-xs mt-1">{errors.company_name.message}</p>}
           </div>
 
           <div>
@@ -124,7 +129,15 @@ export default function NewClientPage() {
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
-            {(error as any)?.response?.data?.detail ?? "Erreur lors de la création"}
+            {(() => {
+              const status = (error as any)?.response?.status;
+              const detail = (error as any)?.response?.data?.detail;
+              if (status === 403) return "Accès refusé : votre compte n'est pas rattaché à une organisation. Connectez-vous avec un compte administrateur d'entreprise.";
+              if (status === 409) return detail ?? "Un client avec ces informations existe déjà.";
+              if (status === 422) return detail ?? "Données invalides. Vérifiez le formulaire.";
+              if (status === 502 || status === 503 || status === 504) return "Le serveur est temporairement indisponible. Réessayez dans quelques secondes.";
+              return typeof detail === "string" ? detail : "Erreur lors de la création";
+            })()}
           </div>
         )}
 

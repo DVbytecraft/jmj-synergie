@@ -114,6 +114,44 @@ app.include_router(api_router, prefix="/api/v1")
 
 # ─── Global domain exception handlers ─────────────────────────────────────────
 
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
+
+from app.core.exceptions import (
+    AppException,
+    EntityNotFoundError,
+    DuplicateEntityError,
+    PermissionDeniedError,
+    BusinessRuleError,
+)
+
+
+@app.exception_handler(EntityNotFoundError)
+async def entity_not_found_handler(request: Request, exc: EntityNotFoundError):
+    return JSONResponse(status_code=404, content={"detail": exc.message})
+
+
+@app.exception_handler(DuplicateEntityError)
+async def duplicate_entity_handler(request: Request, exc: DuplicateEntityError):
+    return JSONResponse(status_code=409, content={"detail": exc.message})
+
+
+@app.exception_handler(PermissionDeniedError)
+async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
+    return JSONResponse(status_code=403, content={"detail": exc.message})
+
+
+@app.exception_handler(BusinessRuleError)
+async def business_rule_handler(request: Request, exc: BusinessRuleError):
+    logger.warning("domain.business_rule", path=request.url.path, detail=exc.message)
+    return JSONResponse(status_code=422, content={"detail": exc.message})
+
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    logger.warning("domain.app_error", path=request.url.path, code=exc.code, detail=exc.message)
+    return JSONResponse(status_code=400, content={"detail": exc.message})
+
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     logger.warning("domain.value_error", path=request.url.path, detail=str(exc))
@@ -126,20 +164,13 @@ async def permission_error_handler(request: Request, exc: PermissionError):
     return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 
-# Map EntityNotFoundError (domain) → 404 if it exists
-try:
-    from app.core.exceptions import EntityNotFoundError, PermissionDeniedError
-
-    @app.exception_handler(EntityNotFoundError)
-    async def entity_not_found_handler(request: Request, exc: EntityNotFoundError):
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
-
-    @app.exception_handler(PermissionDeniedError)
-    async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
-        return JSONResponse(status_code=403, content={"detail": str(exc)})
-
-except ImportError:
-    pass
+@app.exception_handler(SAIntegrityError)
+async def integrity_error_handler(request: Request, exc: SAIntegrityError):
+    logger.warning("db.integrity_error", path=request.url.path, detail=str(exc.orig))
+    orig = str(exc.orig or "")
+    if "unique" in orig.lower() or "duplicate" in orig.lower():
+        return JSONResponse(status_code=409, content={"detail": "Cette valeur existe déjà. Vérifiez les champs uniques."})
+    return JSONResponse(status_code=400, content={"detail": "Erreur de contrainte en base de données."})
 
 
 # ─── Dev: expose unhandled 500 error details to speed up debugging ─────────────
