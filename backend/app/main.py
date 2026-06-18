@@ -114,7 +114,7 @@ app.include_router(api_router, prefix="/api/v1")
 
 # ─── Global domain exception handlers ─────────────────────────────────────────
 
-from sqlalchemy.exc import IntegrityError as SAIntegrityError
+from sqlalchemy.exc import IntegrityError as SAIntegrityError, ProgrammingError as SAProgrammingError, OperationalError as SAOperationalError
 
 from app.core.exceptions import (
     AppException,
@@ -171,6 +171,18 @@ async def integrity_error_handler(request: Request, exc: SAIntegrityError):
     if "unique" in orig.lower() or "duplicate" in orig.lower():
         return JSONResponse(status_code=409, content={"detail": "Cette valeur existe déjà. Vérifiez les champs uniques."})
     return JSONResponse(status_code=400, content={"detail": "Erreur de contrainte en base de données."})
+
+
+@app.exception_handler(SAProgrammingError)
+async def programming_error_handler(request: Request, exc: SAProgrammingError):
+    logger.error("db.programming_error", path=request.url.path, detail=str(exc.orig or exc))
+    return JSONResponse(status_code=500, content={"detail": "Erreur de schéma base de données. Contactez le support."})
+
+
+@app.exception_handler(SAOperationalError)
+async def operational_error_handler(request: Request, exc: SAOperationalError):
+    logger.error("db.operational_error", path=request.url.path, detail=str(exc.orig or exc))
+    return JSONResponse(status_code=503, content={"detail": "Base de données temporairement indisponible."})
 
 
 # ─── Dev: expose unhandled 500 error details to speed up debugging ─────────────
