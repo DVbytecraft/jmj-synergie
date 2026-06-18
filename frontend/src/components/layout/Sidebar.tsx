@@ -26,6 +26,9 @@ interface NavGroup {
   items: NavItem[];
 }
 
+const ORG_ROLES: RoleUtilisateur[] = ["admin", "manager", "operator"];
+const MANAGER_ROLES: RoleUtilisateur[] = ["admin", "manager"];
+
 const navGroups: NavGroup[] = [
   {
     label: "Principal",
@@ -36,24 +39,24 @@ const navGroups: NavGroup[] = [
   {
     label: "Commercial",
     items: [
-      { href: "/clients",   icon: Users,        label: "Clients" },
-      { href: "/commandes", icon: ShoppingCart,  label: "Commandes" },
-      { href: "/produits",  icon: Package,       label: "Produits", roles: ["super_admin", "admin", "manager"] },
+      { href: "/clients",   icon: Users,        label: "Clients",   roles: ORG_ROLES },
+      { href: "/commandes", icon: ShoppingCart,  label: "Commandes", roles: ORG_ROLES },
+      { href: "/produits",  icon: Package,       label: "Produits",  roles: MANAGER_ROLES },
     ],
   },
   {
     label: "Finance",
     items: [
-      { href: "/paiements",              icon: CreditCard, label: "Paiements" },
-      { href: "/journal/paiements",      icon: BookOpen,   label: "Journal paiements" },
-      { href: "/journal/remboursements", icon: RotateCcw,  label: "Remboursements" },
+      { href: "/paiements",              icon: CreditCard, label: "Paiements",          roles: ORG_ROLES },
+      { href: "/journal/paiements",      icon: BookOpen,   label: "Journal paiements",  roles: ORG_ROLES },
+      { href: "/journal/remboursements", icon: RotateCcw,  label: "Remboursements",     roles: MANAGER_ROLES },
     ],
   },
   {
     label: "Documents",
     items: [
-      { href: "/documents", icon: FileText, label: "Documents" },
-      { href: "/scan",      icon: ScanLine, label: "Scan facture" },
+      { href: "/documents", icon: FileText, label: "Documents",     roles: ORG_ROLES },
+      { href: "/scan",      icon: ScanLine, label: "Scan facture",  roles: MANAGER_ROLES },
     ],
   },
   {

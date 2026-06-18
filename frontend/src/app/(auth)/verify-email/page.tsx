@@ -127,15 +127,23 @@ function VerifyEmailContent() {
     setResending(true);
     setResendMessage(null);
     setError(null);
+    let serviceFailed = false;
     try {
       await apiClient.post("/auth/resend-verification", { email });
-    } catch {
-      // anti-enumeration: always show success
+    } catch (e: unknown) {
+      const httpStatus = (e as any)?.response?.status;
+      if (httpStatus === 503) {
+        setError("Le service d'email est temporairement indisponible. Contactez le support.");
+        serviceFailed = true;
+      }
+      // Autres erreurs (400, 404) : anti-énumération — on affiche toujours "succès"
     } finally {
-      setResendMessage("Un nouveau code vous a été envoyé.");
-      setCountdown(RESEND_DELAY);
-      setDigits(Array(CODE_LENGTH).fill(""));
-      setTimeout(() => inputRefs.current[0]?.focus(), 50);
+      if (!serviceFailed) {
+        setResendMessage("Un nouveau code vous a été envoyé.");
+        setCountdown(RESEND_DELAY);
+        setDigits(Array(CODE_LENGTH).fill(""));
+        setTimeout(() => inputRefs.current[0]?.focus(), 50);
+      }
       setResending(false);
     }
   };

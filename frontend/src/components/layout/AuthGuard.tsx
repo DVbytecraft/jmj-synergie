@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { performRefresh } from "@/lib/api/client";
 
@@ -19,6 +19,7 @@ import { performRefresh } from "@/lib/api/client";
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, clearAuth } = useAuthStore();
   const [ready, setReady] = useState(false);
 
@@ -26,10 +27,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return useAuthStore.subscribe((state, prev) => {
       if (prev.accessToken && !state.accessToken) {
-        router.replace("/login");
+        router.replace(`/login?from=${encodeURIComponent(pathname)}`);
       }
     });
-  }, [router]);
+  }, [router, pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +49,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       } catch {
         if (!cancelled) {
           clearAuth();
-          router.replace("/login");
+          router.replace(`/login?from=${encodeURIComponent(pathname)}`);
         }
       }
     }

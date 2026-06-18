@@ -84,7 +84,15 @@ export default function RegisterPage() {
     } catch (e: unknown) {
       const status = (e as any)?.response?.status;
       const detail = (e as any)?.response?.data?.detail;
-      if (status === 502 || status === 503 || status === 504) {
+      if (status === 503) {
+        setError(
+          typeof detail === "string" && detail.length > 0
+            ? detail
+            : "Service temporairement indisponible. Réessayez dans quelques minutes."
+        );
+        return;
+      }
+      if (status === 502 || status === 504) {
         setError("Le serveur se réveille — réessayez dans 30 secondes.");
         return;
       }
