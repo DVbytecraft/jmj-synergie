@@ -11,7 +11,7 @@ import uuid
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -81,8 +81,6 @@ class RegisterOrganizationRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     password: str = Field(..., min_length=8)
 
-    from pydantic import field_validator
-
     @field_validator("password")
     @classmethod
     def password_complexity(cls, v: str) -> str:
@@ -115,8 +113,6 @@ class VerifyResetOtpRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     session_token: str
     new_password: str = Field(..., min_length=8)
-
-    from pydantic import field_validator
 
     @field_validator("new_password")
     @classmethod

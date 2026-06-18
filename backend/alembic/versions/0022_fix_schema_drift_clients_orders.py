@@ -157,31 +157,45 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # orders
     conn = op.get_bind()
+    # orders — drop only if exists
     if _fk_exists(conn, "fk_orders_deleted_by"):
         op.drop_constraint("fk_orders_deleted_by", "orders", type_="foreignkey")
-    op.drop_column("orders", "deleted_by")
+    if _col_exists(conn, "orders", "deleted_by"):
+        op.drop_column("orders", "deleted_by")
     if _fk_exists(conn, "fk_orders_cancelled_by"):
         op.drop_constraint("fk_orders_cancelled_by", "orders", type_="foreignkey")
-    op.drop_column("orders", "cancelled_by")
-    op.drop_column("orders", "cancelled_at")
-    op.drop_column("orders", "delivered_at")
-    op.drop_column("orders", "confirmed_at")
+    if _col_exists(conn, "orders", "cancelled_by"):
+        op.drop_column("orders", "cancelled_by")
+    if _col_exists(conn, "orders", "cancelled_at"):
+        op.drop_column("orders", "cancelled_at")
+    if _col_exists(conn, "orders", "delivered_at"):
+        op.drop_column("orders", "delivered_at")
+    if _col_exists(conn, "orders", "confirmed_at"):
+        op.drop_column("orders", "confirmed_at")
     if _fk_exists(conn, "fk_orders_confirmed_by"):
         op.drop_constraint("fk_orders_confirmed_by", "orders", type_="foreignkey")
-    op.drop_column("orders", "confirmed_by")
-    op.drop_column("orders", "due_date")
-    op.drop_column("orders", "purchase_order_ref")
-    # clients
+    if _col_exists(conn, "orders", "confirmed_by"):
+        op.drop_column("orders", "confirmed_by")
+    if _col_exists(conn, "orders", "due_date"):
+        op.drop_column("orders", "due_date")
+    if _col_exists(conn, "orders", "purchase_order_ref"):
+        op.drop_column("orders", "purchase_order_ref")
+    # clients — drop only if exists
     if _fk_exists(conn, "fk_clients_deleted_by"):
         op.drop_constraint("fk_clients_deleted_by", "clients", type_="foreignkey")
-    op.drop_column("clients", "deleted_by")
-    op.drop_column("clients", "default_tax_rate")
-    op.drop_column("clients", "payment_terms_days")
-    op.drop_column("clients", "credit_limit_cents")
-    op.drop_column("clients", "currency")
-    op.drop_column("clients", "status")
-    # Rename back address_line1 → address
-    if _col_exists(conn, "clients", "address_line1"):
+    if _col_exists(conn, "clients", "deleted_by"):
+        op.drop_column("clients", "deleted_by")
+    if _col_exists(conn, "clients", "default_tax_rate"):
+        op.drop_column("clients", "default_tax_rate")
+    if _col_exists(conn, "clients", "payment_terms_days"):
+        op.drop_column("clients", "payment_terms_days")
+    if _col_exists(conn, "clients", "credit_limit_cents"):
+        op.drop_column("clients", "credit_limit_cents")
+    if _col_exists(conn, "clients", "currency"):
+        op.drop_column("clients", "currency")
+    if _col_exists(conn, "clients", "status"):
+        op.drop_column("clients", "status")
+    # Rename address_line1 → address only if it was renamed (not originally address_line1)
+    if _col_exists(conn, "clients", "address_line1") and not _col_exists(conn, "clients", "address"):
         conn.execute(text("ALTER TABLE clients RENAME COLUMN address_line1 TO address"))

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
@@ -79,8 +79,6 @@ class UserCreate(BaseModel):
     full_name: str = Field(..., min_length=2)
     password: str = Field(..., min_length=8)
     role: str = "operator"
-
-    from pydantic import field_validator
 
     @field_validator("password")
     @classmethod
@@ -168,8 +166,6 @@ class UpdateNameRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
-
-    from pydantic import field_validator
 
     @field_validator("new_password")
     @classmethod
