@@ -138,6 +138,10 @@ class ListRefundsUseCase:
     def __init__(self, refund_repo: IRefundRepository) -> None:
         self._refund_repo = refund_repo
 
+    async def get_by_id(self, refund_id: UUID) -> RefundResponseDTO | None:
+        refund = await self._refund_repo.get_by_id(refund_id)
+        return _to_response(refund) if refund else None
+
     async def execute(
         self, skip: int = 0, limit: int = 20, status: str | None = None
     ) -> dict:

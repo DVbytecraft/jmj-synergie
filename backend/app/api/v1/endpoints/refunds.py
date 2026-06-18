@@ -69,11 +69,10 @@ async def get_refund(
     uc: Annotated[ListRefundsUseCase, Depends(get_list_refunds_uc)],
 ) -> RefundResponseDTO:
     from fastapi import HTTPException
-    from app.application.use_cases.refund.manage_refund import _to_response
-    refund = await uc._refund_repo.get_by_id(refund_id)
-    if not refund:
+    result = await uc.get_by_id(refund_id)
+    if not result:
         raise HTTPException(status_code=404, detail="Remboursement introuvable")
-    return _to_response(refund)
+    return result
 
 
 @router.post(
