@@ -371,8 +371,17 @@ async def scan_invoice(
     try:
         result = await ocr_service.scan_invoice(file, order_id, current_user.id, db)
         return ScanResult(**result)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erreur interne lors de l'analyse OCR")
+    except HTTPException:
+        raise  # 413 file-too-large, 415 unsupported type — pass through as-is
+    except MemoryError:
+        raise HTTPException(
+            status_code=503,
+            detail="Ressources insuffisantes pour analyser ce fichier. Réduisez la taille ou la résolution de l'image.",
+        )
+    except Exception as exc:
+        import structlog as _sl
+        _sl.get_logger(__name__).exception("scan.failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="Erreur lors de l'analyse OCR. Vérifiez le format du fichier et réessayez.")
 
 
 @router.get("/{document_id}/download")

@@ -12,7 +12,6 @@ Endpoints :
   POST   /orders/{id}/items              → Ajouter une ligne
   DELETE /orders/{id}/items/{item_id}    → Supprimer une ligne
 """
-import asyncio
 import json
 from typing import Annotated
 from uuid import UUID
@@ -80,84 +79,63 @@ class DashboardKPIResponse(BaseModel):
 
 @router.get("/kpi", response_model=DashboardKPIResponse)
 async def get_dashboard_kpi(current_user: CurrentUser, db: DB):
-    """
-    Single-request dashboard KPI — all aggregates computed server-side.
-    Replaces 3 separate list calls (orders + clients + payments) with 5
-    targeted SQL queries run in parallel.
-    """
+    """Single-request dashboard KPI — all aggregates computed server-side."""
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(status_code=403, detail="Organisation requise")
 
-    async def _total_orders():
-        return await db.scalar(
-            select(func.count(OrderModel.id)).where(
-                OrderModel.organization_id == org_id,
-                OrderModel.is_deleted == False,  # noqa: E712
-            )
-        ) or 0
-
-    async def _total_clients():
-        return await db.scalar(
-            select(func.count(ClientModel.id)).where(
-                ClientModel.organization_id == org_id,
-                ClientModel.is_deleted == False,  # noqa: E712
-                ClientModel.status == "active",
-            )
-        ) or 0
-
-    async def _ca_and_status():
-        # Compute CA as SUM(paid_cents) per confirmed/in_progress/delivered order
-        # and status breakdown in a single query.
-        rows = await db.execute(
-            select(
-                OrderModel.status,
-                func.count(OrderModel.id).label("cnt"),
-                func.coalesce(func.sum(OrderModel.paid_cents), 0).label("paid"),
-            )
-            .where(
-                OrderModel.organization_id == org_id,
-                OrderModel.is_deleted == False,  # noqa: E712
-            )
-            .group_by(OrderModel.status)
+    # Run sequentially — AsyncSession does not support concurrent queries on the same session.
+    total_orders = await db.scalar(
+        select(func.count(OrderModel.id)).where(
+            OrderModel.organization_id == org_id,
+            OrderModel.is_deleted == False,  # noqa: E712
         )
-        status_counts: dict[str, int] = {}
-        ca_total = 0
-        for row in rows.all():
-            status_counts[row.status] = row.cnt
-            ca_total += int(row.paid)
-        return status_counts, ca_total
+    ) or 0
 
-    async def _total_paid():
-        return await db.scalar(
-            select(func.coalesce(func.sum(PaymentTransactionModel.amount_cents), 0)).where(
-                PaymentTransactionModel.organization_id == org_id,
-                PaymentTransactionModel.status == "completed",
-                PaymentTransactionModel.transaction_type == "payment",
-            )
-        ) or 0
-
-    async def _recent_orders():
-        result = await db.execute(
-            select(OrderModel)
-            .where(
-                OrderModel.organization_id == org_id,
-                OrderModel.is_deleted == False,  # noqa: E712
-            )
-            .order_by(OrderModel.created_at.desc())
-            .limit(6)
+    total_clients = await db.scalar(
+        select(func.count(ClientModel.id)).where(
+            ClientModel.organization_id == org_id,
+            ClientModel.is_deleted == False,  # noqa: E712
+            ClientModel.status == "active",
         )
-        return result.scalars().all()
+    ) or 0
 
-    total_orders, total_clients, (status_counts, ca_total), total_paid, recent = (
-        await asyncio.gather(
-            _total_orders(),
-            _total_clients(),
-            _ca_and_status(),
-            _total_paid(),
-            _recent_orders(),
+    rows = await db.execute(
+        select(
+            OrderModel.status,
+            func.count(OrderModel.id).label("cnt"),
+            func.coalesce(func.sum(OrderModel.paid_cents), 0).label("paid"),
         )
+        .where(
+            OrderModel.organization_id == org_id,
+            OrderModel.is_deleted == False,  # noqa: E712
+        )
+        .group_by(OrderModel.status)
     )
+    status_counts: dict[str, int] = {}
+    ca_total = 0
+    for row in rows.all():
+        status_counts[row.status] = row.cnt
+        ca_total += int(row.paid)
+
+    total_paid = await db.scalar(
+        select(func.coalesce(func.sum(PaymentTransactionModel.amount_cents), 0)).where(
+            PaymentTransactionModel.organization_id == org_id,
+            PaymentTransactionModel.status == "completed",
+            PaymentTransactionModel.transaction_type == "payment",
+        )
+    ) or 0
+
+    recent_result = await db.execute(
+        select(OrderModel)
+        .where(
+            OrderModel.organization_id == org_id,
+            OrderModel.is_deleted == False,  # noqa: E712
+        )
+        .order_by(OrderModel.created_at.desc())
+        .limit(6)
+    )
+    recent = recent_result.scalars().all()
 
     by_status = OrdersByStatus(
         draft=status_counts.get("draft", 0),

@@ -88,10 +88,18 @@ export default function ScanPage() {
       setRawText(result.raw_text);
       setStep("extracted");
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      setExtractError(
-        err.response?.data?.detail || "Erreur lors de l'analyse. Vérifiez le fichier et réessayez."
-      );
+      const err = e as { response?: { status?: number; data?: { detail?: string } } };
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+      if (status === 413) {
+        setExtractError("Fichier trop volumineux. Maximum 15 Mo.");
+      } else if (status === 415) {
+        setExtractError("Format non supporté. Utilisez PNG, JPG ou PDF.");
+      } else if (status === 503) {
+        setExtractError(detail || "Ressources insuffisantes. Réduisez la résolution de l'image ou utilisez un fichier plus léger.");
+      } else {
+        setExtractError(detail || "Erreur lors de l'analyse. Vérifiez la qualité du fichier et réessayez.");
+      }
     } finally {
       setProcessing(false);
     }
