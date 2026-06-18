@@ -346,7 +346,7 @@ export default function AdminPanel() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="label">Nom de l&apos;entreprise *</label>
-                  <input value={orgForm.org_name} onChange={e => setOrgForm({ ...orgForm, org_name: e.target.value })} className="input" placeholder="JMJ Synergie" />
+                  <input value={orgForm.org_name} onChange={e => setOrgForm({ ...orgForm, org_name: e.target.value })} className="input" placeholder="Biloz" />
                 </div>
                 <div>
                   <label className="label">Email entreprise</label>

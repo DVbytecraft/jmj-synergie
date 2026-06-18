@@ -9,7 +9,7 @@ export async function GET() {
   return NextResponse.json(
     {
       status: "ok",
-      service: "jmj-frontend",
+      service: "biloz-frontend",
       timestamp: new Date().toISOString(),
     },
     {
