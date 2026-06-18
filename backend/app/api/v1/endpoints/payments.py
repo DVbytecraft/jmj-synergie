@@ -118,7 +118,6 @@ async def list_all_transactions(
     order_id: UUID | None = None,
 ):
     if current_user.organization_id is None and current_user.role != "super_admin":
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
 
     def _base(q):

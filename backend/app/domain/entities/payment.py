@@ -41,12 +41,12 @@ class PaymentTransaction:
     Represents one financial transaction.
     Once COMPLETED or REVERSED, it becomes immutable — never modify, only create corrections.
     """
-    order_id: UUID
     client_id: UUID
     transaction_type: TransactionType
     method: PaymentMethod
     amount: Money
     recorded_by: UUID
+    order_id: Optional[UUID] = None
 
     id: UUID = field(default_factory=uuid4)
     transaction_number: str = ""

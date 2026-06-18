@@ -20,7 +20,7 @@ class RecordPaymentDTO(BaseModel):
 class PaymentResponseDTO(BaseModel):
     id: UUID
     transaction_number: str
-    order_id: UUID
+    order_id: Optional[UUID]
     client_id: UUID
     transaction_type: str
     status: str

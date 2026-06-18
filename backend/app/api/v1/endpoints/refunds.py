@@ -11,7 +11,7 @@ Endpoints :
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.v1.deps import (
     CurrentUser, ManagerUser,
@@ -68,7 +68,6 @@ async def get_refund(
     current_user: CurrentUser,
     uc: Annotated[ListRefundsUseCase, Depends(get_list_refunds_uc)],
 ) -> RefundResponseDTO:
-    from fastapi import HTTPException
     result = await uc.get_by_id(refund_id)
     if not result:
         raise HTTPException(status_code=404, detail="Remboursement introuvable")
