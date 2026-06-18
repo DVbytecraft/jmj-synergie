@@ -1,0 +1,46 @@
+# Dépendances — reconstruites dans l'image
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build Next.js — reconstruit dans l'image
+.next
+out
+
+# Variables d'environnement — injectées au runtime
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Éditeurs / OS
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+*.swo
+
+# Tests & qualité
+coverage
+.nyc_output
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+
+# Docs
+*.md
+LICENSE
+
+# Docker
+Dockerfile
+.dockerignore

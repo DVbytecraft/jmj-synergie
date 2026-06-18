@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "jmj-synergie-backend"
+version = "1.0.0"
+description = "JMJ Synergie — Order Management API"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode        = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths           = ["tests"]
+python_files        = ["test_*.py"]
+python_classes      = ["Test*"]
+python_functions    = ["test_*"]
+addopts             = "-v --tb=short --strict-markers -p no:warnings"
+markers = [
+    "unit: fast, no IO",
+    "integration: hits DB or external services",
+    "e2e: full HTTP stack",
+]
+
+[tool.coverage.run]
+source   = ["app"]
+omit     = ["*/tests/*", "*/alembic/*"]
+branch   = true
+
+[tool.coverage.report]
+fail_under = 40
+show_missing = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = ["E","F","I","N","UP","ANN","S","B","A","COM","C4","DTZ","T20","RET","SIM","TCH"]
+ignore = ["ANN101","ANN102","S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true

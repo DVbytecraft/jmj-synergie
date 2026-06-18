@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Biloz
+    orgId: 1
+    folder: "Biloz"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

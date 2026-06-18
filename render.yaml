@@ -1,0 +1,144 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Biloz — Render Blueprint
+#
+#  Déploiement :
+#  1. Connecter ce repo sur https://dashboard.render.com/blueprints
+#  2. Déployer le backend EN PREMIER. Copier son URL publique.
+#  3. Mettre à jour BACKEND_URL, ALLOWED_ORIGINS, FRONTEND_URL dans le dashboard.
+#  4. Renseigner toutes les variables marquées "sync: false" dans le dashboard.
+#
+#  Redis : utiliser Upstash Redis (gratuit) → https://upstash.com
+#  Copier la connection string Redis et la mettre dans REDIS_URL du backend.
+# ─────────────────────────────────────────────────────────────────────────────
+
+databases:
+  - name: biloz-db
+    databaseName: biloz
+    user: biloz_admin
+    plan: starter
+    region: frankfurt
+
+services:
+
+  # ── Backend FastAPI ──────────────────────────────────────────────────────────
+  - type: web
+    name: biloz-backend
+    env: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      # DATABASE_URL injectée automatiquement depuis la base Render (postgres://)
+      # start.sh la convertit en postgresql+asyncpg:// au démarrage
+      - key: DATABASE_URL
+        fromDatabase:
+          name: biloz-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: ALLOWED_ORIGINS
+        sync: false           # Ex: https://biloz-frontend.onrender.com
+      - key: TRUSTED_HOSTS
+        sync: false           # Ex: biloz-backend.onrender.com — obligatoire en production
+      - key: FRONTEND_URL
+        sync: false           # Ex: https://biloz-frontend.onrender.com
+      - key: STORAGE_PATH
+        value: /app/storage
+      - key: MAX_FILE_SIZE_MB
+        value: "10"
+      # ── Redis (Upstash recommandé) ────────────────────────────────────────────
+      # Obligatoire pour le rate-limiting. Obtenir une URL sur https://upstash.com
+      - key: REDIS_URL
+        sync: false           # Ex: rediss://default:xxxxx@xxx.upstash.io:6379
+      # ── Brevo ────────────────────────────────────────────────────────────────
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        value: biloz@bytecraft.art
+      - key: BREVO_SENDER_NAME
+        value: Biloz
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        value: biloz@bytecraft.art
+      - key: SMTP_TLS
+        value: "true"
+      # ── Cloudinary ───────────────────────────────────────────────────────────
+      - key: USE_CLOUDINARY
+        value: "true"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # ── AI OCR ───────────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # ── Infos société ─────────────────────────────────────────────────────────
+      - key: APP_NAME
+        value: Biloz
+      - key: COMPANY_NAME
+        value: Biloz
+      - key: COMPANY_ADDRESS
+        value: "Cotonou, Bénin"
+      - key: COMPANY_PHONE
+        value: "+229 00 00 00 00"
+      - key: COMPANY_EMAIL
+        value: biloz@bytecraft.art
+      - key: SENTRY_DSN
+        sync: false
+      - key: WORKERS
+        value: "1"
+
+  # ── Frontend Next.js ─────────────────────────────────────────────────────────
+  - type: web
+    name: biloz-frontend
+    env: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    healthCheckPath: /
+    envVars:
+      # BACKEND_URL : URL interne du backend (server-side uniquement, rewrites Next.js).
+      # ⚠️  Déployer le backend en premier, puis renseigner son URL ici.
+      - key: BACKEND_URL
+        sync: false           # Ex: https://biloz-backend.onrender.com
+      # NEXT_PUBLIC_API_URL : TOUJOURS /api/v1 (relatif).
+      # Ne JAMAIS mettre une URL absolue ici — le navigateur ferait des
+      # requêtes directement au backend, bypassant le proxy et violant le CSP.
+      - key: NEXT_PUBLIC_API_URL
+        value: /api/v1
+      # RENDER_BACKEND_URL : URL publique du backend — ajoutée au connect-src du CSP
+      # frontend pour couvrir les cas où NEXT_PUBLIC_API_URL serait mal configuré.
+      - key: RENDER_BACKEND_URL
+        sync: false           # Ex: https://biloz-backend.onrender.com
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      # KEEPALIVE_SECRET : secret partagé pour l'endpoint /api/keepalive.
+      # Configurer un cron externe (ex: cron-job.org) toutes les 10 min sur
+      # https://biloz-frontend.onrender.com/api/keepalive?secret=<valeur>
+      # pour éviter le cold-start du backend sur le plan starter.
+      - key: KEEPALIVE_SECRET
+        sync: false           # Générer un token aléatoire fort (32+ chars)

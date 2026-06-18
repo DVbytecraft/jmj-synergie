@@ -1,0 +1,191 @@
+{
+  "title": "Biloz — Overview",
+  "uid": "jmj-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["jmj", "api"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Statut API",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [{
+        "expr": "up{job=\"jmj_backend\"}",
+        "legendFormat": "API"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Requêtes / sec",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "targets": [{
+        "expr": "sum(rate(http_requests_total{job=\"jmj_backend\"}[5m]))",
+        "legendFormat": "req/s"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Taux d'erreurs 5xx",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "targets": [{
+        "expr": "sum(rate(http_requests_total{job=\"jmj_backend\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"jmj_backend\"}[5m])) * 100",
+        "legendFormat": "% erreurs"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latence médiane (P50)",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "targets": [{
+        "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"jmj_backend\"}[5m])) by (le)) * 1000",
+        "legendFormat": "P50 ms"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 0 } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Latence P95",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"jmj_backend\"}[5m])) by (le)) * 1000",
+        "legendFormat": "P95 ms"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 2000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Connexions PostgreSQL",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "targets": [{
+        "expr": "pg_stat_activity_count{job=\"jmj_postgres\"}",
+        "legendFormat": "connexions"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Requêtes HTTP par statut",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"jmj_backend\"}[5m])) by (status)",
+          "legendFormat": "HTTP {{ status }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Latence P50 / P95 / P99",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"jmj_backend\"}[5m])) by (le)) * 1000",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"jmj_backend\"}[5m])) by (le)) * 1000",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"jmj_backend\"}[5m])) by (le)) * 1000",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Mémoire Redis",
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 7 },
+      "targets": [{
+        "expr": "redis_memory_used_bytes{job=\"jmj_redis\"}",
+        "legendFormat": "Utilisée"
+      }, {
+        "expr": "redis_memory_max_bytes{job=\"jmj_redis\"}",
+        "legendFormat": "Max"
+      }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Taille base de données PostgreSQL",
+      "gridPos": { "x": 8, "y": 12, "w": 8, "h": 7 },
+      "targets": [{
+        "expr": "pg_database_size_bytes{datname=\"biloz\"}",
+        "legendFormat": "biloz"
+      }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Requêtes lentes PostgreSQL (> 1s)",
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 7 },
+      "targets": [{
+        "expr": "pg_stat_activity_max_tx_duration{state=\"active\", job=\"jmj_postgres\"}",
+        "legendFormat": "Durée max transaction (s)"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ]
+}

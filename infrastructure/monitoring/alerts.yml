@@ -1,0 +1,95 @@
+groups:
+  - name: jmj_api
+    rules:
+      # API indisponible depuis 2 minutes
+      - alert: APIDown
+        expr: up{job="jmj_backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API Biloz indisponible"
+          description: "Le backend ne répond plus depuis {{ $value }} secondes."
+
+      # Taux d'erreurs HTTP 5xx > 5 %
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taux d'erreurs 5xx élevé"
+          description: "{{ $value | humanizePercentage }} des requêtes retournent une erreur 5xx."
+
+      # Latence P95 > 2 secondes
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence P95 élevée"
+          description: "Le handler {{ $labels.handler }} dépasse 2s au P95."
+
+  - name: jmj_database
+    rules:
+      # PostgreSQL indisponible
+      - alert: PostgresDown
+        expr: up{job="jmj_postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL indisponible"
+          description: "L'exporteur PostgreSQL ne répond plus."
+
+      # Plus de 80 connexions actives (pool saturé)
+      - alert: PostgresHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Trop de connexions PostgreSQL"
+          description: "{{ $value }} connexions actives (seuil : 80)."
+
+      # Transactions de longue durée (> 5 min)
+      - alert: PostgresLongRunningQuery
+        expr: pg_stat_activity_max_tx_duration{state="active"} > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transaction PostgreSQL longue durée"
+          description: "Une transaction est active depuis {{ $value | humanizeDuration }}."
+
+  - name: jmj_redis
+    rules:
+      # Redis indisponible
+      - alert: RedisDown
+        expr: up{job="jmj_redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis indisponible"
+          description: "Redis ne répond plus."
+
+      # Mémoire Redis > 90 %
+      - alert: RedisHighMemory
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis mémoire critique"
+          description: "Redis utilise {{ $value | humanizePercentage }} de sa mémoire max."
