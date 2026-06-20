@@ -94,6 +94,18 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Never attempt a silent refresh when the failing request IS an auth endpoint.
+    // Login 401 = wrong credentials (not an expired token), refresh would be pointless
+    // and would just add a second confusing 401 in the console.
+    const reqUrl: string = originalRequest.url ?? "";
+    if (
+      reqUrl.endsWith("/auth/login") ||
+      reqUrl.endsWith("/auth/refresh") ||
+      reqUrl.endsWith("/auth/logout")
+    ) {
+      return Promise.reject(error);
+    }
+
     originalRequest._retry = true;
 
     // If a refresh is already in-flight, queue this request
