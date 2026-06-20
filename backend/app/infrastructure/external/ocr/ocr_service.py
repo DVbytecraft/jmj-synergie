@@ -29,7 +29,7 @@ from app.infrastructure.database.models import Document, DocumentType, UserModel
 
 logger = structlog.get_logger(__name__)
 
-_TESS_CONFIG = "--oem 3 --psm 6"
+_TESS_CONFIG = "--oem 3 --psm 3"
 _TESS_LANG = "fra+eng"
 
 # Memory guards for Render Starter plan (512 MB RAM)
@@ -622,9 +622,10 @@ def _extract_tax_amount(text: str) -> float | None:
 def _extract_total(text: str) -> float | None:
     val = _first_amount(text, _TTC_PATS)
     if val is None:
-        # Dernier recours : plus grand nombre du document (souvent le TTC)
-        amounts = [_parse_number(m) for m in re.findall(r"\b(\d[\d\s]{3,}(?:[.,]\d{1,2})?)\b", text)]
-        valid = [a for a in amounts if a is not None and a > 0]
+        # Dernier recours : plus grand nombre monétaire plausible dans le document.
+        # Plafond 999 999 999 pour exclure numéros de téléphone et comptes bancaires.
+        amounts = [_parse_number(m) for m in re.findall(r"\b(\d[\d\s]{1,}(?:[.,]\d{1,2})?)\b", text)]
+        valid = [a for a in amounts if a is not None and 0 < a < 1_000_000_000]
         if valid:
             return max(valid)
     return val

@@ -36,6 +36,7 @@ python-magic==0.4.27
 pytesseract==0.3.13
 pdf2image==1.17.0
 opencv-python-headless==4.10.0.84
+numpy>=1.21.2
 
 # ── HTTP Client ───────────────────────────────────────────────────────────────
 httpx==0.27.2
@@ -45,12 +46,6 @@ httpx==0.27.2
 
 # ── Cloud storage ──────────────────────────────────────────────────────────────
 cloudinary==1.41.0
-
-# ── AI OCR (Gemini Flash — gratuit 1500 req/jour) ─────────────────────────────
-google-generativeai==0.8.3
-
-# ── AI OCR alternatif (Claude Vision — optionnel) ─────────────────────────────
-anthropic==0.34.2
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 structlog==24.4.0
