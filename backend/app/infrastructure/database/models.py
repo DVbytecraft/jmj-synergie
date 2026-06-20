@@ -11,7 +11,7 @@ from decimal import Decimal
 from sqlalchemy import (
     BigInteger, Boolean, Date, DateTime, Enum as SAEnum,
     ForeignKey, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint,
-    ARRAY,
+    ARRAY, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -62,6 +62,7 @@ class UserModel(Base):
     full_name: Mapped[str]  = mapped_column(String(255), nullable=False)
     role: Mapped[str]       = mapped_column(String(30), nullable=False, default="operator")
     status: Mapped[str]     = mapped_column(String(30), nullable=False, default="active")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     signature_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     signature_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -181,6 +182,10 @@ class OrderModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
+    subtotal_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    tax_cents: Mapped[int]      = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    total_cents: Mapped[int]    = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+
     client: Mapped[ClientModel] = relationship("ClientModel", back_populates="orders")
     items: Mapped[list[OrderItemModel]] = relationship(
         "OrderItemModel", back_populates="order", cascade="all, delete-orphan"
@@ -188,18 +193,6 @@ class OrderModel(Base):
     transactions: Mapped[list[PaymentTransactionModel]] = relationship(
         "PaymentTransactionModel", back_populates="order"
     )
-
-    @property
-    def subtotal_cents(self) -> int:
-        return sum(int(item.unit_price_cents * item.quantity) for item in self.items)
-
-    @property
-    def tax_cents(self) -> int:
-        return int(self.subtotal_cents * self.tax_rate / 100)
-
-    @property
-    def total_cents(self) -> int:
-        return self.subtotal_cents + self.tax_cents - self.discount_cents + self.shipping_cents
 
 
 class OrderItemModel(Base):

@@ -87,6 +87,7 @@ async def seed() -> None:
             full_name=full_name,
             role="super_admin",
             status="active",
+            is_active=True,
             is_email_verified=True,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),

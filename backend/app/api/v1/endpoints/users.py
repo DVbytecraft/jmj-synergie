@@ -450,6 +450,7 @@ async def create_user(
         full_name=body.full_name,
         hashed_password=await hash_password_async(body.password),
         role=body.role,
+        is_active=True,
     )
     db.add(user)
     await db.flush()

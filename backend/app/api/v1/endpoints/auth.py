@@ -462,6 +462,7 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
         full_name=body.full_name.strip(),
         hashed_password=await hash_password_async(body.password),
         role="admin",
+        is_active=True,
         is_email_verified=False,
         email_otp_hash=otp_hash,
         email_otp_expires_at=now + timedelta(minutes=OTP_EXPIRE_MINUTES),

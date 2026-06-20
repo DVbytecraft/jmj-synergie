@@ -205,3 +205,9 @@ def _copy_to_model(order: Order, row: OrderModel) -> None:
     row.deleted_by = order.deleted_by
     row.created_at = order.created_at
     row.updated_at = order.updated_at
+    # Persist denormalized totals (computed from domain items for DB-level filtering/sorting)
+    subtotal = sum(item.unit_price.cents * item.quantity for item in order.items)
+    tax = int(subtotal * order.tax_rate / 100)
+    row.subtotal_cents = subtotal
+    row.tax_cents = tax
+    row.total_cents = subtotal + tax - order.discount_cents + order.shipping_cents

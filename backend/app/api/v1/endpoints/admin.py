@@ -242,6 +242,7 @@ async def create_organization(
         hashed_password=await hash_password_async(body.admin_password),
         role="admin",
         status="active",
+        is_active=True,
         is_email_verified=True,
     )
     db.add(admin)
