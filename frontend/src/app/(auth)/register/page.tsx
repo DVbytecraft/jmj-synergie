@@ -96,6 +96,10 @@ export default function RegisterPage() {
         setError("Le serveur se réveille — réessayez dans 30 secondes.");
         return;
       }
+      if (status === 429) {
+        setError("Trop de tentatives. Veuillez patienter quelques minutes avant de réessayer.");
+        return;
+      }
       if (status === 409) {
         if (typeof detail === "string" && detail.includes("NIF")) {
           setError(detail);

@@ -50,6 +50,10 @@ function LoginContent() {
         setIsWaking(true);
         return;
       }
+      if (status === 429) {
+        setError("Trop de tentatives de connexion. Veuillez patienter quelques minutes avant de réessayer.");
+        return;
+      }
       const detail = err.response?.data?.detail;
       if (status === 403 && detail === "EMAIL_NOT_VERIFIED") {
         router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
