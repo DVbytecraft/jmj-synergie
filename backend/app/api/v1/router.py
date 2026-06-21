@@ -15,18 +15,30 @@ from app.api.v1.endpoints import (
     users,
     permissions,
     organizations,
+    stock,
+    quotes,
+    exports,
+    notifications,
+    portal,
+    mobile_money,
 )
 
 api_router = APIRouter()
 
-api_router.include_router(admin.router,       prefix="/admin",       tags=["Admin"])
-api_router.include_router(auth.router,        prefix="/auth",        tags=["Authentication"])
-api_router.include_router(users.router,       prefix="/users",       tags=["Users"])
-api_router.include_router(clients.router,     prefix="/clients",     tags=["Clients"])
-api_router.include_router(orders.router,      prefix="/orders",      tags=["Orders"])
-api_router.include_router(products.router,    prefix="/products",    tags=["Products"])
-api_router.include_router(payments.router,    prefix="/payments",    tags=["Payments"])
-api_router.include_router(refunds.router,     prefix="/refunds",     tags=["Refunds"])
-api_router.include_router(documents.router,   prefix="/documents",   tags=["Documents"])
-api_router.include_router(permissions.router, prefix="/permissions", tags=["Permissions"])
-api_router.include_router(organizations.router, prefix="/organizations", tags=["Organizations"])
+api_router.include_router(admin.router,           prefix="/admin",           tags=["Admin"])
+api_router.include_router(auth.router,            prefix="/auth",            tags=["Authentication"])
+api_router.include_router(users.router,           prefix="/users",           tags=["Users"])
+api_router.include_router(clients.router,         prefix="/clients",         tags=["Clients"])
+api_router.include_router(orders.router,          prefix="/orders",          tags=["Orders"])
+api_router.include_router(products.router,        prefix="/products",        tags=["Products"])
+api_router.include_router(stock.router,           prefix="/stock",           tags=["Stock"])
+api_router.include_router(quotes.router,          prefix="/quotes",          tags=["Quotes"])
+api_router.include_router(payments.router,        prefix="/payments",        tags=["Payments"])
+api_router.include_router(refunds.router,         prefix="/refunds",         tags=["Refunds"])
+api_router.include_router(documents.router,       prefix="/documents",       tags=["Documents"])
+api_router.include_router(exports.router,         prefix="/exports",         tags=["Exports"])
+api_router.include_router(notifications.router,   prefix="/notifications",   tags=["Notifications"])
+api_router.include_router(portal.router,          prefix="/portal",          tags=["Portal"])
+api_router.include_router(mobile_money.router,    prefix="/mobile-money",    tags=["Mobile Money"])
+api_router.include_router(permissions.router,     prefix="/permissions",     tags=["Permissions"])
+api_router.include_router(organizations.router,   prefix="/organizations",   tags=["Organizations"])

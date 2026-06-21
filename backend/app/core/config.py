@@ -82,8 +82,16 @@ class Settings(BaseSettings):
     COMPANY_LOGO_PATH: str = "/app/storage/assets/logo.png"
     COMPANY_STAMP_PATH: str = "/app/storage/assets/stamp.png"
 
+    # ── CinetPay (Mobile Money) ───────────────────────────────────────────────
+    CINETPAY_API_KEY: str = ""
+    CINETPAY_SITE_ID: str = ""
+
     # ── Sentry ────────────────────────────────────────────────────────────────
     SENTRY_DSN: str = ""
+
+    # ── Metrics ──────────────────────────────────────────────────────────────
+    METRICS_TOKEN: str = ""
+    METRICS_ALLOWED_IPS: str = ""
 
     # ── Pagination ────────────────────────────────────────────────────────────
     DEFAULT_PAGE_SIZE: int = 20

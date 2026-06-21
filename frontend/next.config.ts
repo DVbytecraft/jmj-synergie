@@ -2,26 +2,10 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV === "development";
 
-// ── Content Security Policy ───────────────────────────────────────────────────
-// 'unsafe-inline' requis par Next.js pour les scripts.
-// connect-src inclut le backend Render pour les déploiements où
-// NEXT_PUBLIC_API_URL pourrait pointer directement vers le backend.
-const RENDER_BACKEND = process.env.RENDER_BACKEND_URL ?? "";
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data: blob: https://res.cloudinary.com",
-  [
-    "connect-src 'self' https://res.cloudinary.com",
-    RENDER_BACKEND ? RENDER_BACKEND : "",
-  ].filter(Boolean).join(" "),
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'",
-].join("; ");
+// CSP is now injected per-request via middleware (src/middleware.ts) using a
+// per-request nonce, eliminating 'unsafe-inline' for scripts in production.
+// The static fallback below is kept only for the /_next/static layer where
+// middleware doesn't run (Next.js static file serving bypasses middleware).
 
 const nextConfig: NextConfig = {
   // ── Output standalone pour Docker (production uniquement) ─────────────────
@@ -48,10 +32,8 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy",          value: "strict-origin-when-cross-origin" },
           // Désactive caméra, micro, géolocalisation
           { key: "Permissions-Policy",       value: "camera=(self), microphone=(), geolocation=()" },
-          // CSP — désactivé en dev pour faciliter le debug HMR
-          ...(isDev
-            ? []
-            : [{ key: "Content-Security-Policy", value: CSP }]),
+          // CSP est injecté par le middleware (src/middleware.ts) avec un nonce
+          // par requête — pas de header statique ici pour éviter les conflits.
         ],
       },
       // Cache long-terme pour les assets statiques Next.js (fingerprinted) — prod uniquement

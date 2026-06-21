@@ -7,12 +7,14 @@ import { commandesApi } from "@/lib/api/commandes";
 import { clientsApi } from "@/lib/api/clients";
 import { paiementsApi } from "@/lib/api/paiements";
 import { apiClient } from "@/lib/api/client";
+import { portalApi } from "@/lib/api/portal";
+import { mobileMoneyApi, type MobileMoneyProvider, PROVIDER_LABELS } from "@/lib/api/mobile-money";
 import { formatCents } from "@/lib/utils/money";
 import type { PaymentMethod } from "@/types";
 import {
   ArrowLeft, CheckCircle, XCircle, Download, FileText,
   CreditCard, Loader2, Package, Truck, Wallet, Receipt,
-  ShoppingCart, ClipboardList, ChevronRight,
+  ShoppingCart, ClipboardList, ChevronRight, Share2, Copy, Check,
 } from "lucide-react";
 import Link from "next/link";
 import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
@@ -31,7 +33,11 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const { id } = use(params);
   const qc = useQueryClient();
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showMobileMoneyModal, setShowMobileMoneyModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const { data: commande, isLoading } = useQuery({
     queryKey: ["commandes", id],
@@ -95,6 +101,21 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
     return <div className="text-center py-16 text-gray-400">Commande introuvable</div>;
   }
 
+  const handleShare = async () => {
+    setShareLoading(true);
+    try {
+      const res = await portalApi.createShare(id);
+      setShareLink(res.url);
+      await navigator.clipboard.writeText(res.url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+    } catch {
+      // ignore
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   const canConfirm = commande.status === "draft";
   const canCancel = !["delivered", "cancelled", "refunded"].includes(commande.status);
   const canPay = commande.status === "confirmed";
@@ -145,12 +166,33 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
               Payer
             </button>
           )}
+          {canPay && (
+            <button onClick={() => setShowMobileMoneyModal(true)} className="btn-secondary">
+              <Wallet className="w-4 h-4" />
+              Mobile Money
+            </button>
+          )}
           {canRecordDelivery && (
             <button onClick={() => setShowDeliveryModal(true)} className="btn-secondary">
               <Truck className="w-4 h-4" />
               Livraison
             </button>
           )}
+          <button
+            onClick={handleShare}
+            disabled={shareLoading}
+            className="btn-secondary"
+            title="Générer un lien partageable pour le client"
+          >
+            {shareLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : shareCopied ? (
+              <Check className="w-4 h-4 text-emerald-500" />
+            ) : (
+              <Share2 className="w-4 h-4" />
+            )}
+            {shareCopied ? "Copié !" : "Partager"}
+          </button>
           {canCancel && (
             <button
               onClick={() => annulerMut.mutate()}
@@ -163,6 +205,31 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           )}
         </div>
       </div>
+
+      {/* Share link banner */}
+      {shareLink && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm">
+          <Share2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
+          <span className="text-blue-700 font-medium flex-1 truncate">{shareLink}</span>
+          <button
+            onClick={async () => {
+              await navigator.clipboard.writeText(shareLink);
+              setShareCopied(true);
+              setTimeout(() => setShareCopied(false), 2000);
+            }}
+            className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+          >
+            {shareCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {shareCopied ? "Copié" : "Copier"}
+          </button>
+          <button
+            onClick={() => setShareLink(null)}
+            className="text-blue-400 hover:text-blue-600 ml-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {docError && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
@@ -432,6 +499,19 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           }}
         />
       )}
+      {showMobileMoneyModal && (
+        <MobileMoneyModal
+          orderId={id}
+          currency={commande.currency}
+          balanceCents={commande.balance_due_cents}
+          onClose={() => setShowMobileMoneyModal(false)}
+          onSuccess={() => {
+            setShowMobileMoneyModal(false);
+            qc.invalidateQueries({ queryKey: ["commandes", id] });
+            qc.invalidateQueries({ queryKey: ["payments", id] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -664,6 +744,169 @@ function PaymentModal({
             Confirmer le paiement
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileMoneyModal({
+  orderId,
+  currency,
+  balanceCents,
+  onClose,
+  onSuccess,
+}: {
+  orderId: string;
+  currency: string;
+  balanceCents: number;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [provider, setProvider] = useState<MobileMoneyProvider>("orange_money");
+  const [phone, setPhone] = useState("+237");
+  const [amount, setAmount] = useState(String(balanceCents));
+  const [txnId, setTxnId] = useState<string | null>(null);
+  const [txnStatus, setTxnStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
+
+  const initiate = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await mobileMoneyApi.initiate({
+        order_id: orderId,
+        amount_cents: parseInt(amount, 10) || balanceCents,
+        phone_number: phone,
+        provider,
+        currency,
+      });
+      setTxnId(res.transaction_id);
+      setTxnStatus("pending");
+      startPolling(res.transaction_id);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? "Erreur lors de l'initiation du paiement.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startPolling = (id: string) => {
+    setPolling(true);
+    const start = Date.now();
+    const TIMEOUT = 2 * 60 * 1000; // 2 min
+    const interval = setInterval(async () => {
+      if (Date.now() - start > TIMEOUT) {
+        clearInterval(interval);
+        setPolling(false);
+        setError("Délai d'attente dépassé. Veuillez vérifier manuellement.");
+        return;
+      }
+      try {
+        const res = await mobileMoneyApi.status(id);
+        setTxnStatus(res.status);
+        if (res.status === "completed") {
+          clearInterval(interval);
+          setPolling(false);
+          setTimeout(onSuccess, 1500);
+        } else if (res.status === "failed") {
+          clearInterval(interval);
+          setPolling(false);
+          setError("Paiement refusé ou échoué.");
+        }
+      } catch {
+        // continuer le polling
+      }
+    }, 5000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Paiement Mobile Money</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Solde restant : <span className="font-semibold text-gray-900">{formatCents(balanceCents, currency)}</span>
+          </p>
+        </div>
+
+        {!txnId ? (
+          <>
+            <div>
+              <label className="label">Opérateur</label>
+              <select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as MobileMoneyProvider)}
+                className="input"
+              >
+                {(Object.keys(PROVIDER_LABELS) as MobileMoneyProvider[]).map((p) => (
+                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Numéro de téléphone</label>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+237 6XX XXX XXX"
+                className="input"
+              />
+            </div>
+
+            <div>
+              <label className="label">Montant ({currency})</label>
+              <input
+                type="number"
+                min={1}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="input"
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
+            )}
+
+            <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+              <button onClick={onClose} className="btn-secondary">Annuler</button>
+              <button onClick={initiate} disabled={loading} className="btn-primary">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+                Initier le paiement
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4 text-center py-4">
+            {txnStatus === "pending" && (
+              <>
+                <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto" />
+                <p className="font-semibold text-gray-900">En attente de confirmation</p>
+                <p className="text-sm text-gray-500">
+                  {PROVIDER_LABELS[provider]} va vous envoyer une notification pour valider le paiement.
+                </p>
+                <p className="text-xs text-gray-400">Vérification toutes les 5 secondes…</p>
+              </>
+            )}
+            {txnStatus === "completed" && (
+              <>
+                <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto" />
+                <p className="font-bold text-emerald-700 text-lg">Paiement confirmé !</p>
+              </>
+            )}
+            {txnStatus === "failed" && (
+              <>
+                <XCircle className="w-10 h-10 text-red-500 mx-auto" />
+                <p className="font-bold text-red-700">Paiement échoué</p>
+                {error && <p className="text-sm text-red-600">{error}</p>}
+                <button onClick={onClose} className="btn-secondary mt-2">Fermer</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

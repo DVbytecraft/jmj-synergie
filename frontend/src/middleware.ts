@@ -25,9 +25,9 @@ const ORG_ROUTES = [
 ];
 
 // Routes inaccessibles aux operators (création de ressources)
-const MANAGER_MIN_ROUTES = ["/commandes/new", "/clients/new", "/produits/new"];
+const MANAGER_MIN_ROUTES = ["/commandes/new", "/clients/new", "/produits/new", "/devis/new"];
 
-// Routes publiques — pas d'auth requise
+// Routes publiques — pas d'auth requise (inclut /portal pour les clients)
 function isPublic(pathname: string): boolean {
   return (
     pathname.startsWith("/login") ||
@@ -35,6 +35,7 @@ function isPublic(pathname: string): boolean {
     pathname.startsWith("/verify-email") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/portal") ||
     pathname.startsWith("/api")
   );
 }
@@ -42,8 +43,6 @@ function isPublic(pathname: string): boolean {
 function getToken(request: NextRequest): string | null {
   const raw = request.cookies.get("access_token")?.value ?? null;
   if (!raw) return null;
-  // Le cookie est stocké encodé via encodeURIComponent dans auth.store.ts.
-  // Next.js RequestCookies ne décode pas automatiquement — on le fait ici.
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -62,12 +61,49 @@ function validateToken(token: string): JWTPayload | null {
   }
 }
 
+function generateNonce(): string {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Buffer.from(array).toString("base64");
+}
+
+function buildCsp(nonce: string): string {
+  const renderBackend = process.env.RENDER_BACKEND_URL ?? "";
+  const parts = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https://res.cloudinary.com",
+    [
+      "connect-src 'self' https://res.cloudinary.com",
+      renderBackend ? renderBackend : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ];
+  return parts.join("; ");
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isDev = process.env.NODE_ENV === "development";
 
-  // 1. Routes publiques — laisser passer immédiatement
+  // ── Nonce CSP (production uniquement) ────────────────────────────────────
+  const nonce = isDev ? "" : generateNonce();
+
+  // 1. Routes publiques — laisser passer (avec nonce si besoin)
   if (isPublic(pathname)) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    if (!isDev && nonce) {
+      res.headers.set("Content-Security-Policy", buildCsp(nonce));
+      res.headers.set("x-nonce", nonce);
+    }
+    return res;
   }
 
   // 2. Vérifier le token
@@ -106,22 +142,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // 5. Passer les infos utilisateur via headers pour les Server Components
+  // 5. Passer les infos utilisateur + nonce via headers
   const response = NextResponse.next();
   response.headers.set("x-user-id", payload.sub);
   response.headers.set("x-user-role", payload.role);
+  if (!isDev && nonce) {
+    response.headers.set("Content-Security-Policy", buildCsp(nonce));
+    response.headers.set("x-nonce", nonce);
+  }
   return response;
 }
 
 export const config = {
   matcher: [
-    /*
-     * Toutes les routes sauf :
-     * - fichiers statiques Next.js (_next/static, _next/image)
-     * - favicon, icon
-     * - chunk-guard.js (script de récupération sans auth)
-     * Les routes publiques (login, register…) sont gérées par isPublic().
-     */
     "/((?!_next/static|_next/image|favicon\\.ico|icon|chunk-guard\\.js).*)",
   ],
 };

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Biloz — Hors ligne</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f9fafb;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      color: #111827;
+    }
+    .card {
+      background: #fff;
+      border-radius: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.06);
+      padding: 3rem 2.5rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      width: 56px;
+      height: 56px;
+      background: #1a56db;
+      border-radius: 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+    .logo span { color: #fff; font-size: 1.5rem; font-weight: 700; }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: .75rem; }
+    p { color: #6b7280; font-size: .95rem; line-height: 1.6; margin-bottom: 2rem; }
+    .btn {
+      display: inline-block;
+      background: #1a56db;
+      color: #fff;
+      border: none;
+      border-radius: .625rem;
+      padding: .75rem 1.75rem;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .btn:hover { background: #1e429f; }
+    .status {
+      margin-top: 1.5rem;
+      font-size: .8rem;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><span>B</span></div>
+    <h1>Vous êtes hors ligne</h1>
+    <p>Biloz se reconnectera automatiquement dès que votre connexion sera rétablie.</p>
+    <button class="btn" onclick="window.location.reload()">Réessayer</button>
+    <p class="status" id="status">En attente de connexion…</p>
+  </div>
+  <script>
+    window.addEventListener("online", () => {
+      document.getElementById("status").textContent = "Connexion rétablie. Rechargement…";
+      setTimeout(() => window.location.reload(), 800);
+    });
+  </script>
+</body>
+</html>

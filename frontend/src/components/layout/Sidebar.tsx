@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Users, ShoppingCart, FileText,
   CreditCard, ScanLine, Settings, LogOut, Package,
   BookOpen, RotateCcw, ShieldCheck, X, UserCircle,
+  ClipboardList, Warehouse, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
@@ -39,17 +40,20 @@ const navGroups: NavGroup[] = [
   {
     label: "Commercial",
     items: [
-      { href: "/clients",   icon: Users,        label: "Clients",   roles: ORG_ROLES },
-      { href: "/commandes", icon: ShoppingCart,  label: "Commandes", roles: ORG_ROLES },
-      { href: "/produits",  icon: Package,       label: "Produits",  roles: MANAGER_ROLES },
+      { href: "/clients",   icon: Users,          label: "Clients",   roles: ORG_ROLES },
+      { href: "/commandes", icon: ShoppingCart,   label: "Commandes", roles: ORG_ROLES },
+      { href: "/devis",     icon: ClipboardList,  label: "Devis",     roles: MANAGER_ROLES },
+      { href: "/produits",  icon: Package,        label: "Produits",  roles: MANAGER_ROLES },
+      { href: "/stock",     icon: Warehouse,      label: "Stock",     roles: MANAGER_ROLES },
     ],
   },
   {
     label: "Finance",
     items: [
-      { href: "/paiements",              icon: CreditCard, label: "Paiements",          roles: ORG_ROLES },
-      { href: "/journal/paiements",      icon: BookOpen,   label: "Journal paiements",  roles: ORG_ROLES },
-      { href: "/journal/remboursements", icon: RotateCcw,  label: "Remboursements",     roles: MANAGER_ROLES },
+      { href: "/paiements",              icon: CreditCard, label: "Paiements",         roles: ORG_ROLES },
+      { href: "/journal/paiements",      icon: BookOpen,   label: "Journal paiements", roles: ORG_ROLES },
+      { href: "/journal/remboursements", icon: RotateCcw,  label: "Remboursements",    roles: MANAGER_ROLES },
+      { href: "/exports",                icon: Download,   label: "Exports OHADA",     roles: MANAGER_ROLES },
     ],
   },
   {

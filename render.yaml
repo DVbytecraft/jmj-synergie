@@ -108,6 +108,65 @@ services:
         sync: false
       - key: WORKERS
         value: "1"
+      # ── Métriques ────────────────────────────────────────────────────────────
+      - key: METRICS_TOKEN
+        sync: false           # Bearer token pour accéder à /metrics depuis Prometheus
+      - key: METRICS_ALLOWED_IPS
+        sync: false           # IPs autorisées (CIDR), ex: 10.0.0.5
+      # ── CinetPay (Mobile Money) ───────────────────────────────────────────────
+      - key: CINETPAY_API_KEY
+        sync: false
+      - key: CINETPAY_SITE_ID
+        sync: false
+
+  # ── ARQ Worker (tâches en arrière-plan : PDF, emails) ───────────────────────
+  - type: worker
+    name: biloz-arq-worker
+    env: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: arq app.workers.arq_worker.WorkerSettings
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: biloz-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        fromService:
+          name: biloz-backend
+          type: web
+          envVarKey: SECRET_KEY
+      - key: REDIS_URL
+        fromService:
+          name: biloz-backend
+          type: web
+          envVarKey: REDIS_URL
+      - key: STORAGE_PATH
+        value: /app/storage
+      - key: BREVO_API_KEY
+        fromService:
+          name: biloz-backend
+          type: web
+          envVarKey: BREVO_API_KEY
+      - key: BREVO_SENDER_EMAIL
+        fromService:
+          name: biloz-backend
+          type: web
+          envVarKey: BREVO_SENDER_EMAIL
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: USE_CLOUDINARY
+        value: "true"
+      - key: SENTRY_DSN
+        sync: false
 
   # ── Frontend Next.js ─────────────────────────────────────────────────────────
   - type: web

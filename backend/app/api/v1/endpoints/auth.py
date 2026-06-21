@@ -10,8 +10,8 @@ import uuid
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import JWTError
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from authlib.jose.errors import JoseError as JWTError
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -309,7 +309,7 @@ def _issue_tokens(user: UserModel, response: Response) -> TokenResponse:
         value=refresh_token_str,
         httponly=True,
         secure=settings.is_production,
-        samesite="lax",
+        samesite="strict",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
         path="/api/v1/auth",
     )
@@ -323,6 +323,7 @@ async def login(
     response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_auth_rate_limit),
 ):
     result = await db.execute(
         select(UserModel).where(UserModel.email == form.username, UserModel.is_deleted == False)
@@ -337,7 +338,13 @@ async def login(
             detail=f"Compte verrouillé jusqu'au {user.locked_until.isoformat()}",
         )
 
-    if not user or not await verify_password_async(form.password, user.hashed_password):
+    # Always run bcrypt — even when user does not exist — to prevent timing-based
+    # user enumeration. A dummy hash keeps response time constant (~60 ms).
+    _DUMMY_HASH = "$2b$12$KIXHoJRdLKMz3VUbm0J4g.lz0Ew2M8WA6BpXjEJGk4Nz7T5MpVGi"
+    candidate_hash = user.hashed_password if user else _DUMMY_HASH
+    password_ok = await verify_password_async(form.password, candidate_hash)
+
+    if not user or not password_ok:
         if user:
             user.failed_login_count += 1
             if user.failed_login_count >= settings.MAX_LOGIN_ATTEMPTS:

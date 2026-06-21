@@ -28,6 +28,9 @@ def _detect_image_type(content: bytes) -> str | None:
     return None
 
 
+_SUPPORTED_CURRENCIES = {"XAF", "EUR", "USD", "GNF", "NGN", "GHS", "MAD"}
+
+
 class OrganizationResponse(BaseModel):
     id: UUID
     code: str
@@ -45,6 +48,7 @@ class OrganizationResponse(BaseModel):
     bank_name: str | None
     bank_account: str | None
     logo_url: str | None
+    preferred_currency: str
     is_active: bool
 
 
@@ -62,6 +66,7 @@ class OrganizationUpdate(BaseModel):
     website: str | None = Field(default=None, max_length=255)
     bank_name: str | None = Field(default=None, max_length=100)
     bank_account: str | None = Field(default=None, max_length=100)
+    preferred_currency: str | None = Field(default=None, max_length=10)
 
 
 @router.get("/me", response_model=OrganizationResponse)
@@ -79,6 +84,11 @@ async def update_my_organization(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
+    if body.preferred_currency is not None and body.preferred_currency not in _SUPPORTED_CURRENCIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Devise non supportée. Valeurs acceptées : {', '.join(sorted(_SUPPORTED_CURRENCIES))}",
+        )
     organization = await _get_org_or_404(db, current_user.organization_id)
     organization.name = body.name.strip()
     organization.legal_name = _normalize(body.legal_name)
@@ -93,6 +103,8 @@ async def update_my_organization(
     organization.website = _normalize(body.website)
     organization.bank_name = _normalize(body.bank_name)
     organization.bank_account = _normalize(body.bank_account)
+    if body.preferred_currency is not None:
+        organization.preferred_currency = body.preferred_currency
     await db.flush()
     await db.refresh(organization)
     return _to_response(organization)
@@ -167,6 +179,7 @@ def _to_response(org: OrganizationModel) -> OrganizationResponse:
         bank_name=org.bank_name,
         bank_account=org.bank_account,
         logo_url=org.logo_url,
+        preferred_currency=getattr(org, "preferred_currency", "XAF"),
         is_active=org.is_active,
     )
 

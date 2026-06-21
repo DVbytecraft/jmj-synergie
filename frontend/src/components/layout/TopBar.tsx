@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useSidebar } from "./sidebar-context";
 import { usePathname } from "next/navigation";
+import { NotificationBell } from "@/components/ui/NotificationBell";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard":              "Tableau de bord",
@@ -55,12 +56,7 @@ export function TopBar() {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        <button
-          className="btn-icon relative"
-          aria-label="Notifications"
-        >
-          <Bell className="w-5 h-5" />
-        </button>
+        <NotificationBell />
 
         {/* Separator */}
         <div className="w-px h-6 bg-slate-200 mx-1" />

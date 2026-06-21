@@ -47,6 +47,7 @@ class OrganizationModel(Base):
     bank_account: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Logo affiché dans l'en-tête des documents PDF
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    preferred_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="XAF")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
@@ -390,3 +391,63 @@ class AuditEventModel(Base):
     event_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False, index=True)
+
+
+# ─── Quotes (Devis) ────────────────────────────────────────────────────────────
+
+class QuoteModel(Base):
+    __tablename__ = "quotes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), nullable=False, index=True)
+    quote_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", index=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="XAF")
+    subtotal_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    tax_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    converted_to_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    items: Mapped[list[QuoteItemModel]] = relationship(
+        "QuoteItemModel", back_populates="quote", cascade="all, delete-orphan", order_by="QuoteItemModel.position"
+    )
+
+
+class QuoteItemModel(Base):
+    __tablename__ = "quote_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    quote_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("quotes.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unit_price_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+
+    quote: Mapped[QuoteModel] = relationship("QuoteModel", back_populates="items")
+
+
+# ─── Client Portal Tokens ──────────────────────────────────────────────────────
+
+class ClientPortalTokenModel(Base):
+    __tablename__ = "client_portal_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)

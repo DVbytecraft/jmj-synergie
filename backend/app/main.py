@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.redis_client import close_redis
 from app.middleware.logging import LoggingMiddleware
+from app.middleware.metrics_auth import MetricsAuthMiddleware
 import app.infrastructure.database.models  # noqa: F401 — register all ORM models on Base.metadata
 from app.middleware.rate_limiter import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -43,7 +44,15 @@ if settings.SENTRY_DSN:
         # Ne pas envoyer les 404 et 401 — trop de bruit
         before_send=lambda event, hint: (
             None
-            if event.get("tags", {}).get("status_code") in (401, 404)
+            if (
+                event.get("level") == "warning"
+                and event.get("extra", {}).get("status_code") in (401, 403, 404)
+            )
+            or (
+                hint
+                and isinstance(hint.get("exc_info", (None,))[1], Exception)
+                and getattr(hint["exc_info"][1], "status_code", None) in (401, 403, 404)
+            )
             else event
         ),
         send_default_pii=False,  # RGPD : pas d'IP ni d'email dans les events
@@ -92,6 +101,7 @@ Instrumentator(
 # ─── Middleware (ordre important — dernier ajouté = premier exécuté) ──────────
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(MetricsAuthMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RateLimitMiddleware, calls=100, period=60)
 
@@ -207,8 +217,10 @@ async def health_check():
         db_status = "healthy"
     except Exception:
         db_status = "degraded"
-    return JSONResponse({
+    body: dict = {
         "status": "healthy" if db_status == "healthy" else "degraded",
         "db": db_status,
-        "version": settings.APP_VERSION,
-    })
+    }
+    if not settings.is_production:
+        body["version"] = settings.APP_VERSION
+    return JSONResponse(body)

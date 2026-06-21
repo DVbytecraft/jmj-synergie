@@ -1,6 +1,6 @@
 """
 Security utilities — JWT creation/validation, password hashing.
-All secrets come from settings; no hardcoded values.
+Uses authlib (actively maintained) instead of the abandoned python-jose.
 """
 from __future__ import annotations
 
@@ -10,9 +10,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import bcrypt
-from jose import JWTError, jwt
+from authlib.jose import JsonWebToken, JoseError
+from authlib.jose.errors import ExpiredTokenError, InvalidClaimError
 
 from app.core.config import settings
+
+_jwt = JsonWebToken(["HS256"])
 
 
 # ── Password ──────────────────────────────────────────────────────────────────
@@ -41,10 +44,18 @@ async def verify_password_async(plain: str, hashed: str) -> bool:
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
+def _secret() -> dict:
+    return {"kty": "oct", "k": settings.SECRET_KEY}
+
+
 def _make_token(payload: dict[str, Any], expires_delta: timedelta) -> str:
     now = datetime.now(timezone.utc)
-    payload.update({"iat": now, "exp": now + expires_delta})
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    claims = {
+        **payload,
+        "iat": int(now.timestamp()),
+        "exp": int((now + expires_delta).timestamp()),
+    }
+    return _jwt.encode({"alg": settings.ALGORITHM}, claims, settings.SECRET_KEY).decode()
 
 
 def create_access_token(user_id: UUID, role: str, name: str) -> str:
@@ -67,11 +78,17 @@ def create_refresh_token(user_id: UUID) -> tuple[str, str]:
 def decode_token(token: str, expected_type: str) -> dict[str, Any]:
     """
     Decode and validate a JWT.
-    Raises JWTError on any failure (invalid, expired, wrong type).
+    Raises JoseError on any failure (invalid signature, expired, wrong type).
     """
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    try:
+        claims = _jwt.decode(token, settings.SECRET_KEY)
+        claims.validate()
+    except (ExpiredTokenError, InvalidClaimError, JoseError) as exc:
+        raise JoseError(str(exc)) from exc
+
+    payload = dict(claims)
     if payload.get("type") != expected_type:
-        raise JWTError(f"Expected token type '{expected_type}'")
+        raise JoseError(f"Expected token type '{expected_type}'")
     return payload
 
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/layout/Providers";
+import { PwaInstaller } from "@/components/layout/PwaInstaller";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -28,9 +29,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/chunk-guard.js" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#1a56db" />
       </head>
       <body className="font-sans">
         <Providers>{children}</Providers>
+        <PwaInstaller />
       </body>
     </html>
   );

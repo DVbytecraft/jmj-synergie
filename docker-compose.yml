@@ -43,6 +43,34 @@ services:
       retries: 5
 
   # ─────────────────────────────────────────────
+  #  ARQ Worker — background jobs (PDF, emails)
+  # ─────────────────────────────────────────────
+  arq-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: biloz_arq_worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - STORAGE_PATH=/app/storage
+    volumes:
+      - storage_data:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - biloz_internal
+    command: arq app.workers.arq_worker.WorkerSettings
+
+  # ─────────────────────────────────────────────
   #  FastAPI Backend
   # ─────────────────────────────────────────────
   backend:
@@ -58,7 +86,7 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM:-HS256}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}

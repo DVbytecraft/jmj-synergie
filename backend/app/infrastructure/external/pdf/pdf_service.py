@@ -258,9 +258,90 @@ class PDFService:
         await db.flush()
         return doc
 
+    async def generate_quote(
+        self,
+        quote_id: uuid.UUID,
+        created_by: uuid.UUID,
+        db: AsyncSession,
+    ) -> str:
+        """Generate a devis (quote) PDF. Returns the absolute file path."""
+        from types import SimpleNamespace
+        from sqlalchemy.orm import selectinload
+        from app.infrastructure.database.models import QuoteModel, ClientModel
+
+        result = await db.execute(
+            select(QuoteModel)
+            .options(selectinload(QuoteModel.items))
+            .where(QuoteModel.id == quote_id)
+        )
+        quote = result.scalar_one_or_none()
+        if not quote:
+            raise ValueError(f"Quote {quote_id} not found")
+
+        client = await db.scalar(select(ClientModel).where(ClientModel.id == quote.client_id))
+        issuer = await self._load_issuer_context(db, created_by)
+
+        output_dir = self.output_dir.parent / "quotes"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"devis_{quote.quote_number}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        file_path = output_dir / file_name
+
+        # Duck-typed proxy so the shared PDF helpers (_doc_info_block, _totals_table, …) work
+        proxy = SimpleNamespace(
+            order_number=quote.quote_number,
+            currency=quote.currency,
+            subtotal_cents=quote.subtotal_cents,
+            tax_rate=quote.tax_rate,
+            tax_cents=quote.tax_cents,
+            total_cents=quote.total_cents,
+            discount_cents=0,
+            paid_cents=0,
+            client=client,
+            items=quote.items,
+            notes=quote.notes,
+            due_date=quote.valid_until,
+        )
+
+        await asyncio.to_thread(self._build_quote_pdf, str(file_path), proxy, quote.quote_number, issuer)
+        return str(file_path)
+
     # ─────────────────────────────────────────────────────────────────────────
     #  PDF builders
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_quote_pdf(self, path: str, order: Any, doc_number: str, issuer: dict) -> None:
+        doc, styles, story = self._init_doc(path)
+
+        story += self._header_section(styles, issuer, doc_number, order)
+        story.append(Paragraph("DEVIS", self._title_style(issuer)))
+        story.append(Spacer(1, 6 * mm))
+
+        story.append(self._client_block(styles, order.client, label="Destinataire", issuer=issuer))
+        story.append(Spacer(1, 6 * mm))
+
+        currency = order.currency
+        rows = [["#", "Désignation", "Qté", "P.U.", "Total"]]
+        for i, item in enumerate(order.items, 1):
+            rows.append([
+                str(i),
+                item.description,
+                str(item.quantity),
+                self._fmt(item.unit_price_cents, currency),
+                self._fmt(item.total_cents, currency),
+            ])
+        story.append(self._items_table(rows, issuer, col_widths=[10 * mm, 85 * mm, 15 * mm, 32 * mm, 33 * mm]))
+        story.append(Spacer(1, 6 * mm))
+
+        story.append(self._totals_table(order, issuer))
+        story.append(Spacer(1, 6 * mm))
+
+        if order.notes:
+            story.append(Paragraph(f"<b>Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Spacer(1, 6 * mm))
+
+        story += self._signing_block(styles, issuer, order.total_cents, currency)
+        story += self._footer_section(styles, issuer)
+        doc.build(story)
 
     def _build_purchase_order_pdf(self, path: str, order: Any, doc_number: str, issuer: dict) -> None:
         doc, styles, story = self._init_doc(path)

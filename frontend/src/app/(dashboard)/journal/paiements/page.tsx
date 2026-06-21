@@ -3,9 +3,10 @@ import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
 import { useJournalPaiements } from "@/lib/hooks/use-journal";
-import { BookOpen, Loader2, CreditCard, Building2, FileText, Smartphone } from "lucide-react";
+import { BookOpen, Loader2, CreditCard, Building2, FileText, Smartphone, Download } from "lucide-react";
 import type { PaymentMethod } from "@/types";
 import { formatCents } from "@/lib/utils/money";
+import { downloadJournal, type ExportFormat } from "@/lib/api/exports";
 
 const METHOD_LABEL: Record<string, { label: string; icon: React.ReactNode }> = {
   cash:          { label: "Espèces",      icon: <FileText className="w-3.5 h-3.5" /> },
@@ -15,8 +16,21 @@ const METHOD_LABEL: Record<string, { label: string; icon: React.ReactNode }> = {
   card:          { label: "Carte",        icon: <CreditCard className="w-3.5 h-3.5" /> },
 };
 
+// Format YYYY-MM-DD pour la date du jour et il y a 30 jours
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function thirtyDaysAgoStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function JournalPaiementsPage() {
   const [page, setPage] = useState(0);
+  const [exportStart, setExportStart] = useState(thirtyDaysAgoStr);
+  const [exportEnd, setExportEnd] = useState(todayStr);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const limit = 25;
 
   const { data, isLoading } = useJournalPaiements({ skip: page * limit, limit });
@@ -25,16 +39,70 @@ export default function JournalPaiementsPage() {
   const totalCents = data?.total_completed_cents ?? 0;
   const currency = paiements[0]?.currency ?? "XAF";
 
+  const handleExport = async (format: ExportFormat) => {
+    setExporting(format);
+    try {
+      await downloadJournal(exportStart, exportEnd, format);
+    } catch (err) {
+      console.error("Export échoué :", err);
+      alert("L'export a échoué. Veuillez réessayer.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Journal des paiements</h1>
           <p className="text-sm text-gray-500 mt-1">{paiements.length} entrées</p>
         </div>
-        <div className="card px-4 py-2 text-right">
-          <p className="text-xs text-gray-500">Total encaissé</p>
-          <p className="text-lg font-bold text-emerald-700">{formatCents(totalCents, currency)}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Sélecteurs de période pour l'export */}
+          <input
+            type="date"
+            value={exportStart}
+            onChange={(e) => setExportStart(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Date de début"
+          />
+          <span className="text-gray-400 text-sm">→</span>
+          <input
+            type="date"
+            value={exportEnd}
+            onChange={(e) => setExportEnd(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Date de fin"
+          />
+          <button
+            onClick={() => handleExport("csv")}
+            disabled={exporting !== null}
+            className="btn-secondary py-1.5 flex items-center gap-1.5 text-sm"
+          >
+            {exporting === "csv" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            Exporter CSV
+          </button>
+          <button
+            onClick={() => handleExport("xlsx")}
+            disabled={exporting !== null}
+            className="btn-primary py-1.5 flex items-center gap-1.5 text-sm"
+          >
+            {exporting === "xlsx" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            Exporter Excel
+          </button>
+          <div className="card px-4 py-2 text-right">
+            <p className="text-xs text-gray-500">Total encaissé</p>
+            <p className="text-lg font-bold text-emerald-700">{formatCents(totalCents, currency)}</p>
+          </div>
         </div>
       </div>
 

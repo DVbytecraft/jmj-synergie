@@ -379,6 +379,82 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+// ─── Devis / Quote ────────────────────────────────────────────────────────────
+
+export type QuoteStatus =
+  | "draft"
+  | "sent"
+  | "accepted"
+  | "rejected"
+  | "expired"
+  | "converted";
+
+export interface QuoteItem {
+  id: string;
+  quote_id: string;
+  product_id: string | null;
+  description: string;
+  quantity: number;
+  unit_price_cents: number;
+  total_cents: number;
+  position: number;
+}
+
+export interface Quote {
+  id: string;
+  quote_number: string;
+  client_id: string;
+  status: QuoteStatus;
+  currency: string;
+  subtotal_cents: number;
+  tax_rate: number;
+  tax_cents: number;
+  total_cents: number;
+  notes: string | null;
+  valid_until: string | null;
+  sent_at: string | null;
+  accepted_at: string | null;
+  rejected_at: string | null;
+  converted_to_order_id: string | null;
+  created_by: string;
+  items: QuoteItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuoteItemCreate {
+  description: string;
+  quantity: number;
+  unit_price_cents: number;
+  product_id?: string;
+  position?: number;
+}
+
+export interface QuoteCreate {
+  client_id: string;
+  items: QuoteItemCreate[];
+  currency?: string;
+  tax_rate?: number;
+  notes?: string;
+  valid_until?: string;
+}
+
+export interface QuoteUpdate {
+  client_id?: string;
+  items?: QuoteItemCreate[];
+  currency?: string;
+  tax_rate?: number;
+  notes?: string;
+  valid_until?: string;
+}
+
+export interface QuoteListResponse {
+  items: Quote[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
 // ─── Rétro-compat (anciens noms utilisés dans certaines pages) ─────────────────
 // Alias pour éviter de casser les imports existants
 export type Produit = Product;
