@@ -1,15 +1,17 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { quotesApi } from "@/lib/api/quotes";
 import { clientsApi } from "@/lib/api/clients";
+import { documentsApi } from "@/lib/api/documents";
+import { apiClient } from "@/lib/api/client";
 import { formatCents } from "@/lib/utils/money";
 import { formatDateFr } from "@/lib/utils/format-dates";
 import { QuoteStatusBadge } from "@/components/ui/QuoteStatusBadge";
 import {
   ArrowLeft, CheckCircle, XCircle, Send, ShoppingCart,
-  Loader2, ClipboardList, ChevronRight,
+  Loader2, ClipboardList, ChevronRight, FileText, Download, X, Eye,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,6 +20,38 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const qc = useQueryClient();
   const router = useRouter();
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  async function generatePdfPreview() {
+    setPreviewLoading(true);
+    try {
+      const { document_id } = await documentsApi.genererDevis(id);
+      const fileRes = await apiClient.get(`/documents/${document_id}/download`, { responseType: "blob" });
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      const blob = new Blob([fileRes.data as BlobPart], { type: "application/pdf" });
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch {
+      alert("Erreur lors de la génération du PDF");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function downloadPreview() {
+    if (!previewUrl || !quote) return;
+    const a = document.createElement("a");
+    a.href = previewUrl;
+    a.download = `${quote.quote_number}.pdf`;
+    a.click();
+  }
 
   const { data: quote, isLoading } = useQuery({
     queryKey: ["quotes", id],
@@ -109,6 +143,15 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
 
         {/* Action buttons */}
         <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={generatePdfPreview}
+            disabled={previewLoading}
+            className="btn-secondary"
+          >
+            {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+            Aperçu PDF
+          </button>
+
           {canSend && (
             <button
               onClick={() => sendMut.mutate()}
@@ -205,6 +248,28 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
             <div className="card p-5">
               <h2 className="font-semibold text-gray-900 mb-2">Notes</h2>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{quote.notes}</p>
+            </div>
+          )}
+
+          {/* Aperçu PDF */}
+          {previewUrl && (
+            <div className="card overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <FileText className="w-4 h-4 text-blue-500" />
+                  Aperçu — {quote.quote_number}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={downloadPreview} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
+                    <Download className="w-3.5 h-3.5" />
+                    Télécharger
+                  </button>
+                  <button onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }} className="btn-icon p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <iframe src={previewUrl} className="w-full h-[500px] border-0" title="Aperçu devis PDF" />
             </div>
           )}
 
@@ -309,7 +374,7 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
               <h2 className="font-semibold text-gray-900 mb-3">Actions</h2>
               <div className="space-y-2">
                 <Link
-                  href={`/devis/${id}?edit=1`}
+                  href={`/devis/${id}/edit`}
                   className="w-full flex items-center gap-2 py-2 px-3 rounded-lg text-sm font-medium bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 transition-colors"
                 >
                   <ClipboardList className="w-4 h-4 text-gray-500" />

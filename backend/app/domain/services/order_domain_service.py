@@ -28,14 +28,26 @@ class OrderDomainService:
 
     @staticmethod
     def validate_payment(order: Order, amount: Money) -> None:
-        if order.status == OrderStatus.CANCELLED:
+        if order.status in (OrderStatus.CANCELLED, OrderStatus.ARCHIVED):
             raise InvalidOrderStateError(order.status.value, "active")
+        if order.status == OrderStatus.DRAFT:
+            raise InvalidOrderStateError(
+                order.status.value, ["confirmed", "delivered"],
+            )
         if amount.is_zero():
             raise BusinessRuleError("Payment amount must be greater than zero")
         if amount.currency != order.currency:
             raise BusinessRuleError(
                 f"Currency mismatch: payment is {amount.currency}, "
                 f"order expects {order.currency}"
+            )
+        total = order.total.cents
+        if total > 0 and order.paid_cents >= total:
+            raise BusinessRuleError("Cette commande est déjà entièrement réglée")
+        if total > 0 and (order.paid_cents + amount.cents) > total:
+            raise BusinessRuleError(
+                f"Le paiement ({amount.cents}) dépasse le solde restant "
+                f"({total - order.paid_cents} {order.currency})"
             )
 
     @staticmethod

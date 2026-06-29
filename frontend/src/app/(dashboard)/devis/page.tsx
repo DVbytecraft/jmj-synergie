@@ -24,9 +24,9 @@ function SkeletonRow() {
   return (
     <tr>
       <td className="table-cell"><div className="skeleton h-4 w-28 rounded" /></td>
-      <td className="table-cell"><div className="skeleton h-5 w-24 rounded-full" /></td>
+      <td className="table-cell"><div className="skeleton h-4 w-24 rounded" /></td>
+      <td className="table-cell"><div className="skeleton h-5 w-20 rounded-full" /></td>
       <td className="table-cell text-right"><div className="skeleton h-4 w-24 rounded ml-auto" /></td>
-      <td className="table-cell text-right"><div className="skeleton h-4 w-16 rounded ml-auto" /></td>
       <td className="table-cell text-right"><div className="skeleton h-4 w-24 rounded ml-auto" /></td>
       <td className="table-cell"><div className="skeleton h-4 w-20 rounded" /></td>
       <td className="table-cell"><div className="skeleton h-7 w-16 rounded mx-auto" /></td>
@@ -99,9 +99,9 @@ export default function DevisPage() {
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
                 <th className="table-header">N° devis</th>
+                <th className="table-header">Client</th>
                 <th className="table-header">Statut</th>
                 <th className="table-header text-right">HT</th>
-                <th className="table-header text-right">TVA</th>
                 <th className="table-header text-right">TTC</th>
                 <th className="table-header">Date</th>
                 <th className="table-header text-center">Actions</th>
@@ -112,7 +112,7 @@ export default function DevisPage() {
                 Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
               ) : quotes.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={7} className="p-0">
                     <div className="empty-state py-14">
                       <ClipboardList className="empty-state-icon" />
                       <p className="empty-state-title">Aucun devis trouvé</p>
@@ -139,14 +139,14 @@ export default function DevisPage() {
                         {q.quote_number}
                       </Link>
                     </td>
+                    <td className="table-cell text-slate-600 max-w-[140px] truncate">
+                      {q.client_name ?? "—"}
+                    </td>
                     <td className="table-cell">
                       <QuoteStatusBadge status={q.status} />
                     </td>
                     <td className="table-cell text-right tabular-nums">
                       {formatCents(q.subtotal_cents, q.currency)}
-                    </td>
-                    <td className="table-cell text-right tabular-nums text-slate-400">
-                      {formatCents(q.tax_cents, q.currency)}
                     </td>
                     <td className="table-cell text-right tabular-nums font-semibold text-slate-900">
                       {formatCents(q.total_cents, q.currency)}

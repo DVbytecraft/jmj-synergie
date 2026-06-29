@@ -211,6 +211,33 @@ async def send_document_by_email(
     return {"message": "Document envoyé par email avec succès"}
 
 
+@router.post("/quote/{quote_id}", status_code=status.HTTP_201_CREATED)
+async def generate_quote_pdf(
+    quote_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a PDF for a devis (quote)."""
+    from app.infrastructure.database.models import QuoteModel
+    result = await db.execute(
+        select(QuoteModel).where(
+            QuoteModel.id == quote_id,
+            QuoteModel.organization_id == current_user.organization_id,
+            QuoteModel.is_deleted == False,  # noqa: E712
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Devis introuvable")
+    pdf_service = PDFService(settings)
+    try:
+        document = await pdf_service.generate_quote(quote_id, current_user.id, db)
+        return {"document_id": document.id, "file_name": document.file_name, "message": "Devis PDF généré avec succès"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erreur interne lors de la génération du devis PDF")
+
+
 @router.post("/purchase-order/{order_id}", status_code=status.HTTP_201_CREATED)
 async def generate_purchase_order(
     order_id: UUID,

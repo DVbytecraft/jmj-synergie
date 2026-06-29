@@ -80,6 +80,7 @@ class QuoteResponse(BaseModel):
     id: UUID
     quote_number: str
     client_id: UUID
+    client_name: Optional[str] = None  # enrichi à la sérialisation
     status: str
     currency: str
     subtotal_cents: int
@@ -124,6 +125,19 @@ def _compute_totals(
     subtotal = sum(i.quantity * i.unit_price_cents for i in items)
     tax = int(subtotal * tax_rate / 100)
     return subtotal, tax, subtotal + tax
+
+
+def _to_quote_response(quote: QuoteModel, client_name: str | None = None) -> QuoteResponse:
+    resp = QuoteResponse.model_validate(quote)
+    resp.client_name = client_name
+    return resp
+
+
+async def _fetch_client_name(db: DB, client_id: UUID) -> str | None:
+    client = await db.scalar(select(ClientModel).where(ClientModel.id == client_id))
+    if not client:
+        return None
+    return client.company_name or client.full_name
 
 
 def _quote_or_404(quote: QuoteModel | None) -> QuoteModel:
@@ -200,7 +214,8 @@ async def create_quote(body: QuoteCreate, current_user: CurrentUser, db: DB) -> 
         db, action="quote.created", actor_id=current_user.id,
         organization_id=org_id, entity_type="quote", entity_id=str(quote.id),
     )
-    return QuoteResponse.model_validate(quote)
+    client_name = client.company_name or client.full_name
+    return _to_quote_response(quote, client_name)
 
 
 @router.get("", response_model=QuoteListResponse)
@@ -234,8 +249,15 @@ async def list_quotes(
     )
     quotes = result.scalars().all()
 
+    # Batch-fetch client names
+    client_ids = list({q.client_id for q in quotes})
+    clients_result = await db.execute(
+        select(ClientModel).where(ClientModel.id.in_(client_ids))
+    )
+    client_map = {c.id: (c.company_name or c.full_name) for c in clients_result.scalars().all()}
+
     return QuoteListResponse(
-        items=[QuoteResponse.model_validate(q) for q in quotes],
+        items=[_to_quote_response(q, client_map.get(q.client_id)) for q in quotes],
         total=total,
         skip=skip,
         limit=limit,
@@ -248,7 +270,8 @@ async def get_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> QuoteR
     if not org_id:
         raise HTTPException(status_code=403, detail="Organisation requise")
     quote = await _get_quote(db, quote_id, org_id)
-    return QuoteResponse.model_validate(quote)
+    client_name = await _fetch_client_name(db, quote.client_id)
+    return _to_quote_response(quote, client_name)
 
 
 @router.put("/{quote_id}", response_model=QuoteResponse)
@@ -329,7 +352,8 @@ async def update_quote(
 
     await db.commit()
     await db.refresh(quote)
-    return QuoteResponse.model_validate(quote)
+    client_name = await _fetch_client_name(db, quote.client_id)
+    return _to_quote_response(quote, client_name)
 
 
 @router.post("/{quote_id}/send", response_model=QuoteResponse)
@@ -375,7 +399,8 @@ async def send_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> Quote
         db, action="quote.sent", actor_id=current_user.id,
         organization_id=org_id, entity_type="quote", entity_id=str(quote.id),
     )
-    return QuoteResponse.model_validate(quote)
+    client_name = await _fetch_client_name(db, quote.client_id)
+    return _to_quote_response(quote, client_name)
 
 
 @router.post("/{quote_id}/accept", response_model=QuoteResponse)
@@ -397,7 +422,8 @@ async def accept_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> Quo
         db, action="quote.accepted", actor_id=current_user.id,
         organization_id=org_id, entity_type="quote", entity_id=str(quote.id),
     )
-    return QuoteResponse.model_validate(quote)
+    client_name = await _fetch_client_name(db, quote.client_id)
+    return _to_quote_response(quote, client_name)
 
 
 @router.post("/{quote_id}/reject", response_model=QuoteResponse)
@@ -419,7 +445,8 @@ async def reject_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> Quo
         db, action="quote.rejected", actor_id=current_user.id,
         organization_id=org_id, entity_type="quote", entity_id=str(quote.id),
     )
-    return QuoteResponse.model_validate(quote)
+    client_name = await _fetch_client_name(db, quote.client_id)
+    return _to_quote_response(quote, client_name)
 
 
 @router.post("/{quote_id}/convert", response_model=QuoteResponse)
@@ -480,11 +507,12 @@ async def convert_quote(quote_id: UUID, current_user: ManagerUser, db: DB) -> Qu
         organization_id=org_id, entity_type="quote", entity_id=str(quote.id),
         metadata={"order_id": str(order.id), "order_number": order_number},
     )
-    return QuoteResponse.model_validate(quote)
+    client_name = await _fetch_client_name(db, quote.client_id)
+    return _to_quote_response(quote, client_name)
 
 
-@router.delete("/{quote_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> None:
+@router.delete("/{quote_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def delete_quote(quote_id: UUID, current_user: CurrentUser, db: DB):
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(status_code=403, detail="Organisation requise")

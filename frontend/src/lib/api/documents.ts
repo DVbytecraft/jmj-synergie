@@ -31,6 +31,13 @@ export const documentsApi = {
         recipient_email: recipient_email ?? null,
       })
       .then((r) => r.data),
+  /** Générer un PDF pour un devis. */
+  genererDevis: (quote_id: string) =>
+    apiClient
+      .post<{ document_id: string; file_name: string; message: string }>(
+        `/documents/quote/${quote_id}`
+      )
+      .then((r) => r.data),
   /** Générer un pro forma pour une commande. */
   genererProForma: (order_id: string) =>
     apiClient

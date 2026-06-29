@@ -157,7 +157,7 @@ async def get_dashboard_kpi(current_user: CurrentUser, db: DB):
                 id=str(o.id),
                 order_number=o.order_number,
                 status=o.status,
-                total_cents=o.paid_cents,
+                total_cents=o.total_cents,
                 currency=o.currency,
                 created_at=o.created_at.isoformat(),
             )

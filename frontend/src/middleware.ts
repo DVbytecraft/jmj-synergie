@@ -20,8 +20,9 @@ const SUPER_ADMIN_ROUTES = ["/admin"];
 
 // Routes métier requérant une organisation — super_admin ne peut pas y accéder
 const ORG_ROUTES = [
-  "/clients", "/commandes", "/produits",
+  "/clients", "/commandes", "/produits", "/devis",
   "/paiements", "/journal", "/documents", "/scan",
+  "/stock", "/exports",
 ];
 
 // Routes inaccessibles aux operators (création de ressources)

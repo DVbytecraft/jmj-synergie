@@ -404,6 +404,7 @@ export interface Quote {
   id: string;
   quote_number: string;
   client_id: string;
+  client_name: string | null;
   status: QuoteStatus;
   currency: string;
   subtotal_cents: number;

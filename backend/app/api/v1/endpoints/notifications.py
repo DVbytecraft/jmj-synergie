@@ -6,22 +6,75 @@ GET /notifications/stream  → EventSource (text/event-stream)
 from __future__ import annotations
 
 import asyncio
-import json
+from urllib.parse import unquote
+from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser
 from app.core.redis_client import get_redis
+from app.core.security import decode_access_token
+from app.infrastructure.database.models import UserModel
+from app.infrastructure.database.session import get_db_session
+from authlib.jose.errors import JoseError
 
 router = APIRouter()
 
 _PING_INTERVAL = 30  # secondes
 
 
+async def _get_sse_user(
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserModel:
+    """Auth dependency for SSE — accepts Bearer header OR access_token cookie.
+
+    EventSource (browser API) cannot send custom headers, so we fall back to
+    the non-HttpOnly `access_token` cookie that the frontend keeps in sync with
+    the in-memory Zustand access token.
+    """
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    elif access_token:
+        token = unquote(access_token)  # frontend stores it URL-encoded
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentification requise",
+        )
+
+    try:
+        payload = decode_access_token(token)
+        user_id: str = payload.get("sub", "")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+    except JoseError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+
+    result = await db.execute(
+        select(UserModel).where(
+            UserModel.id == UUID(user_id),
+            UserModel.is_deleted == False,  # noqa: E712
+            UserModel.status == "active",
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
+    return user
+
+
+SseUser = UserModel  # type alias for clarity
+
+
 @router.get("/stream", summary="Flux de notifications SSE")
 async def notifications_stream(
-    current_user: CurrentUser,
+    current_user: SseUser = Depends(_get_sse_user),
 ):
     """
     Server-Sent Events endpoint.
