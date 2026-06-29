@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  Biloz — Render Blueprint
+#  JMJ Synergie — Render Blueprint
 #
 #  Déploiement :
 #  1. Connecter ce repo sur https://dashboard.render.com/blueprints
@@ -12,9 +12,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 databases:
-  - name: biloz-db
-    databaseName: biloz
-    user: biloz_admin
+  - name: jmj-db
+    databaseName: jmj
+    user: jmj_admin
     plan: starter
     region: frankfurt
 
@@ -22,7 +22,7 @@ services:
 
   # ── Backend FastAPI ──────────────────────────────────────────────────────────
   - type: web
-    name: biloz-backend
+    name: jmj-backend
     env: docker
     region: frankfurt
     plan: starter
@@ -34,7 +34,7 @@ services:
       # start.sh la convertit en postgresql+asyncpg:// au démarrage
       - key: DATABASE_URL
         fromDatabase:
-          name: biloz-db
+          name: jmj-db
           property: connectionString
       - key: ENVIRONMENT
         value: production
@@ -47,11 +47,11 @@ services:
       - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: "7"
       - key: ALLOWED_ORIGINS
-        sync: false           # Ex: https://biloz-frontend.onrender.com
+        sync: false           # Ex: https://jmj-frontend.onrender.com
       - key: TRUSTED_HOSTS
-        sync: false           # Ex: biloz-backend.onrender.com — obligatoire en production
+        sync: false           # Ex: jmj-backend.onrender.com — obligatoire en production
       - key: FRONTEND_URL
-        sync: false           # Ex: https://biloz-frontend.onrender.com
+        sync: false           # Ex: https://jmj-frontend.onrender.com
       - key: STORAGE_PATH
         value: /app/storage
       - key: MAX_FILE_SIZE_MB
@@ -64,9 +64,9 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
-        value: biloz@bytecraft.art
+        value: contact@jmjsynergie.com
       - key: BREVO_SENDER_NAME
-        value: Biloz
+        value: JMJ Synergie
       - key: SMTP_HOST
         value: smtp-relay.brevo.com
       - key: SMTP_PORT
@@ -76,7 +76,7 @@ services:
       - key: SMTP_PASSWORD
         sync: false
       - key: SMTP_FROM
-        value: biloz@bytecraft.art
+        value: contact@jmjsynergie.com
       - key: SMTP_TLS
         value: "true"
       # ── Cloudinary ───────────────────────────────────────────────────────────
@@ -88,22 +88,17 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-      # ── AI OCR ───────────────────────────────────────────────────────────────
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
       # ── Infos société ─────────────────────────────────────────────────────────
       - key: APP_NAME
-        value: Biloz
+        value: JMJ Synergie
       - key: COMPANY_NAME
-        value: Biloz
+        value: JMJ Synergie
       - key: COMPANY_ADDRESS
         value: "Cotonou, Bénin"
       - key: COMPANY_PHONE
         value: "+229 00 00 00 00"
       - key: COMPANY_EMAIL
-        value: biloz@bytecraft.art
+        value: contact@jmjsynergie.com
       - key: SENTRY_DSN
         sync: false
       - key: WORKERS
@@ -121,7 +116,7 @@ services:
 
   # ── ARQ Worker (tâches en arrière-plan : PDF, emails) ───────────────────────
   - type: worker
-    name: biloz-arq-worker
+    name: jmj-arq-worker
     env: docker
     region: frankfurt
     plan: starter
@@ -131,30 +126,30 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: biloz-db
+          name: jmj-db
           property: connectionString
       - key: ENVIRONMENT
         value: production
       - key: SECRET_KEY
         fromService:
-          name: biloz-backend
+          name: jmj-backend
           type: web
           envVarKey: SECRET_KEY
       - key: REDIS_URL
         fromService:
-          name: biloz-backend
+          name: jmj-backend
           type: web
           envVarKey: REDIS_URL
       - key: STORAGE_PATH
         value: /app/storage
       - key: BREVO_API_KEY
         fromService:
-          name: biloz-backend
+          name: jmj-backend
           type: web
           envVarKey: BREVO_API_KEY
       - key: BREVO_SENDER_EMAIL
         fromService:
-          name: biloz-backend
+          name: jmj-backend
           type: web
           envVarKey: BREVO_SENDER_EMAIL
       - key: CLOUDINARY_CLOUD_NAME
@@ -170,7 +165,7 @@ services:
 
   # ── Frontend Next.js ─────────────────────────────────────────────────────────
   - type: web
-    name: biloz-frontend
+    name: jmj-frontend
     env: docker
     region: frankfurt
     plan: starter
@@ -181,7 +176,7 @@ services:
       # BACKEND_URL : URL interne du backend (server-side uniquement, rewrites Next.js).
       # ⚠️  Déployer le backend en premier, puis renseigner son URL ici.
       - key: BACKEND_URL
-        sync: false           # Ex: https://biloz-backend.onrender.com
+        sync: false           # Ex: https://jmj-backend.onrender.com
       # NEXT_PUBLIC_API_URL : TOUJOURS /api/v1 (relatif).
       # Ne JAMAIS mettre une URL absolue ici — le navigateur ferait des
       # requêtes directement au backend, bypassant le proxy et violant le CSP.
@@ -190,14 +185,14 @@ services:
       # RENDER_BACKEND_URL : URL publique du backend — ajoutée au connect-src du CSP
       # frontend pour couvrir les cas où NEXT_PUBLIC_API_URL serait mal configuré.
       - key: RENDER_BACKEND_URL
-        sync: false           # Ex: https://biloz-backend.onrender.com
+        sync: false           # Ex: https://jmj-backend.onrender.com
       - key: NODE_ENV
         value: production
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
       # KEEPALIVE_SECRET : secret partagé pour l'endpoint /api/keepalive.
       # Configurer un cron externe (ex: cron-job.org) toutes les 10 min sur
-      # https://biloz-frontend.onrender.com/api/keepalive?secret=<valeur>
+      # https://jmj-frontend.onrender.com/api/keepalive?secret=<valeur>
       # pour éviter le cold-start du backend sur le plan starter.
       - key: KEEPALIVE_SECRET
         sync: false           # Générer un token aléatoire fort (32+ chars)

@@ -6,20 +6,20 @@ services:
   # ─────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: biloz_postgres
+    container_name: jmj_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-biloz}
-      POSTGRES_USER: ${POSTGRES_USER:-biloz_admin}
+      POSTGRES_DB: ${POSTGRES_DB:-jmj}
+      POSTGRES_USER: ${POSTGRES_USER:-jmj_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
-      - biloz_internal
+      - jmj_internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-biloz_admin} -d ${POSTGRES_DB:-biloz}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jmj_admin} -d ${POSTGRES_DB:-jmj}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,13 +29,13 @@ services:
   # ─────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: biloz_redis
+    container_name: jmj_redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     networks:
-      - biloz_internal
+      - jmj_internal
     healthcheck:
       test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
@@ -50,7 +50,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    container_name: biloz_arq_worker
+    container_name: jmj_arq_worker
     restart: unless-stopped
     env_file: .env
     environment:
@@ -67,7 +67,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - biloz_internal
+      - jmj_internal
     command: arq app.workers.arq_worker.WorkerSettings
 
   # ─────────────────────────────────────────────
@@ -78,7 +78,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    container_name: biloz_backend
+    container_name: jmj_backend
     restart: unless-stopped
     env_file: .env
     environment:
@@ -102,7 +102,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - biloz_internal
+      - jmj_internal
     expose:
       - "8000"
 
@@ -116,14 +116,14 @@ services:
       target: production
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
-    container_name: biloz_frontend
+    container_name: jmj_frontend
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend
     networks:
-      - biloz_internal
+      - jmj_internal
     expose:
       - "3000"
 
@@ -132,7 +132,7 @@ services:
   # ─────────────────────────────────────────────
   nginx:
     image: nginx:1.25-alpine
-    container_name: biloz_nginx
+    container_name: jmj_nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -144,15 +144,15 @@ services:
       - backend
       - frontend
     networks:
-      - biloz_internal
-      - biloz_external
+      - jmj_internal
+      - jmj_external
 
   # ─────────────────────────────────────────────
   #  Prometheus — collecte des métriques
   # ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: biloz_prometheus
+    container_name: jmj_prometheus
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -165,7 +165,7 @@ services:
       - ./infrastructure/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     networks:
-      - biloz_internal
+      - jmj_internal
     expose:
       - "9090"
 
@@ -174,7 +174,7 @@ services:
   # ─────────────────────────────────────────────
   grafana:
     image: grafana/grafana:11.2.0
-    container_name: biloz_grafana
+    container_name: jmj_grafana
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
@@ -190,7 +190,7 @@ services:
     depends_on:
       - prometheus
     networks:
-      - biloz_internal
+      - jmj_internal
     expose:
       - "3000"
 
@@ -199,15 +199,15 @@ services:
   # ─────────────────────────────────────────────
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: biloz_postgres_exporter
+    container_name: jmj_postgres_exporter
     restart: unless-stopped
     environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-biloz_admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-biloz}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-jmj_admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jmj}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - biloz_internal
+      - jmj_internal
     expose:
       - "9187"
 
@@ -216,7 +216,7 @@ services:
   # ─────────────────────────────────────────────
   redis_exporter:
     image: oliver006/redis_exporter:v1.62.0
-    container_name: biloz_redis_exporter
+    container_name: jmj_redis_exporter
     restart: unless-stopped
     environment:
       - REDIS_ADDR=redis://redis:6379
@@ -225,7 +225,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - biloz_internal
+      - jmj_internal
     expose:
       - "9121"
 
@@ -242,8 +242,8 @@ volumes:
     driver: local
 
 networks:
-  biloz_internal:
+  jmj_internal:
     driver: bridge
     internal: true
-  biloz_external:
+  jmj_external:
     driver: bridge

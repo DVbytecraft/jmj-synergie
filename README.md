@@ -1,6 +1,6 @@
-# Biloz — Gestion Commerciale
+# JMJ Synergie — Gestion Commerciale
 
-Plateforme de gestion commerciale multi-organisation : clients, commandes, paiements, documents PDF et scan OCR de factures.
+Plateforme de gestion commerciale interne : clients, commandes, paiements, documents PDF et scan OCR de factures.
 
 ---
 
@@ -157,7 +157,7 @@ docker compose -f docker-compose.dev.yml up --build -d backend
 docker compose -f docker-compose.dev.yml exec backend pytest
 
 # Shell PostgreSQL
-docker compose -f docker-compose.dev.yml exec postgres psql -U biloz_admin -d biloz
+docker compose -f docker-compose.dev.yml exec postgres psql -U jmj_admin -d jmj
 
 # Nouvelle migration Alembic
 docker compose -f docker-compose.dev.yml exec backend alembic revision --autogenerate -m "description"

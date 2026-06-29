@@ -51,12 +51,6 @@ httpx==0.27.2
 # ── Cloud storage ──────────────────────────────────────────────────────────────
 cloudinary==1.41.0
 
-# ── AI OCR (Gemini Flash — gratuit 1500 req/jour) ─────────────────────────────
-google-generativeai==0.8.5
-
-# ── AI OCR alternatif (Claude Vision — optionnel) ─────────────────────────────
-anthropic==0.50.0
-
 # ── Logging ───────────────────────────────────────────────────────────────────
 structlog==24.4.0
 
