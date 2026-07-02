@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
@@ -23,6 +23,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = !!searchParams.get("from");
+  const registeredEmail = searchParams.get("registered");
   const { setAuth } = useAuthStore();
 
   const {
@@ -55,10 +56,6 @@ function LoginContent() {
         return;
       }
       const detail = err.response?.data?.detail;
-      if (status === 403 && detail === "EMAIL_NOT_VERIFIED") {
-        router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
-        return;
-      }
       setError(
         typeof detail === "string" ? detail : "Email ou mot de passe incorrect"
       );
@@ -67,17 +64,15 @@ function LoginContent() {
 
   return (
     <div className="min-h-screen flex">
-      {/* ── Left panel — branding ─────────────────────── */}
+      {/* ── Left panel — branding ── */}
       <div className="hidden lg:flex lg:w-[52%] bg-slate-900 flex-col justify-between p-12 relative overflow-hidden">
         {/* Glow */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_60%_-10%,_rgb(59_130_246_/_0.25),_transparent)]" />
 
         {/* Logo */}
         <div className="relative flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-sm">B</span>
-          </div>
-          <span className="text-white font-semibold text-lg tracking-tight">Biloz</span>
+          <img src="/logo.svg" alt="JMJ Synergie" className="w-9 h-9 rounded-xl shadow-lg" />
+          <span className="text-white font-semibold text-lg tracking-tight">JMJ Synergie</span>
         </div>
 
         {/* Hero */}
@@ -112,34 +107,35 @@ function LoginContent() {
 
         {/* Footer */}
         <p className="relative text-slate-600 text-xs">
-          © {new Date().getFullYear()} Biloz — Tous droits réservés
+          © {new Date().getFullYear()} JMJ Synergie — Tous droits réservés
         </p>
       </div>
 
-      {/* ── Right panel — form ────────────────────────── */}
+      {/* ── Right panel — form ── */}
       <div className="flex-1 flex items-center justify-center p-6 bg-white">
         <div className="w-full max-w-[360px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-3 mb-10 justify-center">
-            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-sm">B</span>
-            </div>
-            <span className="text-slate-900 font-semibold text-lg">Biloz</span>
+            <img src="/logo.svg" alt="JMJ Synergie" className="w-9 h-9 rounded-xl" />
+            <span className="text-slate-900 font-semibold text-lg">JMJ Synergie</span>
           </div>
 
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-slate-900">Connexion</h1>
             <p className="text-slate-500 text-sm mt-1.5">
-              Pas encore de compte ?{" "}
-              <Link href="/register" className="text-blue-600 hover:underline font-medium">
-                Créer mon espace
-              </Link>
+              Utilisez le compte principal de l'entreprise pour accéder à l'application.
             </p>
           </div>
 
           {sessionExpired && !error && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-6">
               Votre session a expiré. Veuillez vous reconnecter.
+            </div>
+          )}
+
+          {registeredEmail && !sessionExpired && !error && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 mb-6">
+              L'inscription est désormais fermée. Connectez-vous avec le compte administrateur principal.
             </div>
           )}
 
@@ -241,3 +237,4 @@ export default function LoginPage() {
     </Suspense>
   );
 }
+

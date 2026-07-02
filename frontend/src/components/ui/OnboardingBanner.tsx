@@ -11,7 +11,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { X, Sparkles, Upload, Palette, Building2, PenLine } from "lucide-react";
 
-const DISMISSED_KEY = "biloz_onboarding_dismissed";
+const DISMISSED_KEY = "jmj_synergie_onboarding_dismissed";
 
 interface OnboardingBannerProps {
   hasLogo:        boolean;

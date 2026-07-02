@@ -5,7 +5,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from jose import JWTError
+from authlib.jose import JoseError
 
 from app.core import security
 from app.core.security import (
@@ -49,13 +49,13 @@ class TestAccessToken:
         user_id = uuid.uuid4()
         # Access token is wrong type for decode_refresh_token
         token = create_access_token(user_id, "manager", "Bob")
-        with pytest.raises(JWTError):
+        with pytest.raises(JoseError):
             decode_refresh_token(token)
 
     def test_tampered_token_raises(self):
         token = create_access_token(uuid.uuid4(), "admin", "Eve")
         tampered = token[:-4] + "XXXX"
-        with pytest.raises(JWTError):
+        with pytest.raises(JoseError):
             decode_access_token(tampered)
 
     def test_expired_token_raises(self, monkeypatch):
@@ -67,7 +67,7 @@ class TestAccessToken:
 
         monkeypatch.setattr(security, "_make_token", _expired_make)
         token = create_access_token(uuid.uuid4(), "manager", "Expired")
-        with pytest.raises(JWTError):
+        with pytest.raises(JoseError):
             decode_access_token(token)
 
 

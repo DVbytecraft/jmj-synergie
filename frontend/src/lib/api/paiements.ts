@@ -7,7 +7,7 @@ export type StatutPaiement = Payment["status"];
 export type MethodePaiement = Payment["method"];
 
 export const paiementsApi = {
-  list: async (params?: { skip?: number; limit?: number; order_id?: string }) => {
+  list: async (params?: { skip?: number; limit?: number; order_id?: string; search?: string }) => {
     const res = await apiClient.get<{
       items: Payment[];
       total: number;

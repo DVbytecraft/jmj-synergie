@@ -263,8 +263,8 @@ class PDFService:
         quote_id: uuid.UUID,
         created_by: uuid.UUID,
         db: AsyncSession,
-    ) -> str:
-        """Generate a devis (quote) PDF. Returns the absolute file path."""
+    ) -> Document:
+        """Generate a devis (quote) PDF and persist it as a Document row."""
         from types import SimpleNamespace
         from sqlalchemy.orm import selectinload
         from app.infrastructure.database.models import QuoteModel, ClientModel
@@ -303,7 +303,7 @@ class PDFService:
         )
 
         await asyncio.to_thread(self._build_quote_pdf, str(file_path), proxy, quote.quote_number, issuer)
-        return str(file_path)
+        return await self._upsert_quote_document(db, quote, created_by, quote.quote_number, file_path, file_name)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  PDF builders
@@ -906,6 +906,48 @@ class PDFService:
             order_id=order.id,
             created_by=created_by,
             document_type=doc_type,
+            document_number=doc_number,
+            file_path=str(file_path),
+            file_name=file_name,
+            file_size_bytes=file_size,
+            mime_type="application/pdf",
+        )
+        db.add(doc)
+        await db.flush()
+        return doc
+
+    async def _upsert_quote_document(
+        self,
+        db: AsyncSession,
+        quote: Any,
+        created_by: uuid.UUID,
+        doc_number: str,
+        file_path: Path,
+        file_name: str,
+    ) -> Document:
+        file_size = os.path.getsize(file_path)
+        existing_result = await db.execute(
+            select(Document).where(
+                Document.quote_id == quote.id,
+                Document.document_type == "quote",
+                Document.organization_id == quote.organization_id,
+            ).order_by(Document.created_at.desc())
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing:
+            existing.file_path = str(file_path)
+            existing.file_name = file_name
+            existing.file_size_bytes = file_size
+            existing.document_number = doc_number
+            existing.updated_at = datetime.now(timezone.utc)
+            await db.flush()
+            return existing
+        doc = Document(
+            id=uuid.uuid4(),
+            organization_id=quote.organization_id,
+            quote_id=quote.id,
+            created_by=created_by,
+            document_type="quote",
             document_number=doc_number,
             file_path=str(file_path),
             file_name=file_name,

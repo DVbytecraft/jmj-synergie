@@ -1,4 +1,4 @@
-# Biloz — Guide de Déploiement Production
+# JMJ Synergie — Guide de Déploiement Production
 
 ## Prérequis serveur
 
@@ -31,8 +31,8 @@ docker compose version
 ## 2. Cloner le projet
 
 ```bash
-git clone <repo-url> /opt/biloz
-cd /opt/biloz
+git clone <repo-url> /opt/jmj-synergie
+cd /opt/jmj-synergie
 ```
 
 ---
@@ -98,7 +98,7 @@ openssl rand -base64 24
 ```env
 BREVO_API_KEY=xkeysib-...
 BREVO_SENDER_EMAIL=noreply@yourdomain.com
-BREVO_SENDER_NAME=Biloz
+BREVO_SENDER_NAME=JMJ Synergie
 ```
 
 **Option B — SMTP standard**
@@ -234,7 +234,7 @@ Crée un dump PostgreSQL compressé dans `./backups/`.
 crontab -e
 
 # Sauvegarde quotidienne à 3h00
-0 3 * * * /opt/biloz/scripts/backup.sh >> /var/log/biloz-backup.log 2>&1
+0 3 * * * /opt/jmj-synergie/scripts/backup.sh >> /var/log/jmj-synergie-backup.log 2>&1
 ```
 
 ### Restauration
@@ -244,9 +244,9 @@ crontab -e
 ls -la ./backups/
 
 # Restaurer
-gunzip -c backups/biloz_2024-01-15_03-00.sql.gz | \
+gunzip -c backups/jmj_2024-01-15_03-00.sql.gz | \
   docker compose exec -T postgres \
-  psql -U biloz_admin -d biloz
+  psql -U jmj_admin -d jmj
 ```
 
 ### Rétention

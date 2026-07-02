@@ -144,11 +144,9 @@ async def cinetpay_webhook(
 ) -> dict:
     body_bytes = await request.body()
 
-    # Valider la signature si présente et en production
-    from app.core.config import settings
-    if settings.ENVIRONMENT == "production" and x_cinetpay_signature:
-        if not cinetpay_service.verify_webhook_signature(body_bytes, x_cinetpay_signature):
-            raise HTTPException(status_code=400, detail="Signature invalide.")
+    # Signature HMAC obligatoire — sans elle, un tiers pourrait simuler un paiement réussi.
+    if not x_cinetpay_signature or not cinetpay_service.verify_webhook_signature(body_bytes, x_cinetpay_signature):
+        raise HTTPException(status_code=400, detail="Signature invalide.")
 
     try:
         payload = await request.json()

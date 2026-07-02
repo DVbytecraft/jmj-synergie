@@ -1,4 +1,4 @@
-"""
+﻿"""
 Users management endpoints — admin only.
 """
 import uuid
@@ -20,7 +20,7 @@ from app.infrastructure.database.session import get_db_session as get_db
 
 router = APIRouter()
 
-VALID_ROLES = ("super_admin", "admin", "manager", "operator")
+VALID_ROLES = ("admin", "manager", "operator")
 
 
 def _detect_image_type(content: bytes) -> str | None:
@@ -70,8 +70,7 @@ def _extract_dominant_color(content: bytes) -> str | None:
         return None
     except Exception:
         return None
-# Roles an admin is allowed to assign (cannot assign super_admin)
-ADMIN_ASSIGNABLE_ROLES = ("admin", "manager", "operator")
+ADMIN_ASSIGNABLE_ROLES = VALID_ROLES
 
 
 class UserCreate(BaseModel):
@@ -408,54 +407,26 @@ async def get_my_issuer_asset(
     return FileResponse(resolved)
 
 
-@router.get("/", response_model=list[UserResponse])
+@router.get("", response_model=list[UserResponse])
 async def list_users(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
     skip: int = 0,
     limit: int = 50,
 ):
-    if current_user.organization_id is None:
-        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
-    result = await db.execute(
-        select(UserModel).where(
-            UserModel.is_deleted == False,  # noqa: E712
-            UserModel.organization_id == current_user.organization_id,
-        ).order_by(UserModel.full_name).offset(skip).limit(limit)
-    )
-    return [_to_response(u) for u in result.scalars().all()]
+    return [_to_response(current_user)]
 
 
-@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     body: UserCreate,
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.organization_id is None:
-        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
-    allowed = VALID_ROLES if current_user.role == "super_admin" else ADMIN_ASSIGNABLE_ROLES
-    if body.role not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Rôle invalide ou non autorisé. Valeurs acceptées : {list(allowed)}",
-        )
-    existing = await db.execute(select(UserModel).where(UserModel.email == body.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Email déjà utilisé")
-    user = UserModel(
-        id=uuid.uuid4(),
-        organization_id=current_user.organization_id,
-        email=body.email,
-        full_name=body.full_name,
-        hashed_password=await hash_password_async(body.password),
-        role=body.role,
-        is_active=True,
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="La création d'utilisateurs est désactivée dans le mode entreprise unique.",
     )
-    db.add(user)
-    await db.flush()
-    await db.refresh(user)
-    return _to_response(user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -464,32 +435,9 @@ async def delete_user(
     current_user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.organization_id is None:
-        raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
-    result = await db.execute(
-        select(UserModel).where(
-            UserModel.id == user_id,
-            UserModel.is_deleted == False,  # noqa: E712
-            UserModel.organization_id == current_user.organization_id,
-        )
-    )
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if user.id == current_user.id:
-        raise HTTPException(status_code=400, detail="Vous ne pouvez pas supprimer votre propre compte")
-    from datetime import datetime, timezone
-    user.is_deleted = True
-    user.deleted_at = datetime.now(timezone.utc)
-    user.deleted_by = current_user.id
-    await db.flush()
-    await log_audit_event(
-        db,
-        action="user.deleted",
-        actor_id=current_user.id,
-        organization_id=current_user.organization_id,
-        entity_type="user",
-        entity_id=str(user_id),
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="La suppression d'utilisateurs est désactivée dans le mode entreprise unique.",
     )
 
 
@@ -541,3 +489,6 @@ def _normalize_optional(value: str | None) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+

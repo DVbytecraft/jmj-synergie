@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # ── App ──────────────────────────────────────────────────────────────────
-    APP_NAME: str = "Biloz API"
+    APP_NAME: str = "JMJ Synergie API"
     APP_VERSION: str = "1.0.0"
     ENVIRONMENT: Literal["development", "testing", "production"] = "production"
     DEBUG: bool = False
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5        # 1 worker × 5 = 5 connections max de base
     DB_MAX_OVERFLOW: int = 10   # bursts jusqu'à 15 connexions max
     DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800  # recycle avant coupure des connexions idle par le provider managé
     DB_ECHO: bool = False
 
     # ── Redis ─────────────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ class Settings(BaseSettings):
     # ── Brevo (transactional email) ───────────────────────────────────────────
     BREVO_API_KEY: str = ""
     BREVO_SENDER_EMAIL: str = ""
-    BREVO_SENDER_NAME: str = "Biloz"
+    BREVO_SENDER_NAME: str = "JMJ Synergie"
 
     # ── Cloudinary (asset storage) ────────────────────────────────────────────
     CLOUDINARY_CLOUD_NAME: str = ""
@@ -74,7 +75,7 @@ class Settings(BaseSettings):
     USE_CLOUDINARY: bool = False
 
     # ── Company (PDF headers) ─────────────────────────────────────────────────
-    COMPANY_NAME: str = "Biloz"
+    COMPANY_NAME: str = "JMJ Synergie"
     COMPANY_ADDRESS: str = ""
     COMPANY_PHONE: str = ""
     COMPANY_EMAIL: str = ""

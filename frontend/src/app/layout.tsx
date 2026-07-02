@@ -1,26 +1,26 @@
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/layout/Providers";
 import { PwaInstaller } from "@/components/layout/PwaInstaller";
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-poppins",
-  display: "swap",
-  preload: true,
-});
-
 export const metadata: Metadata = {
-  title: "Biloz — Gestion Commerciale",
+  title: "JMJ Synergie — Gestion Commerciale",
   description: "Plateforme professionnelle de gestion des commandes, clients, paiements et factures",
   robots: "noindex, nofollow",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/icon-192.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" suppressHydrationWarning className={poppins.variable}>
+    <html lang="fr" suppressHydrationWarning>
       <head>
         {/*
           Chargé depuis public/ pour éviter la sérialisation RSC qui encode && en &&.

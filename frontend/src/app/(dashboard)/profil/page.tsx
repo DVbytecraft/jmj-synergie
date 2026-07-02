@@ -56,7 +56,6 @@ type PasswordForm = z.infer<typeof passwordSchema>;
 // ─── Role badge ───────────────────────────────────────────────────────────────
 
 const ROLE_CFG: Record<string, { label: string; className: string }> = {
-  super_admin: { label: "Super Admin",   className: "bg-purple-100 text-purple-700" },
   admin:       { label: "Administrateur",className: "bg-blue-100 text-blue-700"   },
   manager:     { label: "Manager",       className: "bg-indigo-100 text-indigo-700"},
   operator:    { label: "Opérateur",     className: "bg-slate-100 text-slate-700"  },

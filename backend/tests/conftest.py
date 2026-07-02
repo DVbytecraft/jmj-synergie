@@ -95,7 +95,7 @@ async def client_a(user_a: UserModel, access_token_a: str, mock_db: AsyncMock) -
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
         headers={"Authorization": f"Bearer {access_token_a}"},
     ) as ac:
         yield ac

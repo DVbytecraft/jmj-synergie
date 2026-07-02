@@ -13,7 +13,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import CurrentUser, ManagerUser, DB, _require_org
@@ -118,20 +118,43 @@ async def list_stock(
 ) -> StockListDTO:
     org_id = _require_org(current_user)
 
-    q = select(ProductModel).where(
+    base_filters = [
         ProductModel.organization_id == org_id,
         ProductModel.is_deleted == False,  # noqa: E712
         ProductModel.track_stock == True,  # noqa: E712
+    ]
+    low_stock_expr = and_(
+        ProductModel.low_stock_threshold.isnot(None),
+        func.coalesce(ProductModel.stock_quantity, 0) <= ProductModel.low_stock_threshold,
     )
 
-    rows_all = (await db.execute(q.order_by(ProductModel.name))).scalars().all()
+    list_filters = list(base_filters)
+    if alerts_only:
+        list_filters.append(low_stock_expr)
+
+    total = (
+        await db.execute(select(func.count()).select_from(ProductModel).where(*list_filters))
+    ).scalar_one()
 
     if alerts_only:
-        rows_all = [r for r in rows_all if _is_low_stock(r)]
+        alerts_count = total
+    else:
+        alerts_count = (
+            await db.execute(
+                select(func.count()).select_from(ProductModel).where(*base_filters, low_stock_expr)
+            )
+        ).scalar_one()
 
-    total = len(rows_all)
-    alerts_count = sum(1 for r in rows_all if _is_low_stock(r))
-    items = [_to_dto(r) for r in rows_all[skip: skip + limit]]
+    rows = (
+        await db.execute(
+            select(ProductModel)
+            .where(*list_filters)
+            .order_by(ProductModel.name)
+            .offset(skip)
+            .limit(limit)
+        )
+    ).scalars().all()
+    items = [_to_dto(r) for r in rows]
 
     return StockListDTO(items=items, total=total, alerts_count=alerts_count)
 

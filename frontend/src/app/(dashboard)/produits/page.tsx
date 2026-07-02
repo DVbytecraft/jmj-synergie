@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useProduits, useDeleteProduit } from "@/lib/hooks/use-produits";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { Plus, Search, Package, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import type { Product } from "@/types";
@@ -109,20 +110,17 @@ export default function ProduitsPage() {
   const [page, setPage]           = useState(0);
   const [activeOnly, setActiveOnly] = useState(false);
   const limit = 20;
+  const debouncedSearch = useDebouncedValue(search);
 
   const { data, isLoading } = useProduits({
     skip: page * limit,
     limit,
     status: activeOnly ? "active" : undefined,
+    search: debouncedSearch || undefined,
   });
   const deleteMut = useDeleteProduit();
 
-  const filtered =
-    data?.items.filter(
-      (p) =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.code.toLowerCase().includes(search.toLowerCase())
-    ) ?? [];
+  const filtered = data?.items ?? [];
 
   return (
     <div className="page-container">

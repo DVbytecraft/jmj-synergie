@@ -6,6 +6,7 @@ Endpoints :
   GET    /payments/                → Lister toutes les transactions
   GET    /payments/{id}            → Détail d'une transaction
 """
+import asyncio
 import json
 import uuid as _uuid
 from typing import Annotated
@@ -22,12 +23,13 @@ from app.core.redis_client import get_redis
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
 from app.workers.enqueue import enqueue_payment_receipt
-from sqlalchemy import select, func
+from sqlalchemy import cast, select, func, or_, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
 _IDEMPOTENCY_TTL = 86400  # 24 h
+_IDEMPOTENCY_LOCK_TTL = 30  # secondes — durée max d'un traitement en cours
 
 
 @router.post(
@@ -43,20 +45,46 @@ async def record_payment(
     uc: Annotated[RecordPaymentUseCase, Depends(get_record_payment_uc)],
     x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> PaymentResponseDTO:
-    # Idempotency — si la même clé est soumise dans les 24h, renvoyer la réponse initiale
+    # Idempotency — si la même clé est soumise dans les 24h, renvoyer la réponse initiale.
+    # Le verrou est posé atomiquement (SET NX) *avant* d'exécuter la use case : un simple
+    # "GET puis SET" laisse une fenêtre où deux requêtes concurrentes passent toutes les
+    # deux le contrôle de cache et créent chacune un paiement en double.
     if x_idempotency_key and len(x_idempotency_key) > 128:
         raise HTTPException(status_code=400, detail="X-Idempotency-Key must be at most 128 characters.")
     redis_key: str | None = None
+    redis = get_redis()
     if x_idempotency_key:
         redis_key = f"idem:pay:{current_user.organization_id}:{x_idempotency_key}"
         try:
-            cached = await get_redis().get(redis_key)
-            if cached:
-                return PaymentResponseDTO(**json.loads(cached))
+            claimed = await redis.set(redis_key, "PROCESSING", nx=True, ex=_IDEMPOTENCY_LOCK_TTL)
+            if not claimed:
+                cached = await redis.get(redis_key)
+                for _ in range(20):
+                    if cached and cached != "PROCESSING":
+                        return PaymentResponseDTO(**json.loads(cached))
+                    await asyncio.sleep(0.25)
+                    cached = await redis.get(redis_key)
+                if cached and cached != "PROCESSING":
+                    return PaymentResponseDTO(**json.loads(cached))
+                raise HTTPException(
+                    status_code=409,
+                    detail="Une requête identique est déjà en cours de traitement.",
+                )
+        except HTTPException:
+            raise
         except Exception:
-            pass  # Redis indisponible → fail-open
+            redis_key = None  # Redis indisponible → fail-open (pas de garantie d'idempotency)
 
-    result = await uc.execute(body, current_user.id)
+    try:
+        result = await uc.execute(body, current_user.id)
+    except Exception:
+        if redis_key:
+            try:
+                await redis.delete(redis_key)
+            except Exception:
+                pass
+        raise
+
     await log_audit_event(
         db,
         action="payment.recorded",
@@ -81,7 +109,7 @@ async def record_payment(
 
     if redis_key:
         try:
-            await get_redis().set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
+            await redis.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
         except Exception:
             pass
 
@@ -106,8 +134,9 @@ async def list_all_transactions(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     order_id: UUID | None = None,
+    search: str | None = Query(None, description="Recherche sur l'ID transaction ou l'ID commande"),
 ):
-    if current_user.organization_id is None and current_user.role != "super_admin":
+    if current_user.organization_id is None:
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
 
     def _base(q):
@@ -115,6 +144,14 @@ async def list_all_transactions(
             q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
         if order_id:
             q = q.where(PaymentTransactionModel.order_id == order_id)
+        if search:
+            term = f"%{search}%"
+            q = q.where(
+                or_(
+                    cast(PaymentTransactionModel.id, String).ilike(term),
+                    cast(PaymentTransactionModel.order_id, String).ilike(term),
+                )
+            )
         return q
 
     # total count + aggregates (completed / refunded) — single query
@@ -157,7 +194,7 @@ async def get_transaction(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    if current_user.organization_id is None and current_user.role != "super_admin":
+    if current_user.organization_id is None:
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
     q = select(PaymentTransactionModel).where(PaymentTransactionModel.id == transaction_id)
     if current_user.organization_id is not None:

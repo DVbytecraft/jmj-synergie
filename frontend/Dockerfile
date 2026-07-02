@@ -1,5 +1,5 @@
 # =============================================================================
-#  Biloz — Frontend Dockerfile (multi-stage)
+#  JMJ Synergie — Frontend Dockerfile (multi-stage)
 #  NEXT_PUBLIC_API_URL : URL publique de l'API (baked at build, côté navigateur)
 #  BACKEND_URL         : URL interne du backend (lue au runtime par Next.js server)
 # =============================================================================

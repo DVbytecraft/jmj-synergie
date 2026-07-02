@@ -1,4 +1,4 @@
-# Biloz — Référence API v1
+# JMJ Synergie — Référence API v1
 
 Base URL : `https://yourdomain.com/api/v1`  
 Dev URL  : `http://localhost:8001/api/v1`

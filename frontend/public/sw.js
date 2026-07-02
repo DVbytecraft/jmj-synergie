@@ -1,12 +1,12 @@
 /**
- * Biloz Service Worker
+ * JMJ Synergie Service Worker
  * Strategy:
  *  - Static assets (_next/static, icons, fonts) : cache-first
  *  - API calls (/api/)                           : network-first, no cache
  *  - HTML navigation                             : network-first, fallback to /offline.html
  */
 
-const CACHE_NAME = "biloz-v1";
+const CACHE_NAME = "jmj-synergie-v1";
 const OFFLINE_URL = "/offline.html";
 
 const STATIC_PATTERNS = [

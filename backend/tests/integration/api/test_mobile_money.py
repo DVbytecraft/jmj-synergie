@@ -106,7 +106,7 @@ def _app_client(user: UserModel, db=None):
     token = create_access_token(user.id, user.role, user.full_name)
     return AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -216,7 +216,7 @@ async def test_webhook_missing_signature_returns_400():
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
     ) as client:
         resp = await client.post("/api/v1/mobile-money/webhook", json={
             "cpm_trans_id": "fake-txn",

@@ -1,6 +1,6 @@
 {
-  "name": "Biloz — Gestion commerciale",
-  "short_name": "Biloz",
+  "name": "JMJ Synergie — Gestion commerciale",
+  "short_name": "JMJ Synergie",
   "description": "Gestion clients, commandes, paiements et factures",
   "start_url": "/dashboard",
   "display": "standalone",

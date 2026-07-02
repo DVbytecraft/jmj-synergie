@@ -34,9 +34,12 @@ def upgrade() -> None:
     )
 
     # ── Products: stock management columns ────────────────────────────────────
-    op.add_column("products", sa.Column("stock_quantity", sa.Integer(), nullable=False, server_default="0"))
+    # stock_quantity and track_stock already exist since migration 0002 —
+    # only backfill/enforce NOT NULL here and add the new alert threshold column.
+    op.execute("UPDATE products SET stock_quantity = 0 WHERE stock_quantity IS NULL")
+    op.execute("ALTER TABLE products ALTER COLUMN stock_quantity SET DEFAULT 0")
+    op.execute("ALTER TABLE products ALTER COLUMN stock_quantity SET NOT NULL")
     op.add_column("products", sa.Column("stock_alert_threshold", sa.Integer(), nullable=False, server_default="0"))
-    op.add_column("products", sa.Column("track_stock", sa.Boolean(), nullable=False, server_default="false"))
 
     op.execute("""
         ALTER TABLE products
@@ -87,8 +90,8 @@ def upgrade() -> None:
     op.execute("ALTER TABLE quotes ADD CONSTRAINT ck_quotes_subtotal CHECK (subtotal_cents >= 0)")
     op.execute("ALTER TABLE quotes ADD CONSTRAINT ck_quotes_total CHECK (total_cents >= 0)")
 
-    op.create_index("ix_quotes_organization_id", "quotes", ["organization_id"])
-    op.create_index("ix_quotes_client_id", "quotes", ["client_id"])
+    # ix_quotes_organization_id / ix_quotes_client_id already created above via
+    # Column(index=True) in create_table.
     op.create_index("ix_quotes_status", "quotes", ["status"])
 
     # ── Quote items table ─────────────────────────────────────────────────────
@@ -135,9 +138,9 @@ def downgrade() -> None:
     op.drop_table("quote_items")
     op.drop_table("quotes")
     op.execute("DROP SEQUENCE IF EXISTS quote_number_seq")
-    op.drop_column("products", "track_stock")
     op.drop_column("products", "stock_alert_threshold")
-    op.drop_column("products", "stock_quantity")
+    op.execute("ALTER TABLE products ALTER COLUMN stock_quantity DROP NOT NULL")
+    op.execute("ALTER TABLE products ALTER COLUMN stock_quantity DROP DEFAULT")
     op.drop_column("organizations", "preferred_currency")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_status")

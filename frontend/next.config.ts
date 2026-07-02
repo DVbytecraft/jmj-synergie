@@ -1,3 +1,4 @@
+import path from "path";
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -8,6 +9,7 @@ const isDev = process.env.NODE_ENV === "development";
 // middleware doesn't run (Next.js static file serving bypasses middleware).
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: path.resolve(__dirname),
   // ── Output standalone pour Docker (production uniquement) ─────────────────
   // Désactivé en dev pour éviter le ChunkLoadError lié au mode standalone
   ...(process.env.NODE_ENV === "production" ? { output: "standalone" as const } : {}),

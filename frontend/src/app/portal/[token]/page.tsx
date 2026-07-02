@@ -47,10 +47,14 @@ export default function PortalPage({ params }: { params: Promise<{ token: string
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">B</span>
-          </div>
-          <span className="font-bold text-gray-900 text-lg">Biloz</span>
+          <img
+            src={order?.organization_logo_url || "/logo.svg"}
+            alt={order?.organization_name || "JMJ Synergie"}
+            className="w-8 h-8 rounded-xl"
+          />
+          <span className="font-bold text-gray-900 text-lg">
+            {order?.organization_name || "JMJ Synergie"}
+          </span>
         </div>
       </header>
 
@@ -147,7 +151,7 @@ export default function PortalPage({ params }: { params: Promise<{ token: string
             )}
 
             <p className="text-center text-xs text-gray-400 pb-4">
-              Lien généré par <span className="font-semibold text-gray-600">Biloz</span> — plateforme de gestion commerciale
+              Lien généré par <span className="font-semibold text-gray-600">{order.organization_name}</span> — plateforme de gestion commerciale
             </p>
           </>
         )}

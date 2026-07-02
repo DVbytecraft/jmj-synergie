@@ -7,6 +7,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth.store";
+import { JOURNAL_KEY } from "@/lib/hooks/use-journal";
 
 export interface NotificationItem {
   id: string;
@@ -60,7 +61,7 @@ export function useNotifications() {
 
         // Invalider les requêtes liées aux paiements pour rafraîchir les listes
         if (data.type === "payment.new") {
-          queryClient.invalidateQueries({ queryKey: ["journal-paiements"] });
+          queryClient.invalidateQueries({ queryKey: [JOURNAL_KEY, "paiements"] });
           queryClient.invalidateQueries({ queryKey: ["paiements"] });
         }
 

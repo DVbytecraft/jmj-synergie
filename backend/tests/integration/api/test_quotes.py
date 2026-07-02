@@ -119,7 +119,7 @@ def _app_client(user: UserModel, db=None):
     token = create_access_token(user.id, user.role, user.full_name)
     return AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -129,6 +129,14 @@ async def test_list_quotes_returns_200():
     from app.main import app
     user = _make_user("manager")
     db = _mock_db(quote=_make_quote())
+
+    # list_quotes issues two db.execute() calls (quotes, then a client batch-fetch) —
+    # give each its own result instead of the single shared one from _mock_db().
+    quotes_result = db.execute.return_value
+    clients_result = MagicMock()
+    clients_result.scalars.return_value.all.return_value = [_make_client()]
+    db.execute = AsyncMock(side_effect=[quotes_result, clients_result])
+    db.scalar = AsyncMock(return_value=1)
 
     async with _app_client(user, db) as client:
         resp = await client.get("/api/v1/quotes")

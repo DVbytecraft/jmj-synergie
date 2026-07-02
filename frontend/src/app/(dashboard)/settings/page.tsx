@@ -369,7 +369,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="label">Nom de l'entreprise</label>
-            <input className="input" {...register("company_name")} placeholder="Biloz" />
+            <input className="input" {...register("company_name")} placeholder="JMJ Synergie" />
           </div>
           <div>
             <label className="label">NIF / ID fiscal</label>

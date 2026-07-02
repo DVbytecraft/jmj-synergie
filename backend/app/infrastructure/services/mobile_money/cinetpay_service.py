@@ -33,7 +33,7 @@ class CinetPayService:
         phone: str,
         transaction_id: str,
         currency: str = "XAF",
-        description: str = "Paiement Biloz",
+        description: str = "Paiement JMJ Synergie",
         customer_name: str = "Client",
         notify_url: str = "",
         return_url: str = "",

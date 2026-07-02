@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, ShoppingCart, FileText,
   CreditCard, ScanLine, Settings, LogOut, Package,
-  BookOpen, RotateCcw, ShieldCheck, X, UserCircle,
-  ClipboardList, Warehouse, Download,
+  BookOpen, RotateCcw, X, UserCircle,
+  ClipboardList, Warehouse,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
 import { apiClient } from "@/lib/api/client";
+import { organizationsApi } from "@/lib/api/organizations";
 import { useRouter } from "next/navigation";
 import { useSidebar } from "./sidebar-context";
 import type { RoleUtilisateur } from "@/types";
@@ -53,7 +55,6 @@ const navGroups: NavGroup[] = [
       { href: "/paiements",              icon: CreditCard, label: "Paiements",         roles: ORG_ROLES },
       { href: "/journal/paiements",      icon: BookOpen,   label: "Journal paiements", roles: ORG_ROLES },
       { href: "/journal/remboursements", icon: RotateCcw,  label: "Remboursements",    roles: MANAGER_ROLES },
-      { href: "/exports",                icon: Download,   label: "Exports OHADA",     roles: MANAGER_ROLES },
     ],
   },
   {
@@ -63,16 +64,9 @@ const navGroups: NavGroup[] = [
       { href: "/scan",      icon: ScanLine, label: "Scan facture",  roles: MANAGER_ROLES },
     ],
   },
-  {
-    label: "Administration",
-    items: [
-      { href: "/admin/users", icon: ShieldCheck, label: "Panneau admin", roles: ["super_admin"] },
-    ],
-  },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super Admin",
   admin:       "Administrateur",
   manager:     "Manager",
   operator:    "Opérateur",
@@ -82,6 +76,10 @@ function NavContent({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { clearAuth, user } = useAuthStore();
+  const { data: organization } = useQuery({
+    queryKey: ["organizations", "me"],
+    queryFn: organizationsApi.getMine,
+  });
 
   const handleLogout = async () => {
     try {
@@ -99,11 +97,11 @@ function NavContent({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="flex items-center justify-between px-5 h-16 border-b border-white/5 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg">
-            <span className="text-white font-bold text-xs tracking-tight">B</span>
-          </div>
+          <img src="/logo.svg" alt="JMJ Synergie" className="w-8 h-8 rounded-lg shadow-lg flex-shrink-0" />
           <div>
-            <p className="text-white text-sm font-semibold leading-none">Biloz</p>
+            <p className="text-white text-sm font-semibold leading-none">
+              {organization?.name || "JMJ Synergie"}
+            </p>
             <p className="text-slate-500 text-xs mt-0.5">Gestion commerciale</p>
           </div>
         </div>

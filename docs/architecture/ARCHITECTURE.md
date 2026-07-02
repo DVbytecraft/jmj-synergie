@@ -1,4 +1,4 @@
-# Biloz — Architecture Technique
+# JMJ Synergie — Architecture Technique
 
 ## Vue d'ensemble
 

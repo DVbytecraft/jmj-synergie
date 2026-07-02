@@ -344,6 +344,7 @@ class DocumentModel(Base):
     id: Mapped[uuid.UUID]         = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
+    quote_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("quotes.id"), nullable=True, index=True)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     document_type: Mapped[str]    = mapped_column(String(30), nullable=False)
     document_number: Mapped[str]  = mapped_column(String(60), unique=True, nullable=False, index=True)

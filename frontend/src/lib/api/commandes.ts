@@ -6,7 +6,7 @@ export type { OrderStatus as StatutCommande } from "@/types";
 export type Commande = Order;
 
 export const commandesApi = {
-  list: async (params?: { skip?: number; limit?: number; status?: string; client_id?: string }) => {
+  list: async (params?: { skip?: number; limit?: number; status?: string; client_id?: string; search?: string }) => {
     const res = await apiClient.get<OrderListResponse>("/orders", { params });
     return res.data;
   },

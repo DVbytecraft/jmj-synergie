@@ -10,9 +10,11 @@ import { apiClient } from "@/lib/api/client";
 import { portalApi } from "@/lib/api/portal";
 import { mobileMoneyApi, type MobileMoneyProvider, PROVIDER_LABELS } from "@/lib/api/mobile-money";
 import { formatCents } from "@/lib/utils/money";
+import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
+import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
 import type { PaymentMethod } from "@/types";
 import {
-  ArrowLeft, CheckCircle, XCircle, Download, FileText,
+  ArrowLeft, CheckCircle, XCircle, Eye, FileText,
   CreditCard, Loader2, Package, Truck, Wallet, Receipt,
   ShoppingCart, ClipboardList, ChevronRight, Share2, Copy, Check,
 } from "lucide-react";
@@ -38,6 +40,10 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const {
+    previewUrl, previewTitle, error: docError,
+    run: runPreview, close: closePreview, download: downloadPreview, clearError: clearDocError,
+  } = useBlobPreview();
 
   const { data: commande, isLoading } = useQuery({
     queryKey: ["commandes", id],
@@ -67,23 +73,15 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   });
 
   const [docLoading, setDocLoading] = useState<DocType | string | null>(null);
-  const [docError, setDocError] = useState<string | null>(null);
 
-  const generateAndDownload = async (endpoint: string, fileName: string, loadingKey: string) => {
+  const generateAndPreview = async (endpoint: string, fileName: string, loadingKey: string) => {
     setDocLoading(loadingKey);
-    setDocError(null);
     try {
-      const postRes = await apiClient.post<{ document_id: string }>(endpoint);
-      const { document_id } = postRes.data;
-      const fileRes = await apiClient.get(`/documents/${document_id}/download`, { responseType: "blob" });
-      const url = URL.createObjectURL(new Blob([fileRes.data], { type: "application/pdf" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setDocError(err?.response?.data?.detail ?? "Erreur lors de la génération du document");
+      await runPreview(async () => {
+        const postRes = await apiClient.post<{ document_id: string }>(endpoint);
+        const fileRes = await apiClient.get(`/documents/${postRes.data.document_id}/download`, { responseType: "blob" });
+        return new Blob([fileRes.data], { type: "application/pdf" });
+      }, fileName);
     } finally {
       setDocLoading(null);
     }
@@ -234,7 +232,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
       {docError && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
           <span>{docError}</span>
-          <button onClick={() => setDocError(null)} className="ml-3 text-red-400 hover:text-red-600">✕</button>
+          <button onClick={clearDocError} className="ml-3 text-red-400 hover:text-red-600">✕</button>
         </div>
       )}
 
@@ -344,7 +342,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                 available={true}
                 loading={docLoading === "purchase_order"}
                 onGenerate={() =>
-                  generateAndDownload(
+                  generateAndPreview(
                     `/documents/purchase-order/${id}`,
                     `bon_commande-${id.slice(0, 8)}.pdf`,
                     "purchase_order"
@@ -359,7 +357,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                 available={true}
                 loading={docLoading === "pro_forma"}
                 onGenerate={() =>
-                  generateAndDownload(
+                  generateAndPreview(
                     `/documents/pro-forma/${id}`,
                     `proforma-${id.slice(0, 8)}.pdf`,
                     "pro_forma"
@@ -389,7 +387,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                 disabledReason="Confirmez la commande d'abord"
                 loading={docLoading === "invoice"}
                 onGenerate={() =>
-                  generateAndDownload(
+                  generateAndPreview(
                     `/documents/invoice/${id}`,
                     `facture-${id.slice(0, 8)}.pdf`,
                     "invoice"
@@ -405,7 +403,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                 disabledReason="Confirmez la commande d'abord"
                 loading={docLoading === "delivery_note"}
                 onGenerate={() =>
-                  generateAndDownload(
+                  generateAndPreview(
                     `/documents/delivery-note/${id}`,
                     `bon_livraison-${id.slice(0, 8)}.pdf`,
                     "delivery_note"
@@ -434,7 +432,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                   available={true}
                   loading={docLoading === "payment_receipt"}
                   onGenerate={() =>
-                    generateAndDownload(
+                    generateAndPreview(
                       `/documents/payment-receipt/${id}/${latestPayment.id}`,
                       `recu_paiement-${id.slice(0, 8)}.pdf`,
                       "payment_receipt"
@@ -453,6 +451,16 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
               )}
             </div>
           </div>
+
+          <PdfPreviewPanel
+            title={previewTitle}
+            previewUrl={previewUrl}
+            loading={docLoading !== null}
+            emptyTitle="Aperçu des documents"
+            emptyDescription="Choisissez un document exportable pour voir son rendu PDF ici avant téléchargement."
+            onDownload={() => downloadPreview()}
+            onClose={closePreview}
+          />
 
           {/* Client info */}
           {client && (
@@ -556,9 +564,9 @@ function DocStep({
         {loading ? (
           <Loader2 className="w-3 h-3 animate-spin" />
         ) : (
-          <Download className="w-3 h-3" />
+          <Eye className="w-3 h-3" />
         )}
-        Générer
+        Aperçu
       </button>
     </div>
   );

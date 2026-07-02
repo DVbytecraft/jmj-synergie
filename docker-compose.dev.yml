@@ -1,7 +1,7 @@
 version: "3.9"
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Biloz — Docker Compose DEV
+#  JMJ Synergie — Docker Compose DEV
 #  Usage : docker compose -f docker-compose.dev.yml up --build
 #
 #  Différences vs production :
@@ -17,10 +17,10 @@ services:
   # ── Redis — rate limiter ────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: biloz_dev_redis
+    container_name: jmj_dev_redis
     restart: unless-stopped
     networks:
-      - biloz_dev
+      - jmj_dev
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,11 +30,11 @@ services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: biloz_dev_postgres
+    container_name: jmj_dev_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-biloz}
-      POSTGRES_USER: ${POSTGRES_USER:-biloz_admin}
+      POSTGRES_DB: ${POSTGRES_DB:-jmj}
+      POSTGRES_USER: ${POSTGRES_USER:-jmj_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
@@ -43,9 +43,9 @@ services:
     ports:
       - "5432:5432"
     networks:
-      - biloz_dev
+      - jmj_dev
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-biloz_admin} -d ${POSTGRES_DB:-biloz}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jmj_admin} -d ${POSTGRES_DB:-jmj}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -56,11 +56,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    container_name: biloz_dev_backend
+    container_name: jmj_dev_backend
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-biloz_admin}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-biloz}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jmj_admin}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-jmj}
       SECRET_KEY: ${SECRET_KEY:-dev_secret_key_not_for_production_32chars_ok}
       ALGORITHM: ${ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
@@ -69,6 +69,11 @@ services:
       ALLOWED_ORIGINS: "http://localhost:${DEV_FRONTEND_PORT:-3001},http://localhost:3000"
       STORAGE_PATH: /app/storage
       REDIS_URL: "redis://redis:6379/0"
+      # uvicorn --reload utilise watchfiles, qui s'appuie sur les évènements natifs du
+      # système de fichiers. Sur Docker Desktop (Windows/macOS), le bind-mount ./backend
+      # ne les propage pas fiablement → le serveur ne recharge jamais. Le polling force
+      # une vérification périodique des fichiers, comme WATCHPACK_POLLING côté frontend.
+      WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./backend:/app
       - backend_storage_dev:/app/storage
@@ -80,7 +85,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - biloz_dev
+      - jmj_dev
     command: >
       uvicorn app.main:app
       --host 0.0.0.0
@@ -94,7 +99,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: deps
-    container_name: biloz_dev_frontend
+    container_name: jmj_dev_frontend
     restart: unless-stopped
     env_file: .env
     environment:
@@ -114,7 +119,7 @@ services:
     depends_on:
       - backend
     networks:
-      - biloz_dev
+      - jmj_dev
     command: npm run dev
 
 volumes:
@@ -124,5 +129,5 @@ volumes:
     driver: local
 
 networks:
-  biloz_dev:
+  jmj_dev:
     driver: bridge

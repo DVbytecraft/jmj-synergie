@@ -4,6 +4,7 @@ import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { commandesApi } from "@/lib/api/commandes";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { OrderStatus } from "@/types";
 import { Plus, Search, FileText, CreditCard, ShoppingCart } from "lucide-react";
 import Link from "next/link";
@@ -40,16 +41,20 @@ export default function CommandesPage() {
   const [statut, setStatut] = useState<OrderStatus | "">("");
   const [page, setPage] = useState(0);
   const limit = 20;
+  const debouncedSearch = useDebouncedValue(search);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["commandes", page, statut],
+    queryKey: ["commandes", page, statut, debouncedSearch],
     queryFn: () =>
-      commandesApi.list({ skip: page * limit, limit, status: statut || undefined }),
+      commandesApi.list({
+        skip: page * limit,
+        limit,
+        status: statut || undefined,
+        search: debouncedSearch || undefined,
+      }),
   });
 
-  const filtered = data?.items.filter((c) =>
-    c.order_number.toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
+  const filtered = data?.items ?? [];
 
   return (
     <div className="page-container">
@@ -72,7 +77,7 @@ export default function CommandesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             placeholder="Numéro ou client…"
             className="input pl-10"
           />

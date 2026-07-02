@@ -3,7 +3,7 @@
         certs clean reset
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Biloz — Makefile
+#  JMJ Synergie — Makefile
 # ─────────────────────────────────────────────────────────────────────────────
 
 COMPOSE_PROD = docker compose -f docker-compose.yml
@@ -52,7 +52,7 @@ migrate-down: ## Rollback d'une migration
 # ─── Shells ──────────────────────────────────────────────────────────────────
 
 db-shell: ## Ouvrir psql dans le conteneur PostgreSQL
-	$(COMPOSE_DEV) exec postgres psql -U $${POSTGRES_USER:-biloz_admin} -d $${POSTGRES_DB:-biloz}
+	$(COMPOSE_DEV) exec postgres psql -U $${POSTGRES_USER:-jmj_admin} -d $${POSTGRES_DB:-jmj}
 
 backend-shell: ## Ouvrir un shell dans le backend
 	$(COMPOSE_DEV) exec backend bash

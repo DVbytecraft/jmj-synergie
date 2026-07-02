@@ -21,7 +21,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-poppins)", "system-ui", "sans-serif"],
+        sans: ["system-ui", "Segoe UI", "sans-serif"],
         mono: ["JetBrains Mono", "Menlo", "monospace"],
       },
       boxShadow: {

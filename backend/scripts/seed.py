@@ -1,10 +1,10 @@
 """
-Database seeder — creates the first super admin user.
+Database seeder — creates the first admin user for the single company.
 
 Credentials are read exclusively from environment variables.
 Run once after initial migration:
 
-    SUPER_ADMIN_EMAIL=you@domain.com SUPER_ADMIN_PASSWORD=VeryStr0ng! python scripts/seed.py
+    ADMIN_EMAIL=you@domain.com ADMIN_PASSWORD=VeryStr0ng! python scripts/seed.py
 
 Or set the variables in your .env file before running.
 """
@@ -29,7 +29,7 @@ except ImportError:
 
 from app.core.config import settings
 from app.core.security import hash_password
-from app.infrastructure.database.models import UserModel
+from app.infrastructure.database.models import OrganizationModel, UserModel
 
 
 def _require_env(name: str) -> str:
@@ -61,9 +61,10 @@ def _validate_password(password: str) -> None:
 
 
 async def seed() -> None:
-    email = _require_env("SUPER_ADMIN_EMAIL")
-    password = _require_env("SUPER_ADMIN_PASSWORD")
-    full_name = os.environ.get("SUPER_ADMIN_NAME", "Super Administrateur").strip()
+    email = _require_env("ADMIN_EMAIL")
+    password = _require_env("ADMIN_PASSWORD")
+    full_name = os.environ.get("ADMIN_NAME", "Administrateur").strip()
+    organization_name = os.environ.get("COMPANY_NAME", "JMJ Synergie").strip() or "JMJ Synergie"
 
     _validate_password(password)
 
@@ -72,20 +73,31 @@ async def seed() -> None:
 
     async with SessionLocal() as db:
         existing = (await db.execute(
-            select(UserModel).where(UserModel.role == "super_admin")
+            select(UserModel).where(UserModel.role == "admin")
         )).scalar_one_or_none()
 
         if existing:
-            print(f"[INFO] Un super_admin existe déjà ({existing.email}). Aucune action.")
+            print(f"[INFO] Un administrateur existe déjà ({existing.email}). Aucune action.")
             await engine.dispose()
             return
 
+        org = (await db.execute(select(OrganizationModel).limit(1))).scalar_one_or_none()
+        if org is None:
+            org = OrganizationModel(
+                id=uuid.uuid4(),
+                code="JMJ-SYNERGIE",
+                name=organization_name,
+            )
+            db.add(org)
+            await db.flush()
+
         admin = UserModel(
             id=uuid.uuid4(),
+            organization_id=org.id,
             email=email,
             hashed_password=hash_password(password),
             full_name=full_name,
-            role="super_admin",
+            role="admin",
             status="active",
             is_active=True,
             is_email_verified=True,
@@ -96,7 +108,7 @@ async def seed() -> None:
         await db.commit()
 
     await engine.dispose()
-    print(f"[OK] Super admin créé : {email}")
+    print(f"[OK] Administrateur créé : {email}")
     print("[IMPORTANT] Ne stockez jamais ce mot de passe en clair. Supprimez-le de votre historique shell.")
 
 

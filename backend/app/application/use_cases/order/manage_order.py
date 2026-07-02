@@ -45,8 +45,9 @@ class ListOrdersUseCase:
         client_id: UUID | None = None,
         status: str | None = None,
         payment_status: str | None = None,
+        search: str | None = None,
     ) -> OrderListResponseDTO:
-        orders, total = await self._repo.list(skip, limit, client_id, status, payment_status)
+        orders, total = await self._repo.list(skip, limit, client_id, status, payment_status, search)
         return OrderListResponseDTO(
             items=[OrderMapper.to_response_dto(o) for o in orders],
             total=total, skip=skip, limit=limit,

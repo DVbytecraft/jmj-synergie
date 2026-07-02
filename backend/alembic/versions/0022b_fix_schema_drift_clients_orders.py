@@ -1,7 +1,7 @@
 """Fix schema drift — add missing columns to clients and orders tables.
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0022b
+Revises: 0022
 Create Date: 2026-06-18
 
 Root cause:
@@ -38,8 +38,8 @@ import sqlalchemy as sa
 from sqlalchemy import text, inspect
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = "0022"
-down_revision = "0021"
+revision = "0022b"
+down_revision = "0022"
 branch_labels = None
 depends_on = None
 

@@ -21,7 +21,7 @@ export const documentsApi = {
     client_type?: string;
   }) =>
     apiClient
-      .get<DocumentListResponse>("/documents/", { params })
+      .get<DocumentListResponse>("/documents", { params })
       .then((r) => r.data),
 
   /** Envoyer un document par email (destinataire optionnel). */

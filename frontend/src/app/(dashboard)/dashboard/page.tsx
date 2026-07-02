@@ -1,46 +1,42 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { ArrowRight, CreditCard, ShoppingCart, TrendingUp, Users } from "lucide-react";
+
+import { OnboardingBanner } from "@/components/ui/OnboardingBanner";
+import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
 import { apiClient } from "@/lib/api/client";
 import { usersApi } from "@/lib/api/users";
-import { useAuthStore } from "@/store/auth.store";
-import { formatCents } from "@/lib/utils/money";
 import { formatDateFr } from "@/lib/utils/format-dates";
-import { Users, ShoppingCart, CreditCard, TrendingUp, ArrowRight, ShieldCheck } from "lucide-react";
-import Link from "next/link";
-import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
-import { OnboardingBanner } from "@/components/ui/OnboardingBanner";
-
-// ── Types ────────────────────────────────────────────────────────────────────
+import { formatCents } from "@/lib/utils/money";
 
 interface OrdersByStatus {
-  draft:       number;
-  confirmed:   number;
+  draft: number;
+  confirmed: number;
   in_progress: number;
-  delivered:   number;
-  cancelled:   number;
-  refunded:    number;
+  delivered: number;
+  cancelled: number;
+  refunded: number;
 }
 
 interface RecentOrder {
-  id:           string;
+  id: string;
   order_number: string;
-  status:       string;
-  total_cents:  number;
-  currency:     string;
-  created_at:   string;
+  status: string;
+  total_cents: number;
+  currency: string;
+  created_at: string;
 }
 
 interface DashboardKPI {
-  total_orders:      number;
-  total_clients:     number;
-  ca_total_cents:    number;
-  total_paid_cents:  number;
-  orders_by_status:  OrdersByStatus;
-  recent_orders:     RecentOrder[];
+  total_orders: number;
+  total_clients: number;
+  ca_total_cents: number;
+  total_paid_cents: number;
+  orders_by_status: OrdersByStatus;
+  recent_orders: RecentOrder[];
 }
-
-// ── Skeleton ─────────────────────────────────────────────────────────────────
 
 function SkeletonCard() {
   return (
@@ -54,8 +50,6 @@ function SkeletonCard() {
     </div>
   );
 }
-
-// ── KPI card ──────────────────────────────────────────────────────────────────
 
 function StatCard({
   icon: Icon,
@@ -84,70 +78,31 @@ function StatCard({
   );
 }
 
-// ── Status bar config ─────────────────────────────────────────────────────────
-
 const STATUS_CONFIG = [
-  { key: "draft",       label: "Brouillon", color: "bg-slate-400" },
-  { key: "confirmed",   label: "Confirmée", color: "bg-blue-500" },
-  { key: "in_progress", label: "En cours",  color: "bg-amber-400" },
-  { key: "delivered",   label: "Livrée",    color: "bg-emerald-500" },
-  { key: "cancelled",   label: "Annulée",   color: "bg-red-400" },
+  { key: "draft", label: "Brouillon", color: "bg-slate-400" },
+  { key: "confirmed", label: "Confirmee", color: "bg-blue-500" },
+  { key: "in_progress", label: "En cours", color: "bg-amber-400" },
+  { key: "delivered", label: "Livree", color: "bg-emerald-500" },
+  { key: "cancelled", label: "Annulee", color: "bg-red-400" },
 ] as const;
 
-// ── Page ─────────────────────────────────────────────────────────────────────
-
 export default function DashboardPage() {
-  const { user } = useAuthStore();
-  const isSuperAdmin = user?.role === "super_admin";
-
   const { data: kpi, isLoading } = useQuery<DashboardKPI>({
     queryKey: ["dashboard", "kpi"],
     queryFn: () => apiClient.get<DashboardKPI>("/orders/kpi").then((r) => r.data),
     staleTime: 60_000,
-    // Super_admin n'a pas d'organisation → l'endpoint renvoie 403.
-    // On désactive la requête pour éviter une erreur silencieuse dans la console.
-    enabled: !isSuperAdmin,
   });
 
   const { data: profile } = useQuery({
     queryKey: ["users", "me", "issuer-profile"],
     queryFn: usersApi.getMyIssuerProfile,
     staleTime: 5 * 60_000,
-    enabled: !isSuperAdmin,
   });
 
   const currency = kpi?.recent_orders[0]?.currency ?? "XAF";
 
-  // ── Mode Super Admin ───────────────────────────────────────────────────────
-  if (isSuperAdmin) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-start gap-4 p-5 bg-violet-50 border border-violet-200 rounded-2xl">
-          <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
-            <ShieldCheck className="w-5 h-5 text-violet-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-violet-900">Mode administrateur plateforme</p>
-            <p className="text-sm text-violet-700 mt-0.5 leading-relaxed">
-              Votre compte <strong>Super Admin</strong> n&apos;est rattaché à aucune organisation.
-              Les pages métier (commandes, clients, paiements…) afficheront des données vides.
-            </p>
-            <Link
-              href="/admin/users"
-              className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-violet-700 hover:text-violet-900 underline underline-offset-2"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Accéder au panneau d&apos;administration
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* ── Onboarding — shown once to new users ── */}
       <OnboardingBanner
         hasLogo={!!profile?.logo_path}
         hasDisplayName={!!(profile?.display_name || profile?.company_name)}
@@ -155,7 +110,6 @@ export default function DashboardPage() {
         hasSignature={!!(profile?.signature_path || profile?.signature_text)}
       />
 
-      {/* ── KPI row ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
@@ -165,7 +119,7 @@ export default function DashboardPage() {
               icon={Users}
               label="Clients actifs"
               value={kpi?.total_clients ?? 0}
-              sub="Comptes enregistrés"
+              sub="Comptes enregistres"
               iconBg="bg-blue-600"
             />
             <StatCard
@@ -177,28 +131,26 @@ export default function DashboardPage() {
             />
             <StatCard
               icon={TrendingUp}
-              label="CA encaissé"
+              label="CA encaisse"
               value={formatCents(kpi?.ca_total_cents ?? 0, currency)}
-              sub="Montants collectés"
+              sub="Montants collectes"
               iconBg="bg-emerald-600"
             />
             <StatCard
               icon={CreditCard}
-              label="Total payé"
+              label="Total paye"
               value={formatCents(kpi?.total_paid_cents ?? 0, currency)}
-              sub="Paiements complétés"
+              sub="Paiements completes"
               iconBg="bg-orange-500"
             />
           </>
         )}
       </div>
 
-      {/* ── Bottom row ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Recent orders */}
         <div className="xl:col-span-2 card overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-800">Dernières commandes</h2>
+            <h2 className="font-semibold text-slate-800">Dernieres commandes</h2>
             <Link
               href="/commandes"
               className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
@@ -223,18 +175,18 @@ export default function DashboardPage() {
               <div className="empty-state">
                 <ShoppingCart className="empty-state-icon" />
                 <p className="empty-state-title">Aucune commande</p>
-                <p className="empty-state-desc">Les commandes apparaîtront ici</p>
+                <p className="empty-state-desc">Les commandes apparaitront ici</p>
                 <Link href="/commandes/new" className="btn-primary btn-sm">
-                  Créer une commande
+                  Creer une commande
                 </Link>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100">
                   <tr>
-                    <th className="table-header">N° commande</th>
+                    <th className="table-header">No commande</th>
                     <th className="table-header">Statut</th>
-                    <th className="table-header text-right">Encaissé</th>
+                    <th className="table-header text-right">Encaisse</th>
                     <th className="table-header">Date</th>
                   </tr>
                 </thead>
@@ -266,9 +218,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Status breakdown */}
         <div className="card p-5 flex flex-col gap-5">
-          <h2 className="font-semibold text-slate-800">Répartition des statuts</h2>
+          <h2 className="font-semibold text-slate-800">Repartition des statuts</h2>
 
           {isLoading ? (
             <div className="space-y-4">

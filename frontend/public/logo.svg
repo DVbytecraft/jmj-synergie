@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="JMJ Synergie">
+  <defs>
+    <linearGradient id="jmj-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a56db"/>
+      <stop offset="100%" stop-color="#103c9e"/>
+    </linearGradient>
+    <clipPath id="jmj-round">
+      <rect x="0" y="0" width="1024" height="1024" rx="225" ry="225"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#jmj-round)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#jmj-bg)"/>
+    <circle cx="758" cy="287" r="307" fill="#ffffff" opacity="0.11"/>
+    <circle cx="614" cy="410" r="215" fill="#ffffff" opacity="0.09"/>
+    <text x="512" y="600" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="470" fill="#ffffff">JS</text>
+  </g>
+</svg>

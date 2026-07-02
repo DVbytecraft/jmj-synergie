@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user
-RUN groupadd -r biloz && useradd -r -g biloz -d /app -s /sbin/nologin biloz
+RUN groupadd -r jmj && useradd -r -g jmj -d /app -s /sbin/nologin jmj
 
 WORKDIR /app
 
@@ -35,9 +35,9 @@ COPY . .
 RUN mkdir -p /app/storage/documents /app/storage/signatures \
              /app/storage/stamps /app/storage/scans /app/storage/assets && \
     chmod +x /app/start.sh && \
-    chown -R biloz:biloz /app
+    chown -R jmj:jmj /app
 
-USER biloz
+USER jmj
 
 EXPOSE 8000
 

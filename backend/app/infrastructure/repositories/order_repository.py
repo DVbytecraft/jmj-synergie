@@ -4,14 +4,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domain.entities.order import Order, OrderItem, OrderStatus, PaymentStatus
 from app.domain.repositories.i_order_repository import IOrderRepository
 from app.domain.value_objects.money import Money
-from app.infrastructure.database.models import OrderModel, OrderItemModel
+from app.infrastructure.database.models import ClientModel, OrderModel, OrderItemModel
 
 
 class OrderRepository(IOrderRepository):
@@ -51,6 +51,7 @@ class OrderRepository(IOrderRepository):
         client_id: UUID | None,
         status: str | None,
         payment_status: str | None,
+        search: str | None = None,
     ) -> tuple[list[Order], int]:
         q = select(OrderModel).where(OrderModel.is_deleted == False)  # noqa
         if self._org_id:
@@ -61,6 +62,16 @@ class OrderRepository(IOrderRepository):
             q = q.where(OrderModel.status == status)
         if payment_status:
             q = q.where(OrderModel.payment_status == payment_status)
+        if search:
+            term = f"%{search}%"
+            q = q.where(
+                or_(
+                    OrderModel.order_number.ilike(term),
+                    OrderModel.client_id.in_(
+                        select(ClientModel.id).where(ClientModel.full_name.ilike(term))
+                    ),
+                )
+            )
 
         total = (await self._s.execute(
             select(func.count()).select_from(q.subquery())

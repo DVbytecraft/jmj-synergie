@@ -4,6 +4,7 @@ import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { clientsApi } from "@/lib/api/clients";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { Client } from "@/types";
 import { Plus, Search, Mail, Phone, MapPin, Trash2, Eye, Building2, Users } from "lucide-react";
 import Link from "next/link";
@@ -118,10 +119,11 @@ export default function ClientsPage() {
   const [page, setPage] = useState(0);
   const limit = 21;
   const qc = useQueryClient();
+  const debouncedSearch = useDebouncedValue(search);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["clients", page],
-    queryFn: () => clientsApi.list({ skip: page * limit, limit }),
+    queryKey: ["clients", page, debouncedSearch],
+    queryFn: () => clientsApi.list({ skip: page * limit, limit, search: debouncedSearch || undefined }),
   });
 
   const deleteMut = useMutation({
@@ -129,11 +131,7 @@ export default function ClientsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
   });
 
-  const filtered = data?.items.filter(
-    (c) =>
-      c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      (c.email ?? "").toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
+  const filtered = data?.items ?? [];
 
   return (
     <div className="page-container">

@@ -4,6 +4,7 @@ import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { paiementsApi } from "@/lib/api/paiements";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { PaymentMethod } from "@/types";
 import {
   RotateCcw, Search, CreditCard, TrendingDown, Banknote, ArrowRight,
@@ -47,21 +48,18 @@ export default function PaiementsPage() {
   const [search, setSearch]         = useState("");
   const [showRefundModal, setShowRefundModal] = useState<string | null>(null);
   const qc = useQueryClient();
+  const debouncedSearch = useDebouncedValue(search);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["paiements", page],
-    queryFn: () => paiementsApi.list({ skip: page * LIMIT, limit: LIMIT }),
+    queryKey: ["paiements", page, debouncedSearch],
+    queryFn: () => paiementsApi.list({ skip: page * LIMIT, limit: LIMIT, search: debouncedSearch || undefined }),
   });
 
   const items    = data?.items ?? [];
   const total    = data?.total ?? 0;
   const currency = items[0]?.currency ?? "XAF";
 
-  const filtered = items.filter(
-    (p) =>
-      p.id.toLowerCase().includes(search.toLowerCase()) ||
-      (p.order_id ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = items;
 
   // KPI totals come from server aggregates — always reflect ALL transactions
   const totalCompleted = data?.total_completed_cents ?? 0;

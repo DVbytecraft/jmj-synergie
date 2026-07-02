@@ -16,7 +16,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/paiements":              "Paiements",
   "/documents":              "Documents",
   "/scan":                   "Scan de facture",
-  "/exports":                "Exports OHADA",
   "/journal/paiements":      "Journal des paiements",
   "/journal/remboursements": "Journal des remboursements",
   "/admin/users":            "Gestion des utilisateurs",

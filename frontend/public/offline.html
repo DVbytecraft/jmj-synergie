@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Biloz — Hors ligne</title>
+  <title>JMJ Synergie — Hors ligne</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -29,14 +29,14 @@
     .logo {
       width: 56px;
       height: 56px;
-      background: #1a56db;
       border-radius: 1rem;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       margin-bottom: 1.5rem;
+      overflow: hidden;
     }
-    .logo span { color: #fff; font-size: 1.5rem; font-weight: 700; }
+    .logo img { width: 100%; height: 100%; }
     h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: .75rem; }
     p { color: #6b7280; font-size: .95rem; line-height: 1.6; margin-bottom: 2rem; }
     .btn {
@@ -62,9 +62,9 @@
 </head>
 <body>
   <div class="card">
-    <div class="logo"><span>B</span></div>
+    <div class="logo"><img src="/logo.svg" alt="JMJ Synergie" /></div>
     <h1>Vous êtes hors ligne</h1>
-    <p>Biloz se reconnectera automatiquement dès que votre connexion sera rétablie.</p>
+    <p>JMJ Synergie se reconnectera automatiquement dès que votre connexion sera rétablie.</p>
     <button class="btn" onclick="window.location.reload()">Réessayer</button>
     <p class="status" id="status">En attente de connexion…</p>
   </div>

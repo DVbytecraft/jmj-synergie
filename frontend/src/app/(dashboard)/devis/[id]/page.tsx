@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { quotesApi } from "@/lib/api/quotes";
 import { clientsApi } from "@/lib/api/clients";
@@ -8,10 +8,12 @@ import { documentsApi } from "@/lib/api/documents";
 import { apiClient } from "@/lib/api/client";
 import { formatCents } from "@/lib/utils/money";
 import { formatDateFr } from "@/lib/utils/format-dates";
+import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
+import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
 import { QuoteStatusBadge } from "@/components/ui/QuoteStatusBadge";
 import {
   ArrowLeft, CheckCircle, XCircle, Send, ShoppingCart,
-  Loader2, ClipboardList, ChevronRight, FileText, Download, X, Eye,
+  Loader2, ClipboardList, ChevronRight, Eye,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,36 +23,14 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
   const qc = useQueryClient();
   const router = useRouter();
 
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
+  const { previewUrl, loading: previewLoading, error: previewError, run: runPreview, close: closePreview, download: downloadPreview } = useBlobPreview();
 
   async function generatePdfPreview() {
-    setPreviewLoading(true);
-    try {
+    await runPreview(async () => {
       const { document_id } = await documentsApi.genererDevis(id);
       const fileRes = await apiClient.get(`/documents/${document_id}/download`, { responseType: "blob" });
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      const blob = new Blob([fileRes.data as BlobPart], { type: "application/pdf" });
-      setPreviewUrl(URL.createObjectURL(blob));
-    } catch {
-      alert("Erreur lors de la génération du PDF");
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
-  function downloadPreview() {
-    if (!previewUrl || !quote) return;
-    const a = document.createElement("a");
-    a.href = previewUrl;
-    a.download = `${quote.quote_number}.pdf`;
-    a.click();
+      return new Blob([fileRes.data as BlobPart], { type: "application/pdf" });
+    }, quote ? `${quote.quote_number}.pdf` : "devis.pdf");
   }
 
   const { data: quote, isLoading } = useQuery({
@@ -213,6 +193,12 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      {previewError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+          {previewError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Lignes */}
         <div className="lg:col-span-2 space-y-5">
@@ -248,28 +234,6 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
             <div className="card p-5">
               <h2 className="font-semibold text-gray-900 mb-2">Notes</h2>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{quote.notes}</p>
-            </div>
-          )}
-
-          {/* Aperçu PDF */}
-          {previewUrl && (
-            <div className="card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <FileText className="w-4 h-4 text-blue-500" />
-                  Aperçu — {quote.quote_number}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button onClick={downloadPreview} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
-                    <Download className="w-3.5 h-3.5" />
-                    Télécharger
-                  </button>
-                  <button onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }} className="btn-icon p-1">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <iframe src={previewUrl} className="w-full h-[500px] border-0" title="Aperçu devis PDF" />
             </div>
           )}
 
@@ -367,6 +331,16 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
               </Link>
             </div>
           )}
+
+          <PdfPreviewPanel
+            title={`Aperçu - ${quote.quote_number}`}
+            previewUrl={previewUrl}
+            loading={previewLoading}
+            emptyTitle="Aperçu du devis"
+            emptyDescription="Cliquez sur Aperçu PDF pour voir le rendu du devis dans le panneau de droite."
+            onDownload={() => downloadPreview(quote ? `${quote.quote_number}.pdf` : undefined)}
+            onClose={closePreview}
+          />
 
           {/* Actions rapides */}
           {isDraft && (

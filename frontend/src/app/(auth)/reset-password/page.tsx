@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 /**
- * The URL-token reset flow has been replaced by the OTP-based flow.
- * Any old link pointing to /reset-password?token=... is redirected to
- * /forgot-password so the user can restart the 3-step OTP flow.
+ * Legacy reset-password links are redirected to the simplified reset page.
  */
 export default function ResetPasswordPage() {
   const router = useRouter();

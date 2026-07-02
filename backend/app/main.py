@@ -1,5 +1,5 @@
 """
-Biloz — FastAPI Application Entry Point
+JMJ Synergie — FastAPI Application Entry Point
 Clean Architecture | Version 1.0
 """
 from contextlib import asynccontextmanager
@@ -63,7 +63,7 @@ if settings.SENTRY_DSN:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
-    logger.info("Starting Biloz API", version=settings.APP_VERSION)
+    logger.info("Starting JMJ Synergie API", version=settings.APP_VERSION)
     if settings.is_production and not settings.USE_CLOUDINARY:
         logger.warning(
             "storage.local_in_production",
@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     yield
-    logger.info("Shutting down Biloz API")
+    logger.info("Shutting down JMJ Synergie API")
     await close_redis()
     await engine.dispose()
 
@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="API de gestion des commandes Biloz",
+    description="API de gestion des commandes JMJ Synergie",
     docs_url="/api/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url="/api/redoc" if settings.ENVIRONMENT != "production" else None,
     openapi_url="/api/openapi.json" if settings.ENVIRONMENT != "production" else None,

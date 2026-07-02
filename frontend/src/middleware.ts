@@ -3,27 +3,17 @@ import { jwtDecode } from "jwt-decode";
 
 interface JWTPayload {
   sub: string;
-  role: "super_admin" | "admin" | "manager" | "operator";
+  role: "admin" | "manager" | "operator";
   exp: number;
 }
 
 /**
  * RBAC :
- *   - /admin/*  → super_admin uniquement
- *   - Pages métier (/clients, /commandes…) → super_admin redirigé vers /admin/users
- *     (super_admin n'a pas d'organisation → 403 backend sur tous les endpoints scoped-org)
+ *   - /admin/*  → admin uniquement
  *   - /commandes/new, /clients/new, /produits/new → admin + manager uniquement (pas operator)
  */
 
-// Routes accessibles uniquement à super_admin
-const SUPER_ADMIN_ROUTES = ["/admin"];
-
-// Routes métier requérant une organisation — super_admin ne peut pas y accéder
-const ORG_ROUTES = [
-  "/clients", "/commandes", "/produits", "/devis",
-  "/paiements", "/journal", "/documents", "/scan",
-  "/stock", "/exports",
-];
+const ADMIN_ONLY_ROUTES = ["/admin"];
 
 // Routes inaccessibles aux operators (création de ressources)
 const MANAGER_MIN_ROUTES = ["/commandes/new", "/clients/new", "/produits/new", "/devis/new"];
@@ -108,45 +98,42 @@ export function middleware(request: NextRequest) {
   }
 
   // 2. Vérifier le token
+  //
+  // Le cookie 'access_token' est volontairement éphémère (Max-Age = durée du JWT,
+  // 30 min) pour refléter l'expiration réelle. Le refresh token HttpOnly ('rt') qui
+  // porte la vraie durée de session (7 jours) est scopé à path=/api/v1/auth : il
+  // n'est JAMAIS envoyé au middleware sur les autres routes. Le middleware ne peut
+  // donc pas distinguer "vraiment déconnecté" de "access token expiré mais session
+  // encore valide" — rediriger ici sur absence/expiration du cookie déconnectait
+  // à tort tout utilisateur actif depuis plus de 30 min.
+  //
+  // On laisse donc passer la requête dans tous les cas et on délègue l'auth réelle
+  // à AuthGuard côté client, qui tente un rafraîchissement silencieux via le cookie
+  // 'rt' (visible sur /api/v1/auth/refresh) et ne redirige vers /login que si ce
+  // rafraîchissement échoue pour de bon.
   const raw = getToken(request);
-  if (!raw) {
-    const url = new URL("/login", request.url);
-    url.searchParams.set("from", pathname);
-    return NextResponse.redirect(url);
+  const payload = raw ? validateToken(raw) : null;
+
+  // RBAC — appliqué seulement quand on a un token valide et non expiré à disposition.
+  // Sans token (ou expiré), on ne peut pas trancher ici : AuthGuard + les vérifications
+  // d'autorisation côté API (qui, elles, valident la signature) restent la vraie garde.
+  if (payload) {
+    const isAdminRoute = ADMIN_ONLY_ROUTES.some((r) => pathname.startsWith(r));
+    if (isAdminRoute && payload.role !== "admin") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+
+    const isManagerRoute = MANAGER_MIN_ROUTES.some((r) => pathname.startsWith(r));
+    if (isManagerRoute && payload.role === "operator") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
   }
 
-  const payload = validateToken(raw);
-  if (!payload) {
-    const url = new URL("/login", request.url);
-    url.searchParams.set("from", pathname);
-    const res = NextResponse.redirect(url);
-    res.cookies.delete("access_token");
-    return res;
-  }
-
-  // 3. RBAC — routes réservées à super_admin
-  const isSuperAdminRoute = SUPER_ADMIN_ROUTES.some((r) => pathname.startsWith(r));
-  if (isSuperAdminRoute && payload.role !== "super_admin") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
-  // 3b. RBAC — super_admin redirigé vers panneau admin pour les pages métier
-  // (les endpoints backend scoped-org retournent 403 car super_admin n'a pas d'organisation)
-  const isOrgRoute = ORG_ROUTES.some((r) => pathname.startsWith(r));
-  if (isOrgRoute && payload.role === "super_admin") {
-    return NextResponse.redirect(new URL("/admin/users", request.url));
-  }
-
-  // 4. RBAC — routes interdites aux operators
-  const isManagerRoute = MANAGER_MIN_ROUTES.some((r) => pathname.startsWith(r));
-  if (isManagerRoute && payload.role === "operator") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
-  // 5. Passer les infos utilisateur + nonce via headers
   const response = NextResponse.next();
-  response.headers.set("x-user-id", payload.sub);
-  response.headers.set("x-user-role", payload.role);
+  if (payload) {
+    response.headers.set("x-user-id", payload.sub);
+    response.headers.set("x-user-role", payload.role);
+  }
   if (!isDev && nonce) {
     response.headers.set("Content-Security-Policy", buildCsp(nonce));
     response.headers.set("x-nonce", nonce);
@@ -156,6 +143,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|icon|chunk-guard\\.js).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|icon|chunk-guard\\.js|logo\\.svg|manifest\\.json|sw\\.js|offline\\.html).*)",
   ],
 };

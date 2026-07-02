@@ -12,6 +12,7 @@ Endpoints :
   POST   /orders/{id}/items              → Ajouter une ligne
   DELETE /orders/{id}/items/{item_id}    → Supprimer une ligne
 """
+import asyncio
 import json
 from typing import Annotated
 from uuid import UUID
@@ -46,6 +47,7 @@ from app.infrastructure.database.models import (
 router = APIRouter(tags=["Orders"])
 
 _IDEMPOTENCY_TTL = 86400  # 24 h
+_IDEMPOTENCY_LOCK_TTL = 30  # secondes — durée max d'un traitement en cours
 
 
 # ─── Dashboard KPI ────────────────────────────────────────────────────────────
@@ -169,22 +171,48 @@ async def get_dashboard_kpi(current_user: CurrentUser, db: DB):
 @router.post("", response_model=OrderResponseDTO, status_code=status.HTTP_201_CREATED)
 async def create_order(
     body: CreateOrderDTO,
-    current_user: CurrentUser,
+    current_user: ManagerUser,
     db: DB,
     uc: Annotated[CreateOrderUseCase, Depends(get_create_order_uc)],
     x_idempotency_key: Annotated[str | None, Header()] = None,
 ) -> OrderResponseDTO:
+    # Le verrou est posé atomiquement (SET NX) *avant* d'exécuter la use case : un simple
+    # "GET puis SET" laisse une fenêtre où deux requêtes concurrentes passent toutes les
+    # deux le contrôle de cache et créent chacune une commande en double.
     redis_key: str | None = None
+    redis = get_redis()
     if x_idempotency_key:
         redis_key = f"idem:order:{current_user.organization_id}:{x_idempotency_key}"
         try:
-            cached = await get_redis().get(redis_key)
-            if cached:
-                return OrderResponseDTO(**json.loads(cached))
+            claimed = await redis.set(redis_key, "PROCESSING", nx=True, ex=_IDEMPOTENCY_LOCK_TTL)
+            if not claimed:
+                cached = await redis.get(redis_key)
+                for _ in range(20):
+                    if cached and cached != "PROCESSING":
+                        return OrderResponseDTO(**json.loads(cached))
+                    await asyncio.sleep(0.25)
+                    cached = await redis.get(redis_key)
+                if cached and cached != "PROCESSING":
+                    return OrderResponseDTO(**json.loads(cached))
+                raise HTTPException(
+                    status_code=409,
+                    detail="Une requête identique est déjà en cours de traitement.",
+                )
+        except HTTPException:
+            raise
         except Exception:
-            pass
+            redis_key = None  # Redis indisponible → fail-open (pas de garantie d'idempotency)
 
-    result = await uc.execute(body, current_user.id, current_user.organization_id)
+    try:
+        result = await uc.execute(body, current_user.id, current_user.organization_id)
+    except Exception:
+        if redis_key:
+            try:
+                await redis.delete(redis_key)
+            except Exception:
+                pass
+        raise
+
     await log_audit_event(
         db,
         action="order.created",
@@ -196,7 +224,7 @@ async def create_order(
 
     if redis_key:
         try:
-            await get_redis().set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
+            await redis.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
         except Exception:
             pass
 
@@ -212,8 +240,9 @@ async def list_orders(
     client_id: UUID | None = None,
     order_status: str | None = Query(None, alias="status"),
     payment_status: str | None = None,
+    search: str | None = Query(None, description="Recherche sur n° commande ou nom client"),
 ) -> OrderListResponseDTO:
-    return await uc.execute(skip, limit, client_id, order_status, payment_status)
+    return await uc.execute(skip, limit, client_id, order_status, payment_status, search)
 
 
 @router.get("/{order_id}", response_model=OrderResponseDTO)

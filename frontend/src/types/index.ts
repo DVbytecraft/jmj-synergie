@@ -30,7 +30,7 @@ export type RefundStatus =
   | "completed"
   | "cancelled";
 
-export type UserRole = "super_admin" | "admin" | "manager" | "operator";
+export type UserRole = "admin" | "manager" | "operator";
 
 export type DocumentType = "pro_forma" | "invoice" | "delivery_note" | "credit_note";
 

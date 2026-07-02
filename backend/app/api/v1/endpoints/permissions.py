@@ -17,7 +17,7 @@ from app.infrastructure.repositories.permission_repository import PermissionRepo
 
 router = APIRouter()
 
-VALID_ROLES = {"super_admin", "admin", "manager", "operator"}
+VALID_ROLES = {"admin", "manager", "operator"}
 
 
 def _perm_repo(db: DB) -> PermissionRepository:
@@ -61,7 +61,7 @@ async def list_role_permissions(
     summary="Permissions d'un rôle spécifique",
 )
 async def get_role_permissions(
-    role: str = Path(..., description="Rôle : super_admin | admin | manager | operator"),
+    role: str = Path(..., description="Rôle : admin | manager | operator"),
     current_user: AdminUser = None,
     repo: Annotated[PermissionRepository, Depends(_perm_repo)] = None,
 ) -> dict:

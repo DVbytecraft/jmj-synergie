@@ -14,6 +14,8 @@ export interface PortalOrderInfo {
   total_cents: number;
   paid_cents: number;
   document_types: string[];
+  organization_name: string;
+  organization_logo_url: string | null;
 }
 
 export const portalApi = {

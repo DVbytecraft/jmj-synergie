@@ -7,7 +7,7 @@ export type ProduitCreate = ProductCreate;
 export type ProduitUpdate = ProductUpdate;
 
 export const produitsApi = {
-  list: (params?: { skip?: number; limit?: number; status?: string; category?: string }) =>
+  list: (params?: { skip?: number; limit?: number; status?: string; category?: string; search?: string }) =>
     apiClient
       .get<PaginatedResponse<Product>>("/products", { params })
       .then((r) => r.data),

@@ -185,7 +185,7 @@ function RejectModal({
 
 export default function JournalRemboursementsPage() {
   const user = useAuthStore((s) => s.user);
-  const isManager = ["super_admin", "admin", "manager"].includes(user?.role ?? "");
+  const isManager = ["admin", "manager"].includes(user?.role ?? "");
 
   const [page, setPage] = useState(0);
   const [approveTarget, setApproveTarget] = useState<RefundItem | null>(null);

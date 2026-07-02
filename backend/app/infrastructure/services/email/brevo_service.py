@@ -249,7 +249,7 @@ class BrevoEmailService:
       </p>
     </div>
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
-      <p style="margin:0;color:#9ca3af;font-size:11px;">Ce message a été envoyé automatiquement par Biloz.</p>
+      <p style="margin:0;color:#9ca3af;font-size:11px;">Ce message a été envoyé automatiquement par JMJ Synergie.</p>
     </div>
   </div>
 </body>

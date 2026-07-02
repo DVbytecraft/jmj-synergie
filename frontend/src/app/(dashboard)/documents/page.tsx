@@ -12,11 +12,13 @@ import {
   useGenererProForma,
   useSignerDocument,
 } from "@/lib/hooks/use-documents";
+import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
+import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
 import {
   Download, PenLine, Loader2, Plus, Mail, Send,
   CheckCircle2, Clock, ChevronDown, Receipt, Truck,
   List, FolderOpen, AlertCircle, X, Filter,
-  Pencil,
+  Pencil, Eye,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import Link from "next/link";
@@ -24,6 +26,7 @@ import Link from "next/link";
 type ActiveTab = "all" | "by-order";
 
 const DOC_TYPE_LABELS: Record<string, string> = {
+  quote: "Devis",
   pro_forma: "Pro Forma",
   invoice: "Facture",
   delivery_note: "Bon de livraison",
@@ -34,6 +37,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 
 const DOC_TYPE_OPTIONS = [
   { value: "", label: "Tous les types" },
+  { value: "quote", label: "Devis" },
   { value: "invoice", label: "Factures" },
   { value: "pro_forma", label: "Pro Formas" },
   { value: "delivery_note", label: "Bons de livraison" },
@@ -56,6 +60,7 @@ export default function DocumentsPage() {
   const [emailRecipient, setEmailRecipient] = useState("");
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
   const [allPage, setAllPage] = useState(0);
+  const { previewUrl, previewTitle, loading: previewLoading, run: runPreview, close: closePreview, download: downloadPreview } = useBlobPreview();
 
   // Filters
   const [docTypeFilter, setDocTypeFilter] = useState("");
@@ -116,6 +121,12 @@ export default function DocumentsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handlePreview = (docId: string, fileName: string) =>
+    runPreview(async () => {
+      const res = await apiClient.get(`/documents/${docId}/download`, { responseType: "blob" });
+      return new Blob([res.data], { type: "application/pdf" });
+    }, fileName);
+
   const resetFilters = () => {
     setDocTypeFilter("");
     setClientTypeFilter("");
@@ -146,6 +157,7 @@ export default function DocumentsPage() {
           doc.document_type === "delivery_note"    ? "badge-emerald" :
           doc.document_type === "purchase_order"   ? "badge-amber" :
           doc.document_type === "payment_receipt"  ? "badge-blue" :
+          doc.document_type === "quote"            ? "badge-gray" :
           "badge-amber"
         }`}>
           {DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type}
@@ -164,6 +176,14 @@ export default function DocumentsPage() {
       </td>
       <td className="table-cell">
         <div className="flex items-center justify-center gap-1">
+          <button
+            onClick={() => handlePreview(doc.id, doc.file_name)}
+            disabled={previewLoading}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-sky-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Aperçu"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
           <button
             onClick={() => handleDownload(doc.id, doc.file_name)}
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600"
@@ -240,7 +260,8 @@ export default function DocumentsPage() {
 
       {/* ── Tab: Tous les documents ── */}
       {activeTab === "all" && (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-4">
           {/* Filtres */}
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -367,12 +388,25 @@ export default function DocumentsPage() {
               </>
             )}
           </div>
+
+          </div>
+
+          <PdfPreviewPanel
+            title={previewTitle}
+            previewUrl={previewUrl}
+            loading={previewLoading}
+            emptyTitle="Aperçu du document"
+            emptyDescription="Utilisez l'icône aperçu dans le tableau pour afficher le PDF ici."
+            onDownload={() => downloadPreview()}
+            onClose={closePreview}
+          />
         </div>
       )}
 
       {/* ── Tab: Par commande ── */}
       {activeTab === "by-order" && (
-        <>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-6">
           <div className="card p-5">
             <h2 className="font-semibold text-gray-900 mb-3">Sélectionner une commande</h2>
             <div className="relative max-w-md">
@@ -394,7 +428,10 @@ export default function DocumentsPage() {
             {selectedOrderId && (
               <div className="mt-4 flex flex-wrap gap-3">
                 <button
-                  onClick={() => genererMut.mutate(selectedOrderId)}
+                  onClick={async () => {
+                    const result = await genererMut.mutateAsync(selectedOrderId);
+                    await handlePreview(result.document_id, result.file_name);
+                  }}
                   disabled={genererMut.isPending}
                   className="btn-primary"
                 >
@@ -402,7 +439,10 @@ export default function DocumentsPage() {
                   Générer pro forma
                 </button>
                 <button
-                  onClick={() => deliveryMut.mutate({ order_id: selectedOrderId })}
+                  onClick={async () => {
+                    const result = await deliveryMut.mutateAsync({ order_id: selectedOrderId });
+                    await handlePreview(result.document_id, result.file_name);
+                  }}
                   disabled={deliveryMut.isPending}
                   className="btn-secondary"
                 >
@@ -410,7 +450,10 @@ export default function DocumentsPage() {
                   Bon de livraison
                 </button>
                 <button
-                  onClick={() => invoiceMut.mutate(selectedOrderId)}
+                  onClick={async () => {
+                    const result = await invoiceMut.mutateAsync(selectedOrderId);
+                    await handlePreview(result.document_id, result.file_name);
+                  }}
                   disabled={invoiceMut.isPending}
                   className="btn-secondary"
                 >
@@ -460,7 +503,18 @@ export default function DocumentsPage() {
               )}
             </div>
           )}
-        </>
+          </div>
+
+          <PdfPreviewPanel
+            title={previewTitle}
+            previewUrl={previewUrl}
+            loading={previewLoading || genererMut.isPending || deliveryMut.isPending || invoiceMut.isPending}
+            emptyTitle="Aperçu du document"
+            emptyDescription="Générez ou prévisualisez un document depuis cette commande pour voir le rendu ici."
+            onDownload={() => downloadPreview()}
+            onClose={closePreview}
+          />
+        </div>
       )}
 
       {/* ── Email modal ── */}

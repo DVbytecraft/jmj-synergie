@@ -21,6 +21,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
+from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import CurrentUser, ManagerUser, DB
 from app.core.audit import log_audit_event
@@ -148,7 +149,7 @@ def _quote_or_404(quote: QuoteModel | None) -> QuoteModel:
 
 async def _get_quote(db: DB, quote_id: UUID, org_id: UUID) -> QuoteModel:
     result = await db.execute(
-        select(QuoteModel).where(
+        select(QuoteModel).options(selectinload(QuoteModel.items)).where(
             QuoteModel.id == quote_id,
             QuoteModel.organization_id == org_id,
             QuoteModel.is_deleted == False,  # noqa: E712
@@ -160,7 +161,7 @@ async def _get_quote(db: DB, quote_id: UUID, org_id: UUID) -> QuoteModel:
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=QuoteResponse, status_code=status.HTTP_201_CREATED)
-async def create_quote(body: QuoteCreate, current_user: CurrentUser, db: DB) -> QuoteResponse:
+async def create_quote(body: QuoteCreate, current_user: ManagerUser, db: DB) -> QuoteResponse:
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(status_code=403, detail="Organisation requise")
@@ -208,7 +209,7 @@ async def create_quote(body: QuoteCreate, current_user: CurrentUser, db: DB) -> 
         ))
 
     await db.commit()
-    await db.refresh(quote)
+    await db.refresh(quote, attribute_names=["items"])
 
     await log_audit_event(
         db, action="quote.created", actor_id=current_user.id,
@@ -232,7 +233,7 @@ async def list_quotes(
     if not org_id:
         raise HTTPException(status_code=403, detail="Organisation requise")
 
-    base = select(QuoteModel).where(
+    base = select(QuoteModel).options(selectinload(QuoteModel.items)).where(
         QuoteModel.organization_id == org_id,
         QuoteModel.is_deleted == False,  # noqa: E712
     )
@@ -416,7 +417,7 @@ async def accept_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> Quo
     quote.status = "accepted"
     quote.accepted_at = _now()
     await db.commit()
-    await db.refresh(quote)
+    await db.refresh(quote, attribute_names=["items"])
 
     await log_audit_event(
         db, action="quote.accepted", actor_id=current_user.id,
@@ -439,7 +440,7 @@ async def reject_quote(quote_id: UUID, current_user: CurrentUser, db: DB) -> Quo
     quote.status = "rejected"
     quote.rejected_at = _now()
     await db.commit()
-    await db.refresh(quote)
+    await db.refresh(quote, attribute_names=["items"])
 
     await log_audit_event(
         db, action="quote.rejected", actor_id=current_user.id,
@@ -500,7 +501,7 @@ async def convert_quote(quote_id: UUID, current_user: ManagerUser, db: DB) -> Qu
     quote.converted_to_order_id = order.id
 
     await db.commit()
-    await db.refresh(quote)
+    await db.refresh(quote, attribute_names=["items"])
 
     await log_audit_event(
         db, action="quote.converted", actor_id=current_user.id,

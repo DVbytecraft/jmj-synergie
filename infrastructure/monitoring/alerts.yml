@@ -8,7 +8,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "API Biloz indisponible"
+          summary: "API JMJ Synergie indisponible"
           description: "Le backend ne répond plus depuis {{ $value }} secondes."
 
       # Taux d'erreurs HTTP 5xx > 5 %

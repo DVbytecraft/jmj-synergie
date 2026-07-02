@@ -70,7 +70,7 @@ class CloudinaryStorageService:
         if self._is_configured():
             return self._upload_cloudinary(
                 content,
-                folder=f"biloz/branding/{user_id}",
+                folder=f"jmj-synergie/branding/{user_id}",
                 public_id=f"{user_id}_{asset_type}",
                 resource_type="image",
             )
@@ -101,7 +101,7 @@ class CloudinaryStorageService:
         if self._is_configured():
             return self._upload_cloudinary(
                 content,
-                folder=f"biloz/documents/{org_id}",
+                folder=f"jmj-synergie/documents/{org_id}",
                 public_id=f"{org_id}_{uuid.uuid4().hex[:10]}",
                 resource_type="raw",
             )
@@ -133,7 +133,7 @@ class CloudinaryStorageService:
             resource_type = "raw" if filename.endswith(".pdf") else "image"
             return self._upload_cloudinary(
                 content,
-                folder=f"biloz/scans/{org_id}",
+                folder=f"jmj-synergie/scans/{org_id}",
                 public_id=f"scan_{uuid.uuid4().hex[:12]}",
                 resource_type=resource_type,
             )

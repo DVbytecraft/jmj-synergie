@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -65,6 +66,9 @@ def _mock_db() -> AsyncMock:
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
     result.scalars.return_value.all.return_value = []
+    result.one.return_value = SimpleNamespace(
+        total=0, total_completed_cents=0, total_refunded_cents=0
+    )
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
     db.flush = AsyncMock()
@@ -94,7 +98,7 @@ def _app_client(user: UserModel):
     token = create_access_token(user.id, user.role, user.full_name)
     return AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -141,7 +145,9 @@ async def test_list_payments_returns_200():
 
     app.dependency_overrides.clear()
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    data = resp.json()
+    assert isinstance(data["items"], list)
+    assert data["total"] == 0
 
 
 @pytest.mark.asyncio
@@ -207,7 +213,7 @@ async def test_record_payment_no_org_returns_403():
     token = create_access_token(user.id, user.role, user.full_name)
     async with AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
         headers={"Authorization": f"Bearer {token}"},
     ) as client:
         resp = await client.get("/api/v1/payments")

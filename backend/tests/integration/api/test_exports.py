@@ -70,7 +70,7 @@ def _app_client(user: UserModel, db=None):
     token = create_access_token(user.id, user.role, user.full_name)
     return AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -167,7 +167,7 @@ async def test_export_unauthenticated_returns_401():
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://test",
+        base_url="http://localhost",
     ) as client:
         resp = await client.get(
             "/api/v1/exports/journal-ventes",

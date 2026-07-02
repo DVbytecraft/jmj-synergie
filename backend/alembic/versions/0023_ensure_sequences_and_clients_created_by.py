@@ -1,7 +1,7 @@
 """Ensure sequences exist and clients.created_by is present.
 
 Revision ID: 0023
-Revises: 0022
+Revises: 0022b
 Create Date: 2026-06-18
 
 Root cause:
@@ -33,7 +33,7 @@ from sqlalchemy.dialects.postgresql import UUID
 import sqlalchemy as sa
 
 revision = "0023"
-down_revision = "0022"
+down_revision = "0022b"
 branch_labels = None
 depends_on = None
 

@@ -30,6 +30,7 @@ from app.infrastructure.database.models import (
     DocumentModel,
     OrderModel,
     ClientModel,
+    OrganizationModel,
 )
 
 router = APIRouter()
@@ -61,6 +62,8 @@ class PortalOrderResponse(BaseModel):
     total_cents: int
     paid_cents: int
     document_types: list[str]
+    organization_name: str
+    organization_logo_url: str | None
 
 
 # ── Endpoints opérateurs ──────────────────────────────────────────────────────
@@ -120,6 +123,7 @@ async def create_portal_share(
 @router.delete(
     "/orders/{order_id}/share",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     summary="Révoquer le lien partageable d'une commande",
 )
 async def revoke_portal_share(
@@ -185,6 +189,18 @@ async def get_portal_order(
 
     client_name = client.full_name if client else "Client"
 
+    organization = (await db.execute(
+        select(OrganizationModel).where(OrganizationModel.id == order.organization_id)
+    )).scalar_one_or_none()
+    organization_name = organization.name if organization else "JMJ Synergie"
+    # Le logo n'est affichable directement que s'il s'agit d'une URL publique
+    # (Cloudinary) — un chemin de stockage local n'est pas servable ici.
+    organization_logo_url = (
+        organization.logo_url
+        if organization and organization.logo_url and organization.logo_url.startswith("http")
+        else None
+    )
+
     # Documents disponibles (types seulement — pas les URLs)
     docs_result = await db.execute(
         select(DocumentModel.document_type).where(
@@ -201,4 +217,6 @@ async def get_portal_order(
         total_cents=order.total_cents,
         paid_cents=order.paid_cents,
         document_types=document_types,
+        organization_name=organization_name,
+        organization_logo_url=organization_logo_url,
     )

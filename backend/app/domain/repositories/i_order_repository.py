@@ -22,6 +22,7 @@ class IOrderRepository(ABC):
         client_id: UUID | None,
         status: str | None,
         payment_status: str | None,
+        search: str | None = None,
     ) -> tuple[list[Order], int]: ...
 
     @abstractmethod

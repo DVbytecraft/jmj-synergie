@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
 from app.core.exceptions import PermissionDeniedError
+from app.core.single_tenant import normalize_single_tenant_user
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.database.models import UserModel
 from app.infrastructure.repositories.client_repository import ClientRepository
@@ -80,7 +81,7 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user:
         raise exc
-    return user
+    return await normalize_single_tenant_user(db, user)
 
 
 CurrentUser = Annotated[UserModel, Depends(get_current_user)]
@@ -99,19 +100,16 @@ def require_roles(*roles: str):
     return _check
 
 
-AdminUser = Annotated[UserModel, Depends(require_roles("super_admin", "admin"))]
-ManagerUser = Annotated[UserModel, Depends(require_roles("super_admin", "admin", "manager"))]
+AdminUser = Annotated[UserModel, Depends(require_roles("admin"))]
+ManagerUser = Annotated[UserModel, Depends(require_roles("admin", "manager"))]
 
 
 def require_permission(permission_code: str):
     """
     Factory — vérifie une permission granulaire dans role_permissions.
-    super_admin bypass tous les checks.
     Utiliser en complément de require_roles() pour un contrôle fin.
     """
     async def _check(current_user: CurrentUser, db: DB) -> UserModel:
-        if current_user.role == "super_admin":
-            return current_user
         repo = PermissionRepository(db)
         has_perm = await repo.has_permission(current_user.role, permission_code)
         if not has_perm:

@@ -39,7 +39,7 @@ class ScanResult(BaseModel):
 
 
 def _is_document_owner(current_user, document: Document, order: OrderModel | None) -> bool:
-    if current_user.role in ("super_admin", "admin"):
+    if current_user.role == "admin":
         return True
     # Créateur direct du document (couvre les scans sans commande)
     if document.created_by == current_user.id:
@@ -89,7 +89,7 @@ async def _get_order_or_404(db: AsyncSession, order_id: UUID, organization_id: U
     return order
 
 
-@router.get("/", status_code=status.HTTP_200_OK)
+@router.get("", status_code=status.HTTP_200_OK)
 async def list_all_documents(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
@@ -103,7 +103,7 @@ async def list_all_documents(
     """List all documents for the current organisation, with pagination and filters."""
     from datetime import datetime, timezone as tz, timedelta
 
-    if current_user.organization_id is None and current_user.role != "super_admin":
+    if current_user.organization_id is None:
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
 
     filters = []
@@ -461,7 +461,7 @@ async def list_order_documents(
     db: AsyncSession = Depends(get_db),
 ):
     order = await _get_order_or_404(db, order_id, current_user.organization_id)
-    if current_user.role not in ("super_admin", "admin") and order.created_by != current_user.id:
+    if current_user.role != "admin" and order.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
     result = await db.execute(

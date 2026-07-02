@@ -68,7 +68,7 @@ async def test_refresh_valid_cookie_returns_new_access_token():
 
     app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/refresh", cookies={"rt": token})
         assert resp.status_code == 200
         data = resp.json()
@@ -91,7 +91,7 @@ async def test_refresh_sets_new_rt_cookie():
 
     app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/refresh", cookies={"rt": token})
         assert resp.status_code == 200
         # Cookie must be present in Set-Cookie header
@@ -108,7 +108,7 @@ async def test_refresh_no_cookie_returns_401():
 
     app.dependency_overrides[get_db] = _db_override(None)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/refresh")
         assert resp.status_code == 401
     finally:
@@ -128,7 +128,7 @@ async def test_refresh_wrong_jti_returns_401():
     user = _make_active_user(user_id, jti=new_jti)  # DB stores NEW jti
     app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/refresh", cookies={"rt": old_token})
         assert resp.status_code == 401
     finally:
@@ -143,7 +143,7 @@ async def test_refresh_invalid_token_returns_401():
 
     app.dependency_overrides[get_db] = _db_override(None)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/refresh", cookies={"rt": "not.a.jwt.token"})
         assert resp.status_code == 401
     finally:
@@ -162,7 +162,7 @@ async def test_refresh_no_jti_in_db_returns_401():
 
     app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/refresh", cookies={"rt": token})
         assert resp.status_code == 401
     finally:
@@ -183,7 +183,7 @@ async def test_logout_clears_jti_and_deletes_cookie():
 
     app.dependency_overrides[get_db] = _db_override(user)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/logout", cookies={"rt": token})
         assert resp.status_code == 200
         assert user.refresh_token_jti is None
@@ -202,7 +202,7 @@ async def test_logout_no_cookie_still_succeeds():
 
     app.dependency_overrides[get_db] = _db_override(None)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/logout")
         assert resp.status_code == 200
     finally:
@@ -217,7 +217,7 @@ async def test_logout_invalid_token_still_succeeds():
 
     app.dependency_overrides[get_db] = _db_override(None)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
             resp = await c.post("/api/v1/auth/logout", cookies={"rt": "garbage.token.here"})
         assert resp.status_code == 200
     finally:

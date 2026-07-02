@@ -14,7 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.v1.deps import (
-    CurrentUser, AdminUser,
+    CurrentUser, AdminUser, ManagerUser,
     get_create_client_uc, get_update_client_uc,
     get_get_client_uc, get_list_clients_uc, get_delete_client_uc,
 )
@@ -38,7 +38,7 @@ router = APIRouter(tags=["Clients"])
 )
 async def create_client(
     body: CreateClientDTO,
-    current_user: CurrentUser,
+    current_user: ManagerUser,
     uc: Annotated[CreateClientUseCase, Depends(get_create_client_uc)],
 ) -> ClientResponseDTO:
     return await uc.execute(body, current_user.id, current_user.organization_id)
