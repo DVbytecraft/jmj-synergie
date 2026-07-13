@@ -140,8 +140,7 @@ async def list_all_transactions(
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
 
     def _base(q):
-        if current_user.organization_id is not None:
-            q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
+        q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
         if order_id:
             q = q.where(PaymentTransactionModel.order_id == order_id)
         if search:
@@ -196,9 +195,10 @@ async def get_transaction(
 ):
     if current_user.organization_id is None:
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
-    q = select(PaymentTransactionModel).where(PaymentTransactionModel.id == transaction_id)
-    if current_user.organization_id is not None:
-        q = q.where(PaymentTransactionModel.organization_id == current_user.organization_id)
+    q = select(PaymentTransactionModel).where(
+        PaymentTransactionModel.id == transaction_id,
+        PaymentTransactionModel.organization_id == current_user.organization_id,
+    )
     txn = (await db.execute(q)).scalar_one_or_none()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction introuvable")

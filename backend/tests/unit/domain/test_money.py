@@ -72,6 +72,22 @@ class TestMoneyComparison:
     def test_gt(self):
         assert Money(200, "XAF") > Money(100, "XAF")
 
+    def test_le(self):
+        assert Money(100, "XAF") <= Money(100, "XAF")
+        assert Money(100, "XAF") <= Money(200, "XAF")
+
+    def test_ge(self):
+        assert Money(200, "XAF") >= Money(200, "XAF")
+        assert Money(200, "XAF") >= Money(100, "XAF")
+
+    def test_le_different_currency_raises(self):
+        with pytest.raises(ValueError, match="Currency mismatch"):
+            _ = Money(100, "XAF") <= Money(100, "EUR")
+
+    def test_ge_different_currency_raises(self):
+        with pytest.raises(ValueError, match="Currency mismatch"):
+            _ = Money(100, "XAF") >= Money(100, "EUR")
+
     def test_eq(self):
         assert Money(100, "XAF") == Money(100, "XAF")
 
@@ -83,6 +99,9 @@ class TestMoneyComparison:
 class TestMoneyDisplay:
     def test_format_xaf(self):
         assert "XAF" in Money(500000, "XAF").format()
+
+    def test_format_non_xaf(self):
+        assert Money(1000, "EUR").format() == "10.00 EUR"
 
     def test_amount_property(self):
         assert Money(1000, "EUR").amount == Decimal("10.00")

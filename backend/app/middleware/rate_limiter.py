@@ -55,7 +55,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if os.environ.get("PYTEST_CURRENT_TEST"):
             return await call_next(request)
 
-        if request.url.path in ("/health", "/api/docs", "/api/redoc", "/metrics"):
+        if request.url.path in ("/health", "/api/health", "/api/docs", "/api/redoc", "/metrics"):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"

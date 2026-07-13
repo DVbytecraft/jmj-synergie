@@ -197,6 +197,30 @@ async def test_get_client_not_found_returns_404():
 
 
 @pytest.mark.asyncio
+async def test_update_client_returns_200():
+    from app.main import app
+    from app.api.v1.deps import get_update_client_uc
+
+    user = _make_user("manager")
+    dto = _client_dto(full_name="Acme Corp Updated")
+    mock_uc = AsyncMock()
+    mock_uc.execute = AsyncMock(return_value=dto)
+
+    app.dependency_overrides[get_update_client_uc] = lambda: mock_uc
+    try:
+        async with _app_client(user) as client:
+            resp = await client.patch(
+                f"/api/v1/clients/{CLIENT_ID}",
+                json={"full_name": "Acme Corp Updated"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["full_name"] == "Acme Corp Updated"
+    finally:
+        app.dependency_overrides.pop(get_update_client_uc, None)
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
 async def test_delete_client_returns_204():
     from app.main import app
     from app.api.v1.deps import get_delete_client_uc

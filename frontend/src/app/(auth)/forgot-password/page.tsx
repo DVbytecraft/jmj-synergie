@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -61,7 +62,7 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-[420px] space-y-6">
         <div className="flex items-center justify-center gap-3">
-          <img src="/logo.svg" alt="JMJ Synergie" className="w-9 h-9 rounded-xl" />
+          <Image src="/logo.svg" alt="JMJ Synergie" width={36} height={36} className="w-9 h-9 rounded-xl" />
           <span className="text-slate-900 font-semibold text-lg">JMJ Synergie</span>
         </div>
 

@@ -191,7 +191,7 @@ Si un super admin existe déjà, le script affiche "Super admin already exists, 
 
 ```bash
 # Santé de l'API
-curl https://yourdomain.com/api/health
+curl https://yourdomain.com/health
 
 # Logs des services
 docker compose logs -f

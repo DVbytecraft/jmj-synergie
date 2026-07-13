@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { Suspense, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -71,7 +72,13 @@ function LoginContent() {
 
         {/* Logo */}
         <div className="relative flex items-center gap-3">
-          <img src="/logo.svg" alt="JMJ Synergie" className="w-9 h-9 rounded-xl shadow-lg" />
+          <Image
+            src="/logo.svg"
+            alt="JMJ Synergie"
+            width={36}
+            height={36}
+            className="w-9 h-9 rounded-xl shadow-lg"
+          />
           <span className="text-white font-semibold text-lg tracking-tight">JMJ Synergie</span>
         </div>
 
@@ -116,7 +123,7 @@ function LoginContent() {
         <div className="w-full max-w-[360px]">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-3 mb-10 justify-center">
-            <img src="/logo.svg" alt="JMJ Synergie" className="w-9 h-9 rounded-xl" />
+            <Image src="/logo.svg" alt="JMJ Synergie" width={36} height={36} className="w-9 h-9 rounded-xl" />
             <span className="text-slate-900 font-semibold text-lg">JMJ Synergie</span>
           </div>
 

@@ -6,6 +6,10 @@ Run once after initial migration:
 
     ADMIN_EMAIL=you@domain.com ADMIN_PASSWORD=VeryStr0ng! python scripts/seed.py
 
+Legacy aliases used in deployment docs are also supported:
+
+    SUPER_ADMIN_EMAIL=you@domain.com SUPER_ADMIN_PASSWORD=VeryStr0ng! python scripts/seed.py
+
 Or set the variables in your .env file before running.
 """
 import asyncio
@@ -32,13 +36,25 @@ from app.core.security import hash_password
 from app.infrastructure.database.models import OrganizationModel, UserModel
 
 
-def _require_env(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        print(f"[ERROR] Variable d'environnement manquante : {name}")
-        print(f"        Définissez-la avant de lancer ce script.")
-        sys.exit(1)
-    return value
+def _read_env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    print(f"[ERROR] Variable d'environnement manquante : {' ou '.join(names)}")
+    print("        Définissez-la avant de lancer ce script.")
+    sys.exit(1)
+
+
+def _resolve_admin_identity() -> tuple[str, str, str]:
+    email = _read_env("ADMIN_EMAIL", "SUPER_ADMIN_EMAIL")
+    password = _read_env("ADMIN_PASSWORD", "SUPER_ADMIN_PASSWORD")
+    full_name = (
+        os.environ.get("ADMIN_NAME")
+        or os.environ.get("SUPER_ADMIN_NAME")
+        or "Administrateur"
+    ).strip()
+    return email, password, full_name
 
 
 def _validate_password(password: str) -> None:
@@ -61,9 +77,7 @@ def _validate_password(password: str) -> None:
 
 
 async def seed() -> None:
-    email = _require_env("ADMIN_EMAIL")
-    password = _require_env("ADMIN_PASSWORD")
-    full_name = os.environ.get("ADMIN_NAME", "Administrateur").strip()
+    email, password, full_name = _resolve_admin_identity()
     organization_name = os.environ.get("COMPANY_NAME", "JMJ Synergie").strip() or "JMJ Synergie"
 
     _validate_password(password)

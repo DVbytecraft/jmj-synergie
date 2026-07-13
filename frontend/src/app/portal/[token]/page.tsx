@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { use, useEffect, useState } from "react";
 import { portalApi, type PortalOrderInfo } from "@/lib/api/portal";
 import { formatCents } from "@/lib/utils/money";
@@ -25,6 +26,8 @@ const DOC_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
   payment_receipt: { label: "Reçu de paiement", icon: <Receipt className="w-4 h-4" /> },
 };
 
+const remoteImageLoader = ({ src }: { src: string }) => src;
+
 export default function PortalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
   const [order, setOrder] = useState<PortalOrderInfo | null>(null);
@@ -47,9 +50,13 @@ export default function PortalPage({ params }: { params: Promise<{ token: string
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <img
+          <Image
+            loader={remoteImageLoader}
             src={order?.organization_logo_url || "/logo.svg"}
             alt={order?.organization_name || "JMJ Synergie"}
+            width={32}
+            height={32}
+            unoptimized
             className="w-8 h-8 rounded-xl"
           />
           <span className="font-bold text-gray-900 text-lg">

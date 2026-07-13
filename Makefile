@@ -1,5 +1,6 @@
 .PHONY: help dev dev-down prod prod-down build logs ps \
         migrate migrate-down db-shell backend-shell frontend-shell \
+        test-backend test-backend-unit test-frontend verify \
         certs clean reset
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +74,25 @@ logs-frontend: ## Suivre les logs du frontend
 
 ps: ## État des conteneurs
 	$(COMPOSE_DEV) ps
+
+# ─── Validation ───────────────────────────────────────────────────────────────
+
+test-backend: ## Lancer toute la suite backend dans le conteneur dev
+	$(COMPOSE_DEV) exec backend pytest tests/ -v
+
+test-backend-unit: ## Lancer les tests unitaires backend
+	$(COMPOSE_DEV) exec backend pytest tests/unit -v
+
+test-frontend: ## Lancer les checks frontend dans le conteneur dev
+	$(COMPOSE_DEV) exec frontend npm run type-check
+	$(COMPOSE_DEV) exec frontend npm run lint
+	$(COMPOSE_DEV) exec frontend npm run build
+
+verify: ## Vérification complète avant livraison
+	$(COMPOSE_DEV) exec backend pytest tests/unit -v
+	$(COMPOSE_DEV) exec frontend npm run type-check
+	$(COMPOSE_DEV) exec frontend npm run lint
+	$(COMPOSE_DEV) exec frontend npm run build
 
 # ─── SSL (production) ────────────────────────────────────────────────────────
 

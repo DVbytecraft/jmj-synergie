@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -97,7 +98,13 @@ function NavContent({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="flex items-center justify-between px-5 h-16 border-b border-white/5 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="JMJ Synergie" className="w-8 h-8 rounded-lg shadow-lg flex-shrink-0" />
+          <Image
+            src="/logo.svg"
+            alt="JMJ Synergie"
+            width={32}
+            height={32}
+            className="w-8 h-8 rounded-lg shadow-lg flex-shrink-0"
+          />
           <div>
             <p className="text-white text-sm font-semibold leading-none">
               {organization?.name || "JMJ Synergie"}

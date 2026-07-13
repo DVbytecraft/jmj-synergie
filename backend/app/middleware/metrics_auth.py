@@ -36,7 +36,7 @@ def _ip_allowed(ip: str, allowed: list[str]) -> bool:
             try:
                 if addr in ipaddress.ip_network(entry, strict=False):
                     return True
-            except ValueError:
+            except ValueError:  # pragma: no cover — any valid address is also a valid /32 or /128 network
                 if addr == ipaddress.ip_address(entry):
                     return True
     except ValueError:

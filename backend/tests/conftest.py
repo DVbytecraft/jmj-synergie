@@ -5,6 +5,7 @@ with async mocks so they run without a real database.
 """
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import AsyncGenerator
@@ -13,6 +14,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
+# Keep the test suite self-contained even when the host machine exports
+# incompatible runtime variables.
+os.environ["ENVIRONMENT"] = "testing"
+os.environ["DEBUG"] = "false"
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://jmj_admin:devpassword123@localhost:5432/jmj"
+os.environ["SECRET_KEY"] = "test_secret_key_32_chars_minimum!"
 
 from app.core.security import create_access_token
 from app.infrastructure.database.models import UserModel

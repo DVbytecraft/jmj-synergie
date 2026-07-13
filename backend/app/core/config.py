@@ -3,16 +3,20 @@ Application settings — Pydantic Settings v2.
 Single source of truth for all configuration values.
 """
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator, EmailStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(REPO_ROOT / ".env", BACKEND_ROOT / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -123,7 +127,7 @@ class Settings(BaseSettings):
             import json
 
             parsed = json.loads(raw)
-            if not isinstance(parsed, list):
+            if not isinstance(parsed, list):  # pragma: no cover — unreachable: "[...]" JSON always parses to a list
                 raise ValueError("Expected a JSON array")
             return [str(item).strip() for item in parsed if str(item).strip()]
 

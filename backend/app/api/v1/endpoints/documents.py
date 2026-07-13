@@ -106,9 +106,7 @@ async def list_all_documents(
     if current_user.organization_id is None:
         raise HTTPException(status_code=403, detail="Cet endpoint requiert un compte rattaché à une organisation.")
 
-    filters = []
-    if current_user.organization_id is not None:
-        filters.append(Document.organization_id == current_user.organization_id)
+    filters = [Document.organization_id == current_user.organization_id]
     if document_type:
         filters.append(Document.document_type == document_type)
     if date_from:
@@ -142,13 +140,15 @@ async def list_all_documents(
         )
     else:
         total_result = await db.execute(
-            select(func.count(Document.id)).where(and_(*filters)) if filters
-            else select(func.count(Document.id))
+            select(func.count(Document.id)).where(and_(*filters))
         )
         total = total_result.scalar_one()
-        q = select(Document).order_by(Document.created_at.desc()).offset(skip).limit(limit)
-        if filters:
-            q = q.where(and_(*filters))
+        q = (
+            select(Document)
+            .where(and_(*filters))
+            .order_by(Document.created_at.desc())
+            .offset(skip).limit(limit)
+        )
 
     result = await db.execute(q)
     docs = result.scalars().all()

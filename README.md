@@ -74,7 +74,7 @@ docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
 docker compose -f docker-compose.dev.yml exec backend python scripts/seed.py
 ```
 
-Ce script crée un compte `super_admin` avec les identifiants suivants (à changer immédiatement) :
+Ce script crée un premier compte `admin` avec les identifiants suivants (à changer immédiatement) :
 - Email : `admin@jmjsynergie.com`
 - Mot de passe : `ChangeMe@2024!`
 

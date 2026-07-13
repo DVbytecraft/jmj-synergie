@@ -44,10 +44,6 @@ async def verify_password_async(plain: str, hashed: str) -> bool:
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
-def _secret() -> dict:
-    return {"kty": "oct", "k": settings.SECRET_KEY}
-
-
 def _make_token(payload: dict[str, Any], expires_delta: timedelta) -> str:
     now = datetime.now(timezone.utc)
     claims = {

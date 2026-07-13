@@ -30,7 +30,7 @@ logger = structlog.get_logger()
 
 # ─── Sentry ───────────────────────────────────────────────────────────────────
  
-if settings.SENTRY_DSN:
+if settings.SENTRY_DSN:  # pragma: no cover — depends on deployment secrets, not exercised in tests
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         environment=settings.ENVIRONMENT,
@@ -95,7 +95,7 @@ app = FastAPI(
 
 Instrumentator(
     should_group_status_codes=True,
-    excluded_handlers=["/health", "/metrics"],
+    excluded_handlers=["/health", "/api/health", "/metrics"],
 ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # ─── Middleware (ordre important — dernier ajouté = premier exécuté) ──────────
@@ -196,7 +196,7 @@ async def operational_error_handler(request: Request, exc: SAOperationalError):
 
 
 # ─── Dev: expose unhandled 500 error details to speed up debugging ─────────────
-if settings.ENVIRONMENT != "production":
+if settings.ENVIRONMENT != "production":  # pragma: no branch — always true under pytest/dev
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         logger.exception("unhandled.exception", path=request.url.path)
@@ -208,8 +208,7 @@ if settings.ENVIRONMENT != "production":
 
 # ─── Health check ─────────────────────────────────────────────────────────────
 
-@app.get("/health", tags=["Health"], include_in_schema=False)
-async def health_check():
+async def _build_health_response() -> JSONResponse:
     try:
         from sqlalchemy import text
         async with engine.connect() as conn:
@@ -224,3 +223,13 @@ async def health_check():
     if not settings.is_production:
         body["version"] = settings.APP_VERSION
     return JSONResponse(body)
+
+
+@app.get("/health", tags=["Health"], include_in_schema=False)
+async def health_check() -> JSONResponse:
+    return await _build_health_response()
+
+
+@app.get("/api/health", tags=["Health"], include_in_schema=False)
+async def health_check_compat() -> JSONResponse:
+    return await _build_health_response()
