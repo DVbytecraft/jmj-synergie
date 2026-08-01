@@ -27,8 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Ce script s'exécute avant React et intercepte les ChunkLoadError webpack :
           il masque le body + nextjs-portal puis recharge la page en silence.
         */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="/chunk-guard.js" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#1a56db" />
       </head>

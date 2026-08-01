@@ -199,8 +199,14 @@ function NavContent({ onClose }: { onClose?: () => void }) {
 
         {/* User chip */}
         <div className="flex items-center gap-3 px-3 py-2.5 mt-1 bg-white/5 rounded-lg">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-            {user?.name?.charAt(0).toUpperCase() ?? "U"}
+          <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-800 ring-1 ring-white/10 flex items-center justify-center flex-shrink-0">
+            <Image
+              src="/logo.svg"
+              alt="JMJ Synergie"
+              width={32}
+              height={32}
+              className="w-full h-full object-cover"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white text-sm font-medium truncate leading-none">

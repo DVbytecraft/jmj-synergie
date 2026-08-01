@@ -6,7 +6,6 @@ import {
   QueryCache,
   MutationCache,
 } from "@tanstack/react-query";
-import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Toaster, toast } from "@/components/ui/Toaster";
 
@@ -19,10 +18,6 @@ import { Toaster, toast } from "@/components/ui/Toaster";
 function hideOverlayAndReload() {
   try {
     document.querySelectorAll("nextjs-portal").forEach((n) => n.remove());
-    const s = document.createElement("style");
-    s.textContent =
-      "body,nextjs-portal,#__next-build-watcher{visibility:hidden!important;display:none!important}";
-    (document.head ?? document.documentElement).appendChild(s);
     const mo = new MutationObserver((ms) => {
       ms.forEach((m) =>
         m.addedNodes.forEach((n) => {
@@ -76,13 +71,6 @@ function useChunkLoadErrorGuard() {
   }, []);
 }
 
-const ReactQueryDevtools = dynamic(
-  () =>
-    import("@tanstack/react-query-devtools").then(
-      (mod) => mod.ReactQueryDevtools
-    ),
-  { ssr: false }
-);
 
 /** Statuts HTTP qui ne doivent jamais déclencher un retry */
 function shouldRetry(failureCount: number, error: unknown): boolean {
@@ -183,7 +171,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       {children}
       <Toaster />
-      {process.env.NODE_ENV === "development" && <ReactQueryDevtools />}
     </QueryClientProvider>
   );
 }
