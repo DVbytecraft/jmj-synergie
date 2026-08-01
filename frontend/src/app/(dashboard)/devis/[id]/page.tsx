@@ -28,7 +28,7 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
   async function generatePdfPreview() {
     await runPreview(async () => {
       const { document_id } = await documentsApi.genererDevis(id);
-      const fileRes = await apiClient.get(`/documents/${document_id}/download`, { responseType: "blob" });
+      const fileRes = await apiClient.get(`/documents/${document_id}/preview`, { responseType: "blob" });
       return new Blob([fileRes.data as BlobPart], { type: "application/pdf" });
     }, quote ? `${quote.quote_number}.pdf` : "devis.pdf");
   }

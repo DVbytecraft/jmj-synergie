@@ -32,9 +32,9 @@ const REASON_LABELS: Record<string, string> = {
 const METHOD_LABELS: Record<string, string> = {
   cash:          "Espèces",
   bank_transfer: "Virement",
-  mobile_money:  "Mobile Money",
+  mobile_money:  "Mobile Money (manuel)",
   check:         "Chèque",
-  card:          "Carte",
+  card:          "Carte (manuelle)",
 };
 
 const CAN_ACTION = ["requested", "under_review"];

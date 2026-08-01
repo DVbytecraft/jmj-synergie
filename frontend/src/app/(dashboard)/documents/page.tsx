@@ -2,7 +2,7 @@
 import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { commandesApi } from "@/lib/api/commandes";
 import { documentsApi } from "@/lib/api/documents";
 import {
@@ -15,9 +15,9 @@ import {
 import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
 import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
 import {
-  Download, PenLine, Loader2, Plus, Mail, Send,
+  Download, PenLine, Loader2, Plus,
   CheckCircle2, Clock, ChevronDown, Receipt, Truck,
-  List, FolderOpen, AlertCircle, X, Filter,
+  List, FolderOpen, X, Filter,
   Pencil, Eye,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
@@ -56,9 +56,6 @@ const CLIENT_TYPE_OPTIONS = [
 export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("all");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [emailModalDocId, setEmailModalDocId] = useState<string | null>(null);
-  const [emailRecipient, setEmailRecipient] = useState("");
-  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
   const [allPage, setAllPage] = useState(0);
   const { previewUrl, previewTitle, loading: previewLoading, run: runPreview, close: closePreview, download: downloadPreview } = useBlobPreview();
 
@@ -99,16 +96,6 @@ export default function DocumentsPage() {
   const deliveryMut = useGenererBonLivraison();
   const signerMut = useSignerDocument();
 
-  const sendEmailMut = useMutation({
-    mutationFn: ({ docId, email }: { docId: string; email: string }) =>
-      documentsApi.sendEmail(docId, email || undefined),
-    onSuccess: (data) => {
-      setEmailSuccess(data.message);
-      setEmailModalDocId(null);
-      setEmailRecipient("");
-      setTimeout(() => setEmailSuccess(null), 4000);
-    },
-  });
 
   /* ── Download ─────────────────────────────────────────────────────────── */
   const handleDownload = async (docId: string, fileName: string) => {
@@ -121,11 +108,16 @@ export default function DocumentsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handlePreview = (docId: string, fileName: string) =>
+  const handlePreview = (
+    doc: {
+      id: string;
+      file_name: string;
+    },
+  ) =>
     runPreview(async () => {
-      const res = await apiClient.get(`/documents/${docId}/download`, { responseType: "blob" });
+      const res = await apiClient.get(`/documents/${doc.id}/preview`, { responseType: "blob" });
       return new Blob([res.data], { type: "application/pdf" });
-    }, fileName);
+    }, doc.file_name);
 
   const resetFilters = () => {
     setDocTypeFilter("");
@@ -177,7 +169,7 @@ export default function DocumentsPage() {
       <td className="table-cell">
         <div className="flex items-center justify-center gap-1">
           <button
-            onClick={() => handlePreview(doc.id, doc.file_name)}
+            onClick={() => handlePreview(doc)}
             disabled={previewLoading}
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-sky-600 disabled:opacity-40 disabled:cursor-not-allowed"
             title="Aperçu"
@@ -190,13 +182,6 @@ export default function DocumentsPage() {
             title="Télécharger"
           >
             <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => { setEmailModalDocId(doc.id); setEmailRecipient(""); }}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-indigo-600"
-            title="Envoyer par email"
-          >
-            <Mail className="w-4 h-4" />
           </button>
           {!doc.is_signed && doc.order_id && (
             <button
@@ -231,14 +216,6 @@ export default function DocumentsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
         <p className="text-sm text-gray-500 mt-1">Pro formas, factures, bons de livraison et reçus</p>
       </div>
-
-      {/* Success toast */}
-      {emailSuccess && (
-        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          {emailSuccess}
-        </div>
-      )}
 
       {/* Onglets */}
       <div className="flex gap-1 border-b border-gray-200">
@@ -430,7 +407,10 @@ export default function DocumentsPage() {
                 <button
                   onClick={async () => {
                     const result = await genererMut.mutateAsync(selectedOrderId);
-                    await handlePreview(result.document_id, result.file_name);
+                    await handlePreview({
+                      id: result.document_id,
+                      file_name: result.file_name,
+                    });
                   }}
                   disabled={genererMut.isPending}
                   className="btn-primary"
@@ -441,7 +421,10 @@ export default function DocumentsPage() {
                 <button
                   onClick={async () => {
                     const result = await deliveryMut.mutateAsync({ order_id: selectedOrderId });
-                    await handlePreview(result.document_id, result.file_name);
+                    await handlePreview({
+                      id: result.document_id,
+                      file_name: result.file_name,
+                    });
                   }}
                   disabled={deliveryMut.isPending}
                   className="btn-secondary"
@@ -452,7 +435,10 @@ export default function DocumentsPage() {
                 <button
                   onClick={async () => {
                     const result = await invoiceMut.mutateAsync(selectedOrderId);
-                    await handlePreview(result.document_id, result.file_name);
+                    await handlePreview({
+                      id: result.document_id,
+                      file_name: result.file_name,
+                    });
                   }}
                   disabled={invoiceMut.isPending}
                   className="btn-secondary"
@@ -514,55 +500,6 @@ export default function DocumentsPage() {
             onDownload={() => downloadPreview()}
             onClose={closePreview}
           />
-        </div>
-      )}
-
-      {/* ── Email modal ── */}
-      {emailModalDocId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <Send className="w-4 h-4 text-blue-600" />
-                Envoyer par email
-              </h3>
-              <button onClick={() => setEmailModalDocId(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-            <div>
-              <label className="label">Destinataire supplémentaire (optionnel)</label>
-              <input
-                type="email"
-                value={emailRecipient}
-                onChange={(e) => setEmailRecipient(e.target.value)}
-                className="input"
-                placeholder="client@exemple.com — laissez vide pour envoyer à votre email"
-              />
-              <p className="text-xs text-gray-400 mt-1.5">
-                Le document sera envoyé à votre email de compte. Ajoutez un destinataire si besoin.
-              </p>
-            </div>
-            {sendEmailMut.isError && (
-              <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                {(sendEmailMut.error as any)?.response?.data?.detail ?? "Erreur lors de l'envoi"}
-              </div>
-            )}
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setEmailModalDocId(null)} className="btn-secondary">
-                Annuler
-              </button>
-              <button
-                disabled={sendEmailMut.isPending}
-                onClick={() => sendEmailMut.mutate({ docId: emailModalDocId, email: emailRecipient })}
-                className="btn-primary"
-              >
-                {sendEmailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Envoyer
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

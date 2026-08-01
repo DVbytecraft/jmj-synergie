@@ -38,7 +38,7 @@ export default function PDFPage() {
           type === "facture"
             ? await documentsApi.genererFacture(id)
             : await documentsApi.genererProForma(id);
-        const response = await apiClient.get(`/documents/${generated.document_id}/download`, {
+        const response = await apiClient.get(`/documents/${generated.document_id}/preview`, {
           responseType: "blob",
         });
         return new Blob([response.data], { type: "application/pdf" });

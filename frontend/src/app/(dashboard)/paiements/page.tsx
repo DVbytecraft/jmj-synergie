@@ -26,9 +26,9 @@ const STATUS_CFG: Record<string, { label: string; dot: string; bg: string; text:
 const METHODE_LABEL: Record<PaymentMethod, string> = {
   cash:          "Espèces",
   bank_transfer: "Virement",
-  mobile_money:  "Mobile Money",
+  mobile_money:  "Mobile Money (manuel)",
   check:         "Chèque",
-  card:          "Carte",
+  card:          "Carte (manuelle)",
 };
 
 function SkeletonRow() {
@@ -84,7 +84,7 @@ export default function PaiementsPage() {
       <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5">
         <ShoppingCart className="w-4 h-4 text-slate-400 flex-shrink-0" />
         <span>
-          Pour enregistrer un paiement, ouvrez une <Link href="/commandes" className="text-blue-600 hover:underline font-medium">commande confirmée</Link> et cliquez sur <strong>Payer</strong>.
+          Pour enregistrer un paiement, ouvrez une <Link href="/commandes" className="text-blue-600 hover:underline font-medium">commande confirmée</Link> et cliquez sur <strong>Enregistrer un paiement</strong>. Aucun encaissement n&apos;est lancé depuis l&apos;application.
         </span>
       </div>
 
@@ -155,7 +155,7 @@ export default function PaiementsPage() {
                       <CreditCard className="empty-state-icon" />
                       <p className="empty-state-title">Aucun paiement trouvé</p>
                       <p className="empty-state-desc">
-                        Confirmez une commande puis cliquez sur <strong>Payer</strong> pour enregistrer un paiement.
+                        Confirmez une commande puis cliquez sur <strong>Enregistrer un paiement</strong> pour consigner un règlement externe.
                       </p>
                       <Link href="/commandes" className="btn-secondary text-sm mt-4">
                         <ShoppingCart className="w-4 h-4" />

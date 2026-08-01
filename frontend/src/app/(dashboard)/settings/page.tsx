@@ -192,7 +192,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Paramètres</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Compte, identité émettrice et envoi automatique des documents par email.
+          Compte unique, identite emettrice et informations officielles de JMJ Synergie utilisees sur les documents.
         </p>
       </div>
 
@@ -213,11 +213,11 @@ export default function SettingsPage() {
         >
           <div>
             <label className="label">Nom commercial</label>
-            <input className="input" {...orgForm.register("name")} />
+            <input className="input bg-gray-50 text-gray-500" {...orgForm.register("name")} readOnly aria-readonly="true" />
           </div>
           <div>
             <label className="label">Raison sociale</label>
-            <input className="input" {...orgForm.register("legal_name")} />
+            <input className="input bg-gray-50 text-gray-500" {...orgForm.register("legal_name")} readOnly aria-readonly="true" />
           </div>
           <div>
             <label className="label">NIF / Identifiant fiscal</label>
@@ -267,6 +267,9 @@ export default function SettingsPage() {
             <input className="input" {...orgForm.register("bank_account")} placeholder="10005 00000 12345678901 00" />
           </div>
           <div className="md:col-span-2 flex items-center justify-end gap-3">
+            <span className="mr-auto text-xs text-gray-500">
+              Le nom de l'entreprise est verrouille sur JMJ Synergie.
+            </span>
             {organizationMutation.isSuccess && (
               <span className="flex items-center gap-1 text-emerald-600 text-sm">
                 <CheckCircle2 className="w-4 h-4" /> Enregistré
@@ -319,7 +322,7 @@ export default function SettingsPage() {
               <p className="font-medium text-amber-800">Acces et mot de passe</p>
               <p className="text-amber-700 mt-0.5">
                 Le compte sert a l'authentification. Le profil emetteur ci-dessous sert aux factures,
-                bons de livraison et emails automatiques.
+                bons de livraison et autres documents de JMJ Synergie.
               </p>
             </div>
           </div>
@@ -358,10 +361,8 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="label">Type de profil</label>
-            <select className="input" {...register("profile_type")}>
-              <option value="business">Entreprise</option>
-              <option value="individual">Particulier</option>
-            </select>
+            <input type="hidden" {...register("profile_type")} value="business" />
+            <div className="input bg-gray-50 text-gray-500 flex items-center">Entreprise</div>
           </div>
           <div>
             <label className="label">{profileType === "business" ? "Nom affiche" : "Nom complet affiche"}</label>
@@ -369,7 +370,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="label">Nom de l'entreprise</label>
-            <input className="input" {...register("company_name")} placeholder="JMJ Synergie" />
+            <input className="input bg-gray-50 text-gray-500" {...register("company_name")} placeholder="JMJ Synergie" readOnly aria-readonly="true" />
           </div>
           <div>
             <label className="label">NIF / ID fiscal</label>
@@ -449,21 +450,14 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* ── Email & envoi ── */}
+        {/* ── Coordonnées document ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="label">Email de reception des documents</label>
+            <label className="label">Email de contact pour les documents</label>
             <input className="input" type="email" {...register("document_email")} placeholder="docs@entreprise.com" />
             <p className="text-xs text-gray-500 mt-1">
-              Si renseigne, les documents telecharges seront aussi envoyes a cette adresse.
+              Cette adresse peut apparaitre comme contact de reference sur vos documents.
             </p>
-          </div>
-          <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 mt-6 md:mt-0">
-            <input type="checkbox" className="h-4 w-4 rounded border-gray-300" {...register("auto_send_documents")} />
-            <div>
-              <p className="text-sm font-medium text-gray-900">Envoi automatique par email</p>
-              <p className="text-xs text-gray-500">A chaque telechargement d'un document, le serveur envoie une copie par email.</p>
-            </div>
           </div>
           <div className="md:col-span-2">
             <label className="label">Notes de pied de document</label>

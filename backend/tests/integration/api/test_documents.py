@@ -681,114 +681,6 @@ async def test_generate_invoice_returns_201_on_success(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_send_document_by_email_returns_404_when_user_missing(monkeypatch):
-    from app.main import app
-    from app.api.v1.endpoints import documents
-
-    user = _make_user("manager")
-    db = _mock_db()
-    doc = SimpleNamespace(id=DOC_ID, created_by=user.id)
-    order = SimpleNamespace(id=ORDER_ID, created_by=user.id)
-
-    db.execute = AsyncMock(return_value=_mock_result(None))
-    monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
-
-    try:
-        async with _app_client(user, db) as client:
-            response = await client.post(f"/api/v1/documents/{DOC_ID}/send-email", json={})
-        assert response.status_code == 404
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_send_document_by_email_forbidden_for_non_owner(monkeypatch):
-    from app.main import app
-    from app.api.v1.endpoints import documents
-
-    user = _make_user("manager")
-    doc = SimpleNamespace(id=DOC_ID, created_by=uuid.uuid4())
-    order = SimpleNamespace(id=ORDER_ID, created_by=uuid.uuid4())
-
-    monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
-
-    try:
-        async with _app_client(user) as client:
-            response = await client.post(
-                f"/api/v1/documents/{DOC_ID}/send-email",
-                json={"recipient_email": "client@example.com"},
-            )
-        assert response.status_code == 403
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_send_document_by_email_returns_500_when_send_fails(monkeypatch):
-    from app.main import app
-    from app.api.v1.endpoints import documents
-    from app.infrastructure.services.email import document_email_service
-
-    user = _make_user("manager")
-    db = _mock_db()
-    doc = SimpleNamespace(id=DOC_ID, created_by=user.id)
-    order = SimpleNamespace(id=ORDER_ID, created_by=user.id)
-    stored_user = SimpleNamespace(id=user.id, email=user.email, full_name=user.full_name)
-    issuer_profile = SimpleNamespace(user_id=user.id)
-
-    class FakeService:
-        async def send_document(self, **kwargs):
-            return False
-
-    db.execute = AsyncMock(side_effect=[_mock_result(stored_user), _mock_result(issuer_profile)])
-    monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
-    monkeypatch.setattr(document_email_service, "DocumentEmailService", FakeService)
-
-    try:
-        async with _app_client(user, db) as client:
-            response = await client.post(f"/api/v1/documents/{DOC_ID}/send-email", json={})
-        assert response.status_code == 500
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_send_document_by_email_returns_200(monkeypatch):
-    from app.main import app
-    from app.api.v1.endpoints import documents
-    from app.infrastructure.services.email import document_email_service
-
-    user = _make_user("manager")
-    db = _mock_db()
-    doc = SimpleNamespace(id=DOC_ID, created_by=user.id)
-    order = SimpleNamespace(id=ORDER_ID, created_by=user.id)
-    stored_user = SimpleNamespace(id=user.id, email=user.email, full_name=user.full_name)
-    issuer_profile = SimpleNamespace(user_id=user.id)
-
-    class FakeService:
-        async def send_document(self, **kwargs):
-            assert kwargs["document"] is doc
-            assert kwargs["user"] is stored_user
-            assert kwargs["issuer_profile"] is issuer_profile
-            assert kwargs["extra_recipient"] == "client@example.com"
-            return True
-
-    db.execute = AsyncMock(side_effect=[_mock_result(stored_user), _mock_result(issuer_profile)])
-    monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
-    monkeypatch.setattr(document_email_service, "DocumentEmailService", FakeService)
-
-    try:
-        async with _app_client(user, db) as client:
-            response = await client.post(
-                f"/api/v1/documents/{DOC_ID}/send-email",
-                json={"recipient_email": "client@example.com"},
-            )
-        assert response.status_code == 200
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
 async def test_sign_document_forbidden_for_non_owner(monkeypatch):
     from app.main import app
     from app.api.v1.endpoints import documents
@@ -1090,7 +982,7 @@ async def test_download_document_redirects_remote_file(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_download_document_marks_first_download_and_schedules_email(monkeypatch):
+async def test_download_document_downloads_without_side_effects(monkeypatch):
     from app.main import app
     from app.api.v1.endpoints import documents
 
@@ -1113,20 +1005,19 @@ async def test_download_document_marks_first_download_and_schedules_email(monkey
 
         monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
         monkeypatch.setattr(documents.settings, "STORAGE_PATH", tmp)
-        db.execute = AsyncMock(return_value=_mock_result(issuer_profile))
 
         try:
             async with _app_client(user, db) as client:
                 response = await client.get(f"/api/v1/documents/{DOC_ID}/download")
             assert response.status_code == 200
-            assert doc.last_emailed_at is not None
-            db.flush.assert_awaited()
+            assert doc.last_emailed_at is None
+            db.flush.assert_not_awaited()
         finally:
             app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
-async def test_download_document_skips_email_when_already_sent(monkeypatch):
+async def test_download_document_preserves_existing_email_timestamp(monkeypatch):
     from app.main import app
     from app.api.v1.endpoints import documents
 
@@ -1150,13 +1041,13 @@ async def test_download_document_skips_email_when_already_sent(monkeypatch):
 
         monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
         monkeypatch.setattr(documents.settings, "STORAGE_PATH", tmp)
-        db.execute = AsyncMock(return_value=_mock_result(issuer_profile))
 
         try:
             async with _app_client(user, db) as client:
                 response = await client.get(f"/api/v1/documents/{DOC_ID}/download")
             assert response.status_code == 200
             assert doc.last_emailed_at is already_emailed
+            db.flush.assert_not_awaited()
             db.flush.assert_not_awaited()
         finally:
             app.dependency_overrides.clear()
@@ -1213,7 +1104,6 @@ async def test_download_document_returns_404_when_file_missing(monkeypatch):
 
         monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
         monkeypatch.setattr(documents.settings, "STORAGE_PATH", tmp)
-        db.execute = AsyncMock(return_value=_mock_result(issuer_profile))
 
         try:
             async with _app_client(user, db) as client:
@@ -1247,7 +1137,6 @@ async def test_download_document_returns_file_response_for_local_file(monkeypatc
 
         monkeypatch.setattr(documents, "_get_document_with_order", AsyncMock(return_value=(doc, order)))
         monkeypatch.setattr(documents.settings, "STORAGE_PATH", tmp)
-        db.execute = AsyncMock(return_value=_mock_result(issuer_profile))
 
         try:
             async with _app_client(user, db) as client:

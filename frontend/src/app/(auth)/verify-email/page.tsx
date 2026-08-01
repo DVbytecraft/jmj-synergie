@@ -20,9 +20,6 @@ export default function VerifyEmailPage() {
           <Link href="/login" className="btn-primary w-full justify-center">
             Aller à la connexion
           </Link>
-          <Link href="/register" className="text-sm text-slate-500 hover:text-slate-700">
-            Retour à l'inscription
-          </Link>
         </div>
       </div>
     </div>

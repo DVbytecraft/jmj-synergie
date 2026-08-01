@@ -141,6 +141,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
                     <Link
                       key={href}
                       href={href}
+                      prefetch={false}
                       onClick={onClose}
                       className={cn(
                         "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 group",
@@ -172,6 +173,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
       <div className="px-3 pb-4 border-t border-white/5 pt-3 flex-shrink-0 space-y-0.5">
         <Link
           href="/profil"
+          prefetch={false}
           onClick={onClose}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-colors"
         >
@@ -180,6 +182,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
         </Link>
         <Link
           href="/settings"
+          prefetch={false}
           onClick={onClose}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-colors"
         >

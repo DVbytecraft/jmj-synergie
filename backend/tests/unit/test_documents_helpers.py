@@ -13,7 +13,6 @@ from app.api.v1.endpoints.documents import (
     _get_document_with_order,
     _get_order_or_404,
     _is_document_owner,
-    _send_document_email_safe,
 )
 
 
@@ -134,74 +133,3 @@ async def test_get_order_or_404_raises_when_missing() -> None:
 
     assert exc.value.status_code == 404
 
-
-def _fake_session_local(session: AsyncMock):
-    session_cm = MagicMock()
-    session_cm.__aenter__ = AsyncMock(return_value=session)
-    session_cm.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session_cm)
-
-
-@pytest.mark.asyncio
-async def test_send_document_email_safe_returns_when_user_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core import database
-
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=_mock_result(None))
-    monkeypatch.setattr(database, "AsyncSessionLocal", _fake_session_local(session))
-
-    await _send_document_email_safe(uuid4(), uuid4())
-
-    session.execute.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_send_document_email_safe_returns_when_document_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core import database
-
-    user = SimpleNamespace(id=uuid4())
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[_mock_result(user), _mock_result(None)])
-    monkeypatch.setattr(database, "AsyncSessionLocal", _fake_session_local(session))
-
-    await _send_document_email_safe(user.id, uuid4())
-
-    assert session.execute.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_send_document_email_safe_sends_when_user_and_document_found(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.api.v1.endpoints import documents
-    from app.core import database
-
-    user = SimpleNamespace(id=uuid4())
-    document = SimpleNamespace(id=uuid4())
-    issuer_profile = SimpleNamespace(user_id=user.id)
-    session = AsyncMock()
-    session.execute = AsyncMock(
-        side_effect=[
-            _mock_result(user),
-            _mock_result(document),
-            _mock_result(issuer_profile),
-        ]
-    )
-    monkeypatch.setattr(database, "AsyncSessionLocal", _fake_session_local(session))
-
-    sent_calls = {}
-
-    class FakeEmailService:
-        async def send_document(self, *, user, document, issuer_profile, extra_recipient=None):
-            sent_calls["user"] = user
-            sent_calls["document"] = document
-            sent_calls["issuer_profile"] = issuer_profile
-            return True
-
-    monkeypatch.setattr(documents, "DocumentEmailService", FakeEmailService)
-
-    await _send_document_email_safe(user.id, document.id)
-
-    assert sent_calls["user"] is user
-    assert sent_calls["document"] is document
-    assert sent_calls["issuer_profile"] is issuer_profile

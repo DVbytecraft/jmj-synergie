@@ -8,7 +8,6 @@ import { clientsApi } from "@/lib/api/clients";
 import { paiementsApi } from "@/lib/api/paiements";
 import { apiClient } from "@/lib/api/client";
 import { portalApi } from "@/lib/api/portal";
-import { mobileMoneyApi, type MobileMoneyProvider, PROVIDER_LABELS } from "@/lib/api/mobile-money";
 import { formatCents } from "@/lib/utils/money";
 import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
 import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
@@ -24,10 +23,12 @@ import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
 const METHODE_LABELS: Record<PaymentMethod, string> = {
   cash: "Espèces",
   bank_transfer: "Virement bancaire",
-  mobile_money: "Mobile Money",
+  mobile_money: "Mobile Money (manuel)",
   check: "Chèque",
-  card: "Carte bancaire",
+  card: "Carte bancaire (manuelle)",
 };
+
+const MANUAL_PAYMENT_METHODS: PaymentMethod[] = ["bank_transfer", "cash", "check", "mobile_money", "card"];
 
 type DocType = "purchase_order" | "pro_forma" | "invoice" | "delivery_note" | "payment_receipt";
 
@@ -35,7 +36,6 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const { id } = use(params);
   const qc = useQueryClient();
   const [showPayModal, setShowPayModal] = useState(false);
-  const [showMobileMoneyModal, setShowMobileMoneyModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
@@ -79,7 +79,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
     try {
       await runPreview(async () => {
         const postRes = await apiClient.post<{ document_id: string }>(endpoint);
-        const fileRes = await apiClient.get(`/documents/${postRes.data.document_id}/download`, { responseType: "blob" });
+        const fileRes = await apiClient.get(`/documents/${postRes.data.document_id}/preview`, { responseType: "blob" });
         return new Blob([fileRes.data], { type: "application/pdf" });
       }, fileName);
     } finally {
@@ -161,13 +161,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           {canPay && (
             <button onClick={() => setShowPayModal(true)} className="btn-primary">
               <CreditCard className="w-4 h-4" />
-              Payer
-            </button>
-          )}
-          {canPay && (
-            <button onClick={() => setShowMobileMoneyModal(true)} className="btn-secondary">
-              <Wallet className="w-4 h-4" />
-              Mobile Money
+              Enregistrer un paiement
             </button>
           )}
           {canRecordDelivery && (
@@ -270,6 +264,16 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
             </table>
             </div>
           </div>
+
+          <PdfPreviewPanel
+            title={previewTitle || "Aperçu de la facture"}
+            previewUrl={previewUrl}
+            loading={docLoading !== null}
+            emptyTitle="Aperçu de la facture"
+            emptyDescription="Cliquez sur Aperçu dans la section Documents pour afficher ici la facture, la pro forma ou un autre PDF avant téléchargement."
+            onDownload={() => downloadPreview()}
+            onClose={closePreview}
+          />
 
           {commande.notes && (
             <div className="card p-5">
@@ -452,7 +456,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
 
-          <PdfPreviewPanel
+          {false && <PdfPreviewPanel
             title={previewTitle}
             previewUrl={previewUrl}
             loading={docLoading !== null}
@@ -460,7 +464,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
             emptyDescription="Choisissez un document exportable pour voir son rendu PDF ici avant téléchargement."
             onDownload={() => downloadPreview()}
             onClose={closePreview}
-          />
+          />}
 
           {/* Client info */}
           {client && (
@@ -504,19 +508,6 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           onSuccess={() => {
             setShowDeliveryModal(false);
             qc.invalidateQueries({ queryKey: ["commandes", id] });
-          }}
-        />
-      )}
-      {showMobileMoneyModal && (
-        <MobileMoneyModal
-          orderId={id}
-          currency={commande.currency}
-          balanceCents={commande.balance_due_cents}
-          onClose={() => setShowMobileMoneyModal(false)}
-          onSuccess={() => {
-            setShowMobileMoneyModal(false);
-            qc.invalidateQueries({ queryKey: ["commandes", id] });
-            qc.invalidateQueries({ queryKey: ["payments", id] });
           }}
         />
       )}
@@ -693,6 +684,9 @@ function PaymentModal({
           <p className="text-sm text-gray-500 mt-1">
             Solde restant : <span className="font-semibold text-gray-900">{formatCents(balanceCents, currency)}</span>
           </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Cette action enregistre un règlement déjà effectué hors application.
+          </p>
         </div>
 
         <div>
@@ -702,7 +696,7 @@ function PaymentModal({
             onChange={(e) => setMethode(e.target.value as PaymentMethod)}
             className="input"
           >
-            {(Object.keys(METHODE_LABELS) as PaymentMethod[]).map((m) => (
+            {MANUAL_PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>{METHODE_LABELS[m]}</option>
             ))}
           </select>
@@ -724,7 +718,7 @@ function PaymentModal({
           <input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="N° virement, N° chèque…"
+            placeholder="N° virement, référence Mobile Money, ticket carte, N° chèque…"
             className="input"
           />
         </div>
@@ -752,169 +746,6 @@ function PaymentModal({
             Confirmer le paiement
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function MobileMoneyModal({
-  orderId,
-  currency,
-  balanceCents,
-  onClose,
-  onSuccess,
-}: {
-  orderId: string;
-  currency: string;
-  balanceCents: number;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [provider, setProvider] = useState<MobileMoneyProvider>("orange_money");
-  const [phone, setPhone] = useState("+237");
-  const [amount, setAmount] = useState(String(balanceCents));
-  const [txnId, setTxnId] = useState<string | null>(null);
-  const [txnStatus, setTxnStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [polling, setPolling] = useState(false);
-
-  const initiate = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await mobileMoneyApi.initiate({
-        order_id: orderId,
-        amount_cents: parseInt(amount, 10) || balanceCents,
-        phone_number: phone,
-        provider,
-        currency,
-      });
-      setTxnId(res.transaction_id);
-      setTxnStatus("pending");
-      startPolling(res.transaction_id);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? "Erreur lors de l'initiation du paiement.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startPolling = (id: string) => {
-    setPolling(true);
-    const start = Date.now();
-    const TIMEOUT = 2 * 60 * 1000; // 2 min
-    const interval = setInterval(async () => {
-      if (Date.now() - start > TIMEOUT) {
-        clearInterval(interval);
-        setPolling(false);
-        setError("Délai d'attente dépassé. Veuillez vérifier manuellement.");
-        return;
-      }
-      try {
-        const res = await mobileMoneyApi.status(id);
-        setTxnStatus(res.status);
-        if (res.status === "completed") {
-          clearInterval(interval);
-          setPolling(false);
-          setTimeout(onSuccess, 1500);
-        } else if (res.status === "failed") {
-          clearInterval(interval);
-          setPolling(false);
-          setError("Paiement refusé ou échoué.");
-        }
-      } catch {
-        // continuer le polling
-      }
-    }, 5000);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">Paiement Mobile Money</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Solde restant : <span className="font-semibold text-gray-900">{formatCents(balanceCents, currency)}</span>
-          </p>
-        </div>
-
-        {!txnId ? (
-          <>
-            <div>
-              <label className="label">Opérateur</label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as MobileMoneyProvider)}
-                className="input"
-              >
-                {(Object.keys(PROVIDER_LABELS) as MobileMoneyProvider[]).map((p) => (
-                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="label">Numéro de téléphone</label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+237 6XX XXX XXX"
-                className="input"
-              />
-            </div>
-
-            <div>
-              <label className="label">Montant ({currency})</label>
-              <input
-                type="number"
-                min={1}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="input"
-              />
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
-            )}
-
-            <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
-              <button onClick={onClose} className="btn-secondary">Annuler</button>
-              <button onClick={initiate} disabled={loading} className="btn-primary">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
-                Initier le paiement
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-4 text-center py-4">
-            {txnStatus === "pending" && (
-              <>
-                <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto" />
-                <p className="font-semibold text-gray-900">En attente de confirmation</p>
-                <p className="text-sm text-gray-500">
-                  {PROVIDER_LABELS[provider]} va vous envoyer une notification pour valider le paiement.
-                </p>
-                <p className="text-xs text-gray-400">Vérification toutes les 5 secondes…</p>
-              </>
-            )}
-            {txnStatus === "completed" && (
-              <>
-                <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto" />
-                <p className="font-bold text-emerald-700 text-lg">Paiement confirmé !</p>
-              </>
-            )}
-            {txnStatus === "failed" && (
-              <>
-                <XCircle className="w-10 h-10 text-red-500 mx-auto" />
-                <p className="font-bold text-red-700">Paiement échoué</p>
-                {error && <p className="text-sm text-red-600">{error}</p>}
-                <button onClick={onClose} className="btn-secondary mt-2">Fermer</button>
-              </>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

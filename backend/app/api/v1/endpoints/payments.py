@@ -2,7 +2,7 @@
 Payments endpoints — enregistrer un paiement, lister les transactions.
 
 Endpoints :
-  POST   /payments/                → Enregistrer un paiement (+ reçu PDF en arrière-plan)
+  POST   /payments/                → Enregistrer un paiement
   GET    /payments/                → Lister toutes les transactions
   GET    /payments/{id}            → Détail d'une transaction
 """
@@ -22,7 +22,6 @@ from app.core.notification_publisher import publish_notification
 from app.core.redis_client import get_redis
 from app.core.database import get_db_session
 from app.infrastructure.database.models import PaymentTransactionModel
-from app.workers.enqueue import enqueue_payment_receipt
 from sqlalchemy import cast, select, func, or_, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -112,14 +111,6 @@ async def record_payment(
             await redis.set(redis_key, result.model_dump_json(), ex=_IDEMPOTENCY_TTL)
         except Exception:
             pass
-
-    # Génération automatique du reçu PDF via ARQ (durable, survit aux crashes)
-    if result.order_id:
-        await enqueue_payment_receipt(
-            order_id=str(result.order_id),
-            payment_id=str(result.id),
-            created_by=str(current_user.id),
-        )
 
     return result
 

@@ -162,6 +162,10 @@ class UpdateNameRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=100)
 
 
+class UpdateLoginEmailRequest(BaseModel):
+    email: EmailStr
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
@@ -205,6 +209,46 @@ async def update_my_name(
         entity_type="user",
         entity_id=str(current_user.id),
         metadata={"new_name": body.full_name.strip()},
+    )
+    return _to_response(current_user)
+
+
+@router.patch("/me/email", response_model=UserResponse)
+async def update_my_email(
+    body: UpdateLoginEmailRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    normalized_email = str(body.email).strip().lower()
+
+    result = await db.execute(
+        select(UserModel).where(
+            UserModel.email == normalized_email,
+            UserModel.is_deleted == False,
+            UserModel.id != current_user.id,
+        )
+    )
+    existing_user = result.scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cette adresse email est deja utilisee.",
+        )
+
+    current_user.email = normalized_email
+    current_user.is_email_verified = True
+    current_user.refresh_token_jti = None
+    current_user.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    await db.flush()
+    await db.refresh(current_user)
+    await log_audit_event(
+        db,
+        action="user.email_updated",
+        actor_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entity_type="user",
+        entity_id=str(current_user.id),
+        metadata={"new_email": normalized_email},
     )
     return _to_response(current_user)
 
@@ -259,9 +303,9 @@ async def update_my_issuer_profile(
         profile = IssuerProfileModel(user_id=current_user.id, organization_id=current_user.organization_id)
         db.add(profile)
 
-    profile.profile_type = body.profile_type
+    profile.profile_type = "business"
     profile.display_name = _normalize_optional(body.display_name)
-    profile.company_name = _normalize_optional(body.company_name)
+    profile.company_name = settings.COMPANY_NAME
     profile.tax_id = _normalize_optional(body.tax_id)
     profile.phone = _normalize_optional(body.phone)
     profile.email = str(body.email) if body.email else None
@@ -459,7 +503,7 @@ def _to_issuer_profile_response(
     return IssuerProfileResponse(
         profile_type=profile.profile_type if profile else "business",
         display_name=profile.display_name if profile else user.full_name,
-        company_name=profile.company_name if profile else None,
+        company_name=(profile.company_name if profile and profile.company_name else settings.COMPANY_NAME),
         tax_id=profile.tax_id if profile else None,
         phone=profile.phone if profile else None,
         email=profile.email if profile else user.email,

@@ -1,12 +1,16 @@
 /**
  * JMJ Synergie Service Worker
  * Strategy:
- *  - Static assets (_next/static, icons, fonts) : cache-first
- *  - API calls (/api/)                           : network-first, no cache
- *  - HTML navigation                             : network-first, fallback to /offline.html
+ *  - Static assets (_next/static, icons, manifest) : cache-first
+ *  - API calls (/api/)                             : network-first, no cache
+ *  - HTML navigation                               : network-first, fallback to /offline.html
+ *
+ * Important:
+ *  - Skip Next.js App Router flight requests and dev/HMR traffic.
+ *  - Clone responses immediately before the browser consumes the stream.
  */
 
-const CACHE_NAME = "jmj-synergie-v1";
+const CACHE_NAME = "jmj-synergie-v2";
 const OFFLINE_URL = "/offline.html";
 
 const STATIC_PATTERNS = [
@@ -16,7 +20,6 @@ const STATIC_PATTERNS = [
   /\/offline\.html$/,
 ];
 
-// ── Installation : pré-cacher la page offline ─────────────────────────────────
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.add(OFFLINE_URL))
@@ -24,25 +27,29 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// ── Activation : nettoyer les anciens caches ──────────────────────────────────
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
     )
   );
   self.clients.claim();
 });
 
-// ── Fetch ─────────────────────────────────────────────────────────────────────
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
+  const accept = request.headers.get("accept") || "";
+  const isRscRequest = request.headers.has("rsc") || accept.includes("text/x-component");
+  const isDevRuntimeRequest =
+    url.pathname.includes("/webpack-hmr") ||
+    url.pathname.includes("/_next/webpack-hmr") ||
+    url.searchParams.has("_rsc");
 
-  // Ignorer les requêtes non-GET et cross-origin
+  // Ignore non-GET, cross-origin, Next.js RSC flight, and HMR/dev runtime requests.
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (isRscRequest || isDevRuntimeRequest) return;
 
-  // API calls — network-first, pas de cache (données temps réel)
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
       fetch(request).catch(() =>
@@ -55,29 +62,28 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Assets statiques — cache-first
   const isStatic = STATIC_PATTERNS.some((re) => re.test(url.pathname));
   if (isStatic) {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((resp) => {
-            if (resp.ok) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, resp.clone()));
-            }
-            return resp;
-          })
-      )
+      caches.match(request).then(async (cached) => {
+        if (cached) return cached;
+
+        const response = await fetch(request);
+        if (response.ok) {
+          const responseToCache = response.clone();
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache))
+          );
+        }
+        return response;
+      })
     );
     return;
   }
 
-  // Navigation HTML — network-first, fallback offline
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(() => caches.match(OFFLINE_URL))
     );
-    return;
   }
 });

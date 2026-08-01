@@ -116,6 +116,40 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT == "testing"
 
     @staticmethod
+    def _looks_like_placeholder(value: str) -> bool:
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        markers = (
+            "change_me",
+            "your-",
+            "your_",
+            "yourdomain",
+            "votre-",
+            "votre_",
+            "devpassword",
+            "devredispassword",
+            "dev_secret_key",
+            "admin123!dev",
+        )
+        return any(marker in normalized for marker in markers)
+
+    @staticmethod
+    def _looks_like_placeholder_email(value: str) -> bool:
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        return any(
+            marker in normalized
+            for marker in (
+                "example.com",
+                "yourdomain.com",
+                "votre-domaine",
+                "noreply@yourdomain.com",
+            )
+        )
+
+    @staticmethod
     def _parse_list_env(value: str | list[str]) -> list[str]:
         if isinstance(value, list):
             return value
@@ -188,16 +222,33 @@ class Settings(BaseSettings):
         if self.trusted_hosts_list == ["*"]:
             raise ValueError("TRUSTED_HOSTS must not be '*' in production")
 
-        has_brevo = bool(self.BREVO_API_KEY and self.BREVO_SENDER_EMAIL)
-        has_smtp = bool(self.SMTP_HOST and self.SMTP_FROM)
-        if not (has_brevo or has_smtp):
-            raise ValueError(
-                "Transactional email must be configured in production "
-                "(BREVO_API_KEY + BREVO_SENDER_EMAIL or SMTP_HOST + SMTP_FROM)"
-            )
-
         if self.FRONTEND_URL.startswith("http://localhost"):
             raise ValueError("FRONTEND_URL must point to the public frontend in production")
+
+        if not self.FRONTEND_URL.startswith("https://"):
+            raise ValueError("FRONTEND_URL must use https in production")
+
+        for origin in self.allowed_origins_list:
+            if not origin.startswith("https://"):
+                raise ValueError("ALLOWED_ORIGINS entries must use https in production")
+
+        required_secrets = {
+            "DATABASE_URL": self.DATABASE_URL,
+            "REDIS_URL": self.REDIS_URL,
+            "SECRET_KEY": self.SECRET_KEY,
+        }
+        for label, value in required_secrets.items():
+            if self._looks_like_placeholder(value):
+                raise ValueError(f"{label} looks like a development or placeholder value in production")
+
+        email_values = {
+            "BREVO_SENDER_EMAIL": self.BREVO_SENDER_EMAIL,
+            "SMTP_FROM": self.SMTP_FROM,
+            "COMPANY_EMAIL": self.COMPANY_EMAIL,
+        }
+        for label, value in email_values.items():
+            if value and self._looks_like_placeholder_email(value):
+                raise ValueError(f"{label} must be replaced with a real production value")
 
         return self
 

@@ -29,7 +29,14 @@ fi
 # The script is idempotent — does nothing if an admin already exists.
 if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
   echo ">> Seeding admin..."
-  PYTHONPATH=/app python scripts/seed.py || echo ">> Seed script exited with error — startup continues."
+  if PYTHONPATH=/app python scripts/seed.py; then
+    echo ">> Seed admin completed."
+  elif [ "${ENVIRONMENT:-production}" = "production" ]; then
+    echo ">> Seed script failed in production — aborting startup."
+    exit 1
+  else
+    echo ">> Seed script exited with error — startup continues in non-production."
+  fi
 else
   echo ">> ADMIN_EMAIL / ADMIN_PASSWORD (or SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD) not set — skipping seed."
 fi

@@ -13,11 +13,20 @@ export function PwaInstaller() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    // Enregistrement du Service Worker
+    // Le service worker perturbe les flux Next.js App Router/HMR en développement.
+    // On le garde uniquement en production et on désinscrit toute ancienne version en dev.
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
-        .catch((err) => console.warn("[PWA] SW registration failed:", err));
+      if (process.env.NODE_ENV === "production") {
+        navigator.serviceWorker
+          .register("/sw.js", { scope: "/" })
+          .catch((err) => console.warn("[PWA] SW registration failed:", err));
+      } else {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => {
+            void registration.unregister();
+          });
+        });
+      }
     }
 
     // Capturer l'événement d'installation

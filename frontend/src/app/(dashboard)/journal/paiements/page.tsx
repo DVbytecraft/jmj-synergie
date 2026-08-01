@@ -11,9 +11,9 @@ import { downloadJournal, type ExportFormat } from "@/lib/api/exports";
 const METHOD_LABEL: Record<string, { label: string; icon: React.ReactNode }> = {
   cash:          { label: "Espèces",      icon: <FileText className="w-3.5 h-3.5" /> },
   bank_transfer: { label: "Virement",     icon: <Building2 className="w-3.5 h-3.5" /> },
-  mobile_money:  { label: "Mobile Money", icon: <Smartphone className="w-3.5 h-3.5" /> },
+  mobile_money:  { label: "Mobile Money (manuel)", icon: <Smartphone className="w-3.5 h-3.5" /> },
   check:         { label: "Chèque",       icon: <FileText className="w-3.5 h-3.5" /> },
-  card:          { label: "Carte",        icon: <CreditCard className="w-3.5 h-3.5" /> },
+  card:          { label: "Carte (manuelle)",        icon: <CreditCard className="w-3.5 h-3.5" /> },
 };
 
 // Format YYYY-MM-DD pour la date du jour et il y a 30 jours

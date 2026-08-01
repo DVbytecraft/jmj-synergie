@@ -335,8 +335,6 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     user.locked_until = None
     user.refresh_token_jti = None  # révoquer toutes les sessions actives
     await db.flush()
-    await _send_password_reset_notice(user.email, user.full_name)
-
     return {"message": "Mot de passe mis à jour avec succès. Vous pouvez maintenant vous connecter."}
 
 
@@ -400,4 +398,3 @@ async def logout(
         user.refresh_token_jti = None
         await db.flush()
     return {"message": "Déconnecté"}
-

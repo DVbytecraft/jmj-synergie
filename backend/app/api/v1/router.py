@@ -19,7 +19,6 @@ from app.api.v1.endpoints import (
     exports,
     notifications,
     portal,
-    mobile_money,
 )
 
 api_router = APIRouter()
@@ -37,6 +36,5 @@ api_router.include_router(documents.router,       prefix="/documents",       tag
 api_router.include_router(exports.router,         prefix="/exports",         tags=["Exports"])
 api_router.include_router(notifications.router,   prefix="/notifications",   tags=["Notifications"])
 api_router.include_router(portal.router,          prefix="/portal",          tags=["Portal"])
-api_router.include_router(mobile_money.router,    prefix="/mobile-money",    tags=["Mobile Money"])
 api_router.include_router(permissions.router,     prefix="/permissions",     tags=["Permissions"])
 api_router.include_router(organizations.router,   prefix="/organizations",   tags=["Organizations"])

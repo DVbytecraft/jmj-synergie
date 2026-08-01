@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.infrastructure.database.models import OrganizationModel, UserModel
 
 
@@ -12,13 +13,39 @@ async def ensure_default_organization(db: AsyncSession) -> OrganizationModel:
     """Return the single organization used by the app, creating it if needed."""
     result = await db.execute(select(OrganizationModel).order_by(OrganizationModel.created_at.asc()).limit(1))
     organization = result.scalar_one_or_none()
+    defaults = {
+        "code": "JMJ-SYNERGIE",
+        "name": settings.COMPANY_NAME or "JMJ Synergie",
+        "legal_name": settings.COMPANY_NAME or "JMJ Synergie",
+        "tax_id": settings.COMPANY_TAX_ID or None,
+        "email": settings.COMPANY_EMAIL or None,
+        "phone": settings.COMPANY_PHONE or None,
+        "address_line1": settings.COMPANY_ADDRESS or None,
+        "city": "Lomé" if "lomé" in (settings.COMPANY_ADDRESS or "").lower() or "lome" in (settings.COMPANY_ADDRESS or "").lower() else None,
+        "country": "Togo" if "togo" in (settings.COMPANY_ADDRESS or "").lower() else None,
+        "preferred_currency": "XOF",
+    }
     if organization is not None:
+        changed = False
+        for field, value in defaults.items():
+            if field in {"code", "name", "legal_name"} and getattr(organization, field, None) != value:
+                setattr(organization, field, value)
+                changed = True
+                continue
+            if field == "preferred_currency" and getattr(organization, field, None) in {None, "", "XAF"}:
+                setattr(organization, field, value)
+                changed = True
+                continue
+            if value and not getattr(organization, field, None):
+                setattr(organization, field, value)
+                changed = True
+        if changed:
+            await db.flush()
         return organization
 
     organization = OrganizationModel(
         id=uuid.uuid4(),
-        code="JMJ-SYNERGIE",
-        name="JMJ Synergie",
+        **defaults,
     )
     db.add(organization)
     await db.flush()

@@ -21,7 +21,20 @@ export const runtime = "nodejs";
 export const maxDuration = 10;
 
 const KEEPALIVE_SECRET = process.env.KEEPALIVE_SECRET ?? "";
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+function resolveBackendUrl(): string {
+  const privateHostPort = process.env.BACKEND_HOSTPORT?.trim();
+  if (privateHostPort) {
+    return `http://${privateHostPort}`;
+  }
+
+  const explicitUrl = process.env.BACKEND_URL?.trim();
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  return "http://localhost:8000";
+}
 
 export async function GET(request: NextRequest) {
   // Validate shared secret (skip check in dev where KEEPALIVE_SECRET is unset)
@@ -37,7 +50,7 @@ export async function GET(request: NextRequest) {
 
   const start = Date.now();
   try {
-    const res = await fetch(`${BACKEND_URL}/health`, {
+    const res = await fetch(`${resolveBackendUrl()}/health`, {
       signal: AbortSignal.timeout(8_000),
     });
     const body = await res.json().catch(() => ({}));

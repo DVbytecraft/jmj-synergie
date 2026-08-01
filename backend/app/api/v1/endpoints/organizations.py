@@ -28,7 +28,7 @@ def _detect_image_type(content: bytes) -> str | None:
     return None
 
 
-_SUPPORTED_CURRENCIES = {"XAF", "EUR", "USD", "GNF", "NGN", "GHS", "MAD"}
+_SUPPORTED_CURRENCIES = {"XOF", "XAF", "EUR", "USD", "GNF", "NGN", "GHS", "MAD"}
 
 
 class OrganizationResponse(BaseModel):
@@ -90,8 +90,8 @@ async def update_my_organization(
             detail=f"Devise non supportée. Valeurs acceptées : {', '.join(sorted(_SUPPORTED_CURRENCIES))}",
         )
     organization = await _get_org_or_404(db, current_user.organization_id)
-    organization.name = body.name.strip()
-    organization.legal_name = _normalize(body.legal_name)
+    organization.name = settings.COMPANY_NAME
+    organization.legal_name = settings.COMPANY_NAME
     organization.tax_id = _normalize(body.tax_id)
     organization.email = _normalize(body.email)
     organization.phone = _normalize(body.phone)
@@ -105,6 +105,8 @@ async def update_my_organization(
     organization.bank_account = _normalize(body.bank_account)
     if body.preferred_currency is not None:
         organization.preferred_currency = body.preferred_currency
+    elif not getattr(organization, "preferred_currency", None):
+        organization.preferred_currency = "XOF"
     await db.flush()
     await db.refresh(organization)
     return _to_response(organization)
@@ -179,7 +181,7 @@ def _to_response(org: OrganizationModel) -> OrganizationResponse:
         bank_name=org.bank_name,
         bank_account=org.bank_account,
         logo_url=org.logo_url,
-        preferred_currency=getattr(org, "preferred_currency", "XAF"),
+        preferred_currency=getattr(org, "preferred_currency", "XOF"),
         is_active=org.is_active,
     )
 

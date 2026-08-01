@@ -23,7 +23,6 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sessionExpired = !!searchParams.get("from");
   const registeredEmail = searchParams.get("registered");
   const { setAuth } = useAuthStore();
 
@@ -130,17 +129,11 @@ function LoginContent() {
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-slate-900">Connexion</h1>
             <p className="text-slate-500 text-sm mt-1.5">
-              Utilisez le compte principal de l'entreprise pour accéder à l'application.
+              Utilisez l'identifiant unique de JMJ Synergie pour accéder à l'application.
             </p>
           </div>
 
-          {sessionExpired && !error && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-6">
-              Votre session a expiré. Veuillez vous reconnecter.
-            </div>
-          )}
-
-          {registeredEmail && !sessionExpired && !error && (
+          {registeredEmail && !error && (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 mb-6">
               L'inscription est désormais fermée. Connectez-vous avec le compte administrateur principal.
             </div>

@@ -416,9 +416,23 @@ class PDFService:
     def _build_invoice_pdf(self, path: str, order: Any, doc_number: str, issuer: dict, delivered_only: bool = False) -> None:
         doc, styles, story = self._init_doc(path)
 
+        subtotal_cents = self._subtotal_cents_for_invoice(order, delivered_only=delivered_only)
+        tax_c = int(subtotal_cents * order.tax_rate / 100)
+        total_for_words = subtotal_cents + tax_c
+        discount = 0
+        if order.discount_cents > 0:
+            discount = self._discount_cents_for_invoice(order, subtotal_cents)
+            total_for_words -= discount
+
         story += self._header_section(styles, issuer, doc_number, order)
         story.append(Paragraph("FACTURE", self._title_style(issuer)))
-        story.append(Spacer(1, 6 * mm))
+        story.append(Spacer(1, 2 * mm))
+        story.append(self._invoice_intro(order, issuer))
+        story.append(Spacer(1, 4 * mm))
+        story.append(self._invoice_summary_banner(order, issuer, total_for_words))
+        story.append(Spacer(1, 5 * mm))
+        story.append(self._section_label("Client et destinataire", issuer))
+        story.append(Spacer(1, 2 * mm))
 
         if order.notes:
             story.append(Paragraph(
@@ -439,20 +453,19 @@ class PDFService:
                 self._fmt(item["unit_price_cents"], order.currency),
                 self._fmt(int(item["unit_price_cents"] * item["quantity"]), order.currency),
             ])
+        story.append(self._section_label("Prestations et lignes facturees", issuer))
+        story.append(Spacer(1, 2 * mm))
         story.append(self._items_table(rows, issuer))
         story.append(Spacer(1, 6 * mm))
 
-        subtotal_cents = self._subtotal_cents_for_invoice(order, delivered_only=delivered_only)
+        story.append(self._section_label("Synthese financiere", issuer))
+        story.append(Spacer(1, 2 * mm))
         story.append(self._totals_table_from_cents(order, issuer, subtotal_cents))
+        story.append(Spacer(1, 6 * mm))
+        story.append(self._payment_terms_block(order, issuer, total_for_words, discount))
         story.append(Spacer(1, 6 * mm))
 
         # "Arrêtée la présente facture à la somme de..."
-        total_for_words = subtotal_cents
-        tax_c = int(subtotal_cents * order.tax_rate / 100)
-        total_for_words = subtotal_cents + tax_c
-        if order.discount_cents > 0:
-            discount = self._discount_cents_for_invoice(order, subtotal_cents)
-            total_for_words -= discount
         arretee_style = ParagraphStyle(
             "arretee", fontSize=9, leading=14,
             textColor=colors.HexColor("#1f2937"),
@@ -462,6 +475,8 @@ class PDFService:
             f"<b>{amount_in_words(total_for_words, order.currency)} TTC</b>",
             arretee_style,
         ))
+        story.append(Spacer(1, 4 * mm))
+        story.append(self._gratitude_note(issuer))
         story.append(Spacer(1, 8 * mm))
 
         story += self._signing_block(styles, issuer, total_for_words, order.currency)
@@ -598,23 +613,191 @@ class PDFService:
 
     def _title_style(self, issuer: dict) -> ParagraphStyle:
         return ParagraphStyle(
-            "title", fontSize=16, fontName="Helvetica-Bold",
+            "title", fontSize=19, fontName="Helvetica-Bold",
             alignment=TA_CENTER, textColor=colors.HexColor(issuer["primary_color"]),
+            leading=20,
+            spaceAfter=2,
         )
 
+    def _section_label(self, title: str, issuer: dict) -> Table:
+        label = Paragraph(
+            f"<font size='8' color='{issuer['primary_color']}'><b>{title.upper()}</b></font>",
+            ParagraphStyle("section_label", leading=10),
+        )
+        table = Table([[label]], colWidths=[64 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#dbe3f0")),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.8, colors.HexColor(issuer["primary_color"])),
+            ("ROUNDEDCORNERS", [2, 2, 2, 2]),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        return table
+
+    def _invoice_intro(self, order: Any, issuer: dict) -> Table:
+        client_name = getattr(order.client, "company_name", None) or getattr(order.client, "full_name", "Client")
+        intro = Paragraph(
+            f"<font size='10' color='#0f172a'><b>Bonjour {client_name},</b></font><br/>"
+            f"<font size='8.5' color='#475569'>Nous vous remercions pour votre confiance. "
+            f"Cette facture reprend avec clarte les prestations livrees et le montant du.</font>",
+            ParagraphStyle("invoice_intro", leading=13),
+        )
+        table = Table([[intro]], colWidths=[180 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(issuer["secondary_color"])),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3f0")),
+            ("LINEBEFORE", (0, 0), (0, 0), 2.2, colors.HexColor(issuer["primary_color"])),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        return table
+
+    def _gratitude_note(self, issuer: dict) -> Table:
+        note = Paragraph(
+            "<font size='9' color='#0f172a'><b>Merci pour votre confiance.</b></font><br/>"
+            "<font size='8' color='#64748b'>Nous restons disponibles pour tout complement, ajustement ou suivi de paiement.</font>",
+            ParagraphStyle("gratitude_note", leading=12, alignment=TA_CENTER),
+        )
+        table = Table([[note]], colWidths=[180 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            ("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3f0")),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3f0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ]))
+        return table
+
     def _header_section(self, styles, issuer: dict, doc_number: str, order: Any) -> list:
-        header_data = [[self._company_block(styles, issuer), self._doc_info_block(styles, doc_number, order)]]
+        header_data = [[self._company_block(styles, issuer), self._document_meta_card(styles, doc_number, order)]]
         header_table = Table(header_data, colWidths=[100 * mm, 75 * mm])
         header_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ]))
         return [
             header_table,
-            Spacer(1, 8 * mm),
+            Spacer(1, 6 * mm),
             HRFlowable(width="100%", thickness=2, color=colors.HexColor(issuer["primary_color"])),
             Spacer(1, 4 * mm),
         ]
+
+    def _invoice_summary_banner(self, order: Any, issuer: dict, total_cents: int) -> Table:
+        paid_cents = max(getattr(order, "paid_cents", 0), 0)
+        balance_cents = max(total_cents - paid_cents, 0)
+        due_date = (
+            order.due_date.strftime("%d/%m/%Y")
+            if getattr(order, "due_date", None)
+            else "A definir"
+        )
+        table = Table([[
+            self._summary_metric("Reference commande", order.order_number, issuer),
+            self._summary_metric("Echeance", due_date, issuer),
+            self._summary_metric("Total TTC", self._fmt(total_cents, order.currency), issuer, emphasize=True),
+            self._summary_metric("Solde a payer", self._fmt(balance_cents, order.currency), issuer, emphasize=balance_cents > 0),
+        ]], colWidths=[43 * mm, 35 * mm, 47 * mm, 50 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fbfdff")),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe3f0")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#dbe3f0")),
+            ("ROUNDEDCORNERS", [5, 5, 5, 5]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        return table
+
+    def _summary_metric(self, label: str, value: str, issuer: dict, emphasize: bool = False) -> Paragraph:
+        value_color = issuer["primary_color"] if emphasize else "#111827"
+        value_size = "12" if emphasize else "10"
+        return Paragraph(
+            f"<font size='7' color='#64748b'>{label.upper()}</font><br/>"
+            f"<font size='{value_size}' color='{value_color}'><b>{value}</b></font>",
+            ParagraphStyle("summary_metric", leading=13),
+        )
+
+    def _document_meta_card(self, styles, doc_number: str, order: Any) -> Table:
+        due_value = (
+            order.due_date.strftime("%d/%m/%Y")
+            if getattr(order, "due_date", None)
+            else "A definir"
+        )
+        rows = [
+            [Paragraph("<b>Document</b>", ParagraphStyle("meta_heading", alignment=TA_RIGHT, fontSize=11, textColor=colors.HexColor("#111827")))],
+            [Paragraph(doc_number, ParagraphStyle("meta_number", alignment=TA_RIGHT, fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#111827")))],
+            [Paragraph(
+                f"<b>Reference :</b> {order.order_number}<br/>"
+                f"<b>Date d'emission :</b> {datetime.now(timezone.utc).strftime('%d/%m/%Y')}<br/>"
+                f"<b>Echeance :</b> {due_value}<br/>"
+                f"<b>Devise :</b> {order.currency}",
+                ParagraphStyle("meta_body", alignment=TA_RIGHT, fontSize=9, leading=13, textColor=colors.HexColor("#334155")),
+            )],
+        ]
+        table = Table(rows, colWidths=[75 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fbfdff")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3f0")),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        return table
+
+    def _payment_terms_block(self, order: Any, issuer: dict, total_cents: int, discount_cents: int) -> Table:
+        paid_cents = max(getattr(order, "paid_cents", 0), 0)
+        balance_cents = max(total_cents - paid_cents, 0)
+        due_date = (
+            order.due_date.strftime("%d/%m/%Y")
+            if getattr(order, "due_date", None)
+            else "Paiement a reception"
+        )
+        status = "Reglee" if balance_cents == 0 else "En attente de reglement"
+        details = [
+            "<b>Conditions de reglement</b>",
+            f"Echeance : {due_date}",
+            f"Statut : {status}",
+        ]
+        if discount_cents > 0:
+            details.append(f"Remise appliquee : {self._fmt(discount_cents, order.currency)}")
+        if paid_cents > 0:
+            details.append(f"Montant deja regle : {self._fmt(paid_cents, order.currency)}")
+        if issuer.get("footer_notes"):
+            details.append(issuer["footer_notes"])
+
+        detail_block = Paragraph(
+            "<br/>".join(details),
+            ParagraphStyle("payment_terms", fontSize=8.5, leading=13, textColor=colors.HexColor("#334155")),
+        )
+        amount_block = Paragraph(
+            f"<font size='8' color='#64748b'>NET A PAYER</font><br/>"
+            f"<font size='16' color='{issuer['primary_color']}'><b>{self._fmt(balance_cents, order.currency)}</b></font>",
+            ParagraphStyle("payment_amount", alignment=TA_RIGHT, leading=15),
+        )
+        table = Table([[detail_block, amount_block]], colWidths=[122 * mm, 53 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fbfdff")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        return table
 
     def _signing_block(self, styles, issuer: dict, total_cents: int, currency: str) -> list:
         """
@@ -711,18 +894,30 @@ class PDFService:
         return elements
 
     def _company_block(self, styles, issuer: dict) -> Any:
+        primary_color = issuer.get("primary_color", "#1a56db")
+        company_style = ParagraphStyle(
+            "company_block",
+            parent=styles["Normal"],
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#334155"),
+        )
         text = Paragraph(
-            f"<b>{issuer['name']}</b><br/>"
+            f"<font size='14' color='{primary_color}'><b>{issuer['name']}</b></font><br/>"
             f"{issuer['address']}<br/>"
             f"{'Tél: ' + issuer['phone'] + '<br/>' if issuer['phone'] else ''}"
             f"{'Email: ' + issuer['email'] + '<br/>' if issuer['email'] else ''}"
             f"{'NIF: ' + issuer['tax_id'] if issuer['tax_id'] else ''}",
-            styles["Normal"],
+            company_style,
         )
         logo = self._load_image_asset(issuer.get("logo_path", ""), width=28 * mm, height=28 * mm)
         if logo:
             t = Table([[logo, text]], colWidths=[32 * mm, 68 * mm])
-            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            t.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]))
             return t
         return text
 
@@ -784,7 +979,10 @@ class PDFService:
             city_part = f", {client.city}" if getattr(client, "city", None) else ""
             lines.append(f"<b>Adresse :</b> {client.address_line1}{city_part}")
         bg_color = colors.HexColor((issuer or {}).get("secondary_color", "#eff6ff"))
-        p = Paragraph("<br/>".join(lines), ParagraphStyle("client_info", fontSize=9, leading=14))
+        p = Paragraph(
+            "<br/>".join(lines),
+            ParagraphStyle("client_info", fontSize=9, leading=14, textColor=colors.HexColor("#1f2937")),
+        )
         t = Table([[p]], colWidths=[180 * mm])
         t.setStyle(TableStyle([
             ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
@@ -792,10 +990,14 @@ class PDFService:
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
         ]))
         return t
 
     def _doc_info_block(self, styles, doc_number: str, order: Any) -> Paragraph:
+        due_line = ""
+        if getattr(order, "due_date", None):
+            due_line = f"<br/><b>Echeance :</b> {order.due_date.strftime('%d/%m/%Y')}"
         text = (
             f"<b>N° Document :</b> {doc_number}<br/>"
             f"<b>Référence :</b> {order.order_number}<br/>"
@@ -814,11 +1016,16 @@ class PDFService:
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("LEADING", (0, 0), (-1, -1), 12),
             ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(issuer["secondary_color"])]),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.7, colors.HexColor("#0f172a")),
+            ("TOPPADDING", (0, 0), (-1, 0), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+            ("TOPPADDING", (0, 1), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
         ]))
         return t
 
@@ -846,14 +1053,18 @@ class PDFService:
         t = Table(rows, colWidths=[130 * mm, 45 * mm])
         t.setStyle(TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+            ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#111827")),
             ("FONTNAME", (0, total_idx), (-1, total_idx), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 10),
             ("FONTSIZE", (0, total_idx), (-1, total_idx), 12),
             ("BACKGROUND", (0, total_idx), (-1, total_idx), colors.HexColor(issuer["primary_color"])),
             ("TEXTCOLOR", (0, total_idx), (-1, total_idx), colors.white),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("LINEABOVE", (0, total_idx), (-1, total_idx), 0.5, colors.HexColor("#d1d5db")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
         ]))
         return t
 

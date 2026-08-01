@@ -18,10 +18,12 @@ import Link from "next/link";
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash:          "Espèces",
   bank_transfer: "Virement",
-  mobile_money:  "Mobile Money",
+  mobile_money:  "Mobile Money (manuel)",
   check:         "Chèque",
-  card:          "Carte bancaire",
+  card:          "Carte bancaire (manuelle)",
 };
+
+const MANUAL_PAYMENT_METHODS: PaymentMethod[] = ["bank_transfer", "cash", "check", "mobile_money", "card"];
 
 const REFUND_REASONS = [
   { value: "product_defect",    label: "Produit défectueux" },
@@ -191,11 +193,14 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
           <p className="text-sm text-gray-500 mt-0.5">
             Solde restant : <span className="font-semibold text-orange-600">{formatCents(commande.balance_due_cents, currency)}</span>
           </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Cette page sert uniquement à enregistrer et suivre des paiements déjà effectués hors application.
+          </p>
         </div>
         {commande.status === "confirmed" && commande.balance_due_cents > 0 && (
           <button onClick={() => setShowPayModal(true)} className="btn-primary">
             <Plus className="w-4 h-4" />
-            Nouveau paiement
+            Enregistrer un paiement
           </button>
         )}
         {commande.status === "draft" && (
@@ -320,11 +325,14 @@ function PaymentModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
         <h2 className="text-lg font-bold text-gray-900">Enregistrer un paiement</h2>
+        <p className="text-sm text-gray-500">
+          Aucun encaissement n&apos;est lancé ici. Vous consignez simplement un règlement externe.
+        </p>
 
         <div>
           <label className="label">Méthode</label>
           <select value={methode} onChange={(e) => setMethode(e.target.value as PaymentMethod)} className="input">
-            {(Object.keys(METHOD_LABELS) as PaymentMethod[]).map((m) => (
+            {MANUAL_PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>{METHOD_LABELS[m]}</option>
             ))}
           </select>
@@ -337,7 +345,7 @@ function PaymentModal({
 
         <div>
           <label className="label">Référence (optionnel)</label>
-          <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="N° virement, chèque…" className="input" />
+          <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="N° virement, référence Mobile Money, ticket carte, chèque…" className="input" />
         </div>
 
         {enregistrerMut.error && (

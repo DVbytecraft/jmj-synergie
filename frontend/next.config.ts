@@ -3,6 +3,20 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV === "development";
 
+function resolveBackendUrl(): string {
+  const privateHostPort = process.env.BACKEND_HOSTPORT?.trim();
+  if (privateHostPort) {
+    return `http://${privateHostPort}`;
+  }
+
+  const explicitUrl = process.env.BACKEND_URL?.trim();
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  return "http://localhost:8000";
+}
+
 // CSP is now injected per-request via middleware (src/middleware.ts) using a
 // per-request nonce, eliminating 'unsafe-inline' for scripts in production.
 // The static fallback below is kept only for the /_next/static layer where
@@ -73,10 +87,8 @@ const nextConfig: NextConfig = {
   // Utilisée par Next.js pour proxifier /api/v1/* → backend
   // NEXT_PUBLIC_API_URL reste /api/v1 (relatif) côté navigateur
   async rewrites() {
-    // Dev local : backend accessible via localhost.
-    // Docker/prod : BACKEND_URL peut être surchargé (ex: http://backend:8000).
-    const defaultBackendUrl = "http://localhost:8000";
-    const backendUrl = process.env.BACKEND_URL || defaultBackendUrl;
+    // Priorite Render private network (BACKEND_HOSTPORT), puis BACKEND_URL explicite.
+    const backendUrl = resolveBackendUrl();
 
     return [
       {

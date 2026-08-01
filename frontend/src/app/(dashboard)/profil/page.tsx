@@ -36,6 +36,11 @@ const nameSchema = z.object({
 });
 type NameForm = z.infer<typeof nameSchema>;
 
+const emailSchema = z.object({
+  email: z.string().email("Adresse email invalide"),
+});
+type EmailForm = z.infer<typeof emailSchema>;
+
 const passwordSchema = z
   .object({
     current_password: z.string().min(1, "Requis"),
@@ -68,6 +73,7 @@ export default function ProfilPage() {
   const user = useAuthStore((s) => s.user);
 
   const [nameSuccess, setNameSuccess] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState(false);
   const [pwdSuccess, setPwdSuccess] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -94,6 +100,23 @@ export default function ProfilPage() {
       qc.invalidateQueries({ queryKey: ["users", "me"] });
       setNameSuccess(true);
       setTimeout(() => setNameSuccess(false), 3000);
+    },
+  });
+
+  const emailForm = useForm<EmailForm>({
+    resolver: zodResolver(emailSchema),
+    values: { email: profile?.email ?? "" },
+  });
+
+  const emailMut = useMutation({
+    mutationFn: async (data: EmailForm) => {
+      const res = await apiClient.patch<UserProfile>("/users/me/email", data);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users", "me"] });
+      setEmailSuccess(true);
+      setTimeout(() => setEmailSuccess(false), 4000);
     },
   });
 
@@ -189,6 +212,57 @@ export default function ProfilPage() {
       </div>
 
       {/* ── Change password ───────────────────────────────────────────── */}
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-slate-500" />
+          <h2 className="font-semibold text-slate-900">Identifiant de connexion</h2>
+        </div>
+
+        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+          <ShieldCheck className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-blue-700 leading-relaxed">
+            Cette adresse email est l'identifiant unique de connexion de JMJ Synergie.
+            La modifier invalidera les autres sessions actives.
+          </p>
+        </div>
+
+        <form onSubmit={emailForm.handleSubmit((d) => emailMut.mutate(d))} className="space-y-4">
+          <div>
+            <label className="label">Email de connexion</label>
+            <input
+              {...emailForm.register("email")}
+              type="email"
+              className="input"
+              placeholder="admin@jmjsynergie.com"
+              autoComplete="email"
+            />
+            {emailForm.formState.errors.email && (
+              <p className="field-error">{emailForm.formState.errors.email.message}</p>
+            )}
+          </div>
+
+          {emailMut.error && (
+            <div className="alert-error">
+              {(emailMut.error as any)?.response?.data?.detail ?? "Erreur lors de la mise a jour de l'identifiant."}
+            </div>
+          )}
+
+          {emailSuccess && (
+            <div className="flex items-center gap-2 text-emerald-600 text-sm">
+              <CheckCircle className="w-4 h-4" />
+              Identifiant de connexion mis a jour avec succes.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button type="submit" disabled={emailMut.isPending} className="btn-primary">
+              {emailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              Mettre a jour l'identifiant
+            </button>
+          </div>
+        </form>
+      </div>
+
       <div className="card p-6 space-y-4">
         <div className="flex items-center gap-2">
           <KeyRound className="w-4 h-4 text-slate-500" />

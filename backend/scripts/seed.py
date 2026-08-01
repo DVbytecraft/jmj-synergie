@@ -79,6 +79,12 @@ def _validate_password(password: str) -> None:
 async def seed() -> None:
     email, password, full_name = _resolve_admin_identity()
     organization_name = os.environ.get("COMPANY_NAME", "JMJ Synergie").strip() or "JMJ Synergie"
+    company_address = os.environ.get("COMPANY_ADDRESS", "").strip() or None
+    company_phone = os.environ.get("COMPANY_PHONE", "").strip() or None
+    company_email = os.environ.get("COMPANY_EMAIL", "").strip() or None
+    company_tax_id = os.environ.get("COMPANY_TAX_ID", "").strip() or None
+    company_city = os.environ.get("COMPANY_CITY", "").strip() or None
+    company_country = os.environ.get("COMPANY_COUNTRY", "").strip() or None
 
     _validate_password(password)
 
@@ -101,9 +107,33 @@ async def seed() -> None:
                 id=uuid.uuid4(),
                 code="JMJ-SYNERGIE",
                 name=organization_name,
+                legal_name=organization_name,
+                address_line1=company_address,
+                phone=company_phone,
+                email=company_email,
+                tax_id=company_tax_id,
+                city=company_city,
+                country=company_country,
             )
             db.add(org)
             await db.flush()
+        else:
+            if not org.name:
+                org.name = organization_name
+            if not org.legal_name:
+                org.legal_name = organization_name
+            if company_address and not org.address_line1:
+                org.address_line1 = company_address
+            if company_phone and not org.phone:
+                org.phone = company_phone
+            if company_email and not org.email:
+                org.email = company_email
+            if company_tax_id and not org.tax_id:
+                org.tax_id = company_tax_id
+            if company_city and not org.city:
+                org.city = company_city
+            if company_country and not org.country:
+                org.country = company_country
 
         admin = UserModel(
             id=uuid.uuid4(),

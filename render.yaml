@@ -1,37 +1,30 @@
-# ─────────────────────────────────────────────────────────────────────────────
-#  JMJ Synergie — Render Blueprint
-#
-#  Déploiement :
-#  1. Connecter ce repo sur https://dashboard.render.com/blueprints
-#  2. Déployer le backend EN PREMIER. Copier son URL publique.
-#  3. Mettre à jour BACKEND_URL, ALLOWED_ORIGINS, FRONTEND_URL dans le dashboard.
-#  4. Renseigner toutes les variables marquées "sync: false" dans le dashboard.
-#
-#  Redis : utiliser Upstash Redis (gratuit) → https://upstash.com
-#  Copier la connection string Redis et la mettre dans REDIS_URL du backend.
-# ─────────────────────────────────────────────────────────────────────────────
-
 databases:
   - name: jmj-db
     databaseName: jmj
     user: jmj_admin
-    plan: starter
+    plan: basic-256mb
     region: frankfurt
+    postgresMajorVersion: "17"
+    diskSizeGB: 5
+    ipAllowList: []
 
 services:
+  - type: keyvalue
+    name: jmj-cache
+    plan: starter
+    region: frankfurt
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
-  # ── Backend FastAPI ──────────────────────────────────────────────────────────
   - type: web
     name: jmj-backend
-    env: docker
+    runtime: docker
     region: frankfurt
     plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
     envVars:
-      # DATABASE_URL injectée automatiquement depuis la base Render (postgres://)
-      # start.sh la convertit en postgresql+asyncpg:// au démarrage
       - key: DATABASE_URL
         fromDatabase:
           name: jmj-db
@@ -47,39 +40,20 @@ services:
       - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: "7"
       - key: ALLOWED_ORIGINS
-        sync: false           # Ex: https://jmj-frontend.onrender.com
+        sync: false
       - key: TRUSTED_HOSTS
-        sync: false           # Ex: jmj-backend.onrender.com — obligatoire en production
+        sync: false
       - key: FRONTEND_URL
-        sync: false           # Ex: https://jmj-frontend.onrender.com
+        sync: false
       - key: STORAGE_PATH
         value: /app/storage
       - key: MAX_FILE_SIZE_MB
         value: "10"
-      # ── Redis (Upstash recommandé) ────────────────────────────────────────────
-      # Obligatoire pour le rate-limiting. Obtenir une URL sur https://upstash.com
       - key: REDIS_URL
-        sync: false           # Ex: rediss://default:xxxxx@xxx.upstash.io:6379
-      # ── Brevo ────────────────────────────────────────────────────────────────
-      - key: BREVO_API_KEY
-        sync: false
-      - key: BREVO_SENDER_EMAIL
-        value: contact@jmjsynergie.com
-      - key: BREVO_SENDER_NAME
-        value: JMJ Synergie
-      - key: SMTP_HOST
-        value: smtp-relay.brevo.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
-        value: contact@jmjsynergie.com
-      - key: SMTP_TLS
-        value: "true"
-      # ── Cloudinary ───────────────────────────────────────────────────────────
+        fromService:
+          type: keyvalue
+          name: jmj-cache
+          property: connectionString
       - key: USE_CLOUDINARY
         value: "true"
       - key: CLOUDINARY_CLOUD_NAME
@@ -88,111 +62,60 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-      # ── Infos société ─────────────────────────────────────────────────────────
       - key: APP_NAME
         value: JMJ Synergie
       - key: COMPANY_NAME
         value: JMJ Synergie
       - key: COMPANY_ADDRESS
-        value: "Cotonou, Bénin"
+        value: "Lome, Togo"
       - key: COMPANY_PHONE
-        value: "+229 00 00 00 00"
+        sync: false
       - key: COMPANY_EMAIL
-        value: contact@jmjsynergie.com
+        sync: false
+      - key: COMPANY_CITY
+        value: "Lome"
+      - key: COMPANY_COUNTRY
+        value: "Togo"
+      - key: COMPANY_TAX_ID
+        value: "1001701669"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_NAME
+        value: Administrateur JMJ Synergie
       - key: SENTRY_DSN
         sync: false
       - key: WORKERS
         value: "1"
-      # ── Métriques ────────────────────────────────────────────────────────────
       - key: METRICS_TOKEN
-        sync: false           # Bearer token pour accéder à /metrics depuis Prometheus
+        sync: false
       - key: METRICS_ALLOWED_IPS
-        sync: false           # IPs autorisées (CIDR), ex: 10.0.0.5
-      # ── CinetPay (Mobile Money) ───────────────────────────────────────────────
-      - key: CINETPAY_API_KEY
-        sync: false
-      - key: CINETPAY_SITE_ID
         sync: false
 
-  # ── ARQ Worker (tâches en arrière-plan : PDF, emails) ───────────────────────
-  - type: worker
-    name: jmj-arq-worker
-    env: docker
-    region: frankfurt
-    plan: starter
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: arq app.workers.arq_worker.WorkerSettings
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: jmj-db
-          property: connectionString
-      - key: ENVIRONMENT
-        value: production
-      - key: SECRET_KEY
-        fromService:
-          name: jmj-backend
-          type: web
-          envVarKey: SECRET_KEY
-      - key: REDIS_URL
-        fromService:
-          name: jmj-backend
-          type: web
-          envVarKey: REDIS_URL
-      - key: STORAGE_PATH
-        value: /app/storage
-      - key: BREVO_API_KEY
-        fromService:
-          name: jmj-backend
-          type: web
-          envVarKey: BREVO_API_KEY
-      - key: BREVO_SENDER_EMAIL
-        fromService:
-          name: jmj-backend
-          type: web
-          envVarKey: BREVO_SENDER_EMAIL
-      - key: CLOUDINARY_CLOUD_NAME
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
-        sync: false
-      - key: USE_CLOUDINARY
-        value: "true"
-      - key: SENTRY_DSN
-        sync: false
-
-  # ── Frontend Next.js ─────────────────────────────────────────────────────────
   - type: web
     name: jmj-frontend
-    env: docker
+    runtime: docker
     region: frankfurt
     plan: starter
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     healthCheckPath: /
     envVars:
-      # BACKEND_URL : URL interne du backend (server-side uniquement, rewrites Next.js).
-      # ⚠️  Déployer le backend en premier, puis renseigner son URL ici.
+      - key: BACKEND_HOSTPORT
+        fromService:
+          type: web
+          name: jmj-backend
+          property: hostport
       - key: BACKEND_URL
-        sync: false           # Ex: https://jmj-backend.onrender.com
-      # NEXT_PUBLIC_API_URL : TOUJOURS /api/v1 (relatif).
-      # Ne JAMAIS mettre une URL absolue ici — le navigateur ferait des
-      # requêtes directement au backend, bypassant le proxy et violant le CSP.
+        sync: false
       - key: NEXT_PUBLIC_API_URL
         value: /api/v1
-      # RENDER_BACKEND_URL : URL publique du backend — ajoutée au connect-src du CSP
-      # frontend pour couvrir les cas où NEXT_PUBLIC_API_URL serait mal configuré.
       - key: RENDER_BACKEND_URL
-        sync: false           # Ex: https://jmj-backend.onrender.com
+        sync: false
       - key: NODE_ENV
         value: production
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
-      # KEEPALIVE_SECRET : secret partagé pour l'endpoint /api/keepalive.
-      # Configurer un cron externe (ex: cron-job.org) toutes les 10 min sur
-      # https://jmj-frontend.onrender.com/api/keepalive?secret=<valeur>
-      # pour éviter le cold-start du backend sur le plan starter.
       - key: KEEPALIVE_SECRET
-        sync: false           # Générer un token aléatoire fort (32+ chars)
+        sync: false
