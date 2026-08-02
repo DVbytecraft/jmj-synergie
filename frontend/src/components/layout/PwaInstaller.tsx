@@ -13,27 +13,31 @@ export function PwaInstaller() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    // Le service worker perturbe les flux Next.js App Router/HMR en développement.
-    // On le garde uniquement en production et on désinscrit toute ancienne version en dev.
+    // Disable all service workers and clear old PWA caches.
+    // This app must prefer fresh production assets over offline caching.
     if ("serviceWorker" in navigator) {
-      if (process.env.NODE_ENV === "production") {
-        navigator.serviceWorker
-          .register("/sw.js", { scope: "/" })
-          .catch((err) => console.warn("[PWA] SW registration failed:", err));
-      } else {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          registrations.forEach((registration) => {
-            void registration.unregister();
-          });
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+          void registration.unregister();
         });
-      }
+      });
     }
 
-    // Capturer l'événement d'installation
+    if ("caches" in window) {
+      caches.keys().then((keys) => {
+        keys
+          .filter((key) => key.startsWith("jmj-synergie"))
+          .forEach((key) => {
+            void caches.delete(key);
+          });
+      });
+    }
+
     const handler = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e as BeforeInstallPromptEvent);
     };
+
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
@@ -47,31 +51,30 @@ export function PwaInstaller() {
     }
   };
 
-  // Ne rien afficher si pas de prompt ou si déjà rejeté
   if (!installPrompt || dismissed) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-white border border-gray-200 shadow-lg rounded-2xl px-4 py-3 text-sm max-w-sm w-[calc(100%-2rem)]">
-      <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-        <span className="text-white font-bold text-xs">B</span>
+    <div className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-lg">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-blue-600">
+        <span className="text-xs font-bold text-white">JS</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-gray-900 text-xs">Installer l&apos;application</p>
-        <p className="text-gray-500 text-xs truncate">Accès rapide, mode hors ligne</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-gray-900">Installer l&apos;application</p>
+        <p className="truncate text-xs text-gray-500">Acces rapide depuis votre appareil</p>
       </div>
       <button
         onClick={handleInstall}
-        className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
+        className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
       >
-        <Download className="w-3 h-3" />
+        <Download className="h-3 w-3" />
         Installer
       </button>
       <button
         onClick={() => setDismissed(true)}
-        className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+        className="flex-shrink-0 text-gray-400 hover:text-gray-600"
         aria-label="Fermer"
       >
-        <X className="w-4 h-4" />
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
