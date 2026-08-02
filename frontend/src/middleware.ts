@@ -80,6 +80,12 @@ function buildCsp(nonce: string): string {
   return parts.join("; ");
 }
 
+function applyDynamicPageHeaders(response: NextResponse) {
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isDev = process.env.NODE_ENV === "development";
@@ -90,6 +96,7 @@ export function middleware(request: NextRequest) {
   // 1. Routes publiques — laisser passer (avec nonce si besoin)
   if (isPublic(pathname)) {
     const res = NextResponse.next();
+    applyDynamicPageHeaders(res);
     if (!isDev && nonce) {
       res.headers.set("Content-Security-Policy", buildCsp(nonce));
       res.headers.set("x-nonce", nonce);
@@ -130,6 +137,7 @@ export function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
+  applyDynamicPageHeaders(response);
   if (payload) {
     response.headers.set("x-user-id", payload.sub);
     response.headers.set("x-user-role", payload.role);

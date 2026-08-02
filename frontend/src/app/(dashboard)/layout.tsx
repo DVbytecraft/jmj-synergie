@@ -3,6 +3,9 @@ import { TopBar } from "@/components/layout/TopBar";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { SidebarProvider } from "@/components/layout/sidebar-context";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
