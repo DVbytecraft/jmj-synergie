@@ -72,8 +72,11 @@ export function useNotifications() {
     };
 
     es.onerror = () => {
-      // La reconnexion est automatique via l'EventSource browser API
-      console.warn("[SSE] Connexion perdue, tentative de reconnexion…");
+      // La reconnexion est automatique via l'EventSource browser API.
+      // En production, on évite de polluer la console avec ce bruit réseau.
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[SSE] Connexion perdue, tentative de reconnexion…");
+      }
     };
 
     return () => {
