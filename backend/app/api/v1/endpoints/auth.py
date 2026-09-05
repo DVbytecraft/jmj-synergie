@@ -15,8 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.middleware.rate_limiter import rate_limit_dependency
 
-# Sensitive unauthenticated endpoints: 5 requests / 60 s per IP
-_auth_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_sensitive")
+# Authentication operations use separate buckets so a silent refresh cannot
+# consume the user's login allowance (and vice versa).
+_login_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_login")
+_password_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_password")
+_refresh_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_refresh")
 from app.core.database import get_db
 from app.core.single_tenant import normalize_single_tenant_user
 from app.core.security import (
@@ -225,7 +228,7 @@ async def login(
     response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
-    _rl: None = Depends(_auth_rate_limit),
+    _rl: None = Depends(_login_rate_limit),
 ):
     result = await db.execute(
         select(UserModel).where(UserModel.email == form.username, UserModel.is_deleted == False)
@@ -294,7 +297,7 @@ async def register_organization(body: RegisterOrganizationRequest, db: AsyncSess
 async def forgot_password(
     body: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
-    _rl: None = Depends(_auth_rate_limit),
+    _rl: None = Depends(_password_rate_limit),
 ):
     """
     Vérifie silencieusement l'existence d'un compte.
@@ -304,7 +307,11 @@ async def forgot_password(
 
 
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def reset_password(
+    body: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_password_rate_limit),
+):
     """
     Réinitialise directement le mot de passe à partir de l'email du compte.
     Toutes les sessions actives (refresh tokens) sont révoquées.
@@ -343,6 +350,7 @@ async def refresh(
     response: Response,
     db: AsyncSession = Depends(get_db),
     rt: str | None = Cookie(default=None, alias=_RT_COOKIE),
+    _rl: None = Depends(_refresh_rate_limit),
 ):
     """
     Renouvelle l'access token.

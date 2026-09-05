@@ -55,7 +55,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if os.environ.get("PYTEST_CURRENT_TEST"):
             return await call_next(request)
 
-        if request.url.path in ("/health", "/api/health", "/api/docs", "/api/redoc", "/metrics"):
+        path = request.url.path
+        # Authentication routes have dedicated, endpoint-specific limits. Counting
+        # them in the global dashboard bucket can lock out login/refresh after a
+        # burst of otherwise legitimate page-data requests.
+        if path.startswith("/api/v1/auth/") or path in (
+            "/health",
+            "/api/health",
+            "/api/docs",
+            "/api/redoc",
+            "/metrics",
+        ):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"

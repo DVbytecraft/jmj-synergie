@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from unittest.mock import patch
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,7 +18,9 @@ def make_settings(**overrides: object) -> Settings:
         "DEBUG": False,
     }
     values.update(overrides)
-    return Settings(_env_file=None, **values)
+    # Configuration tests must not inherit Docker/CI deployment variables.
+    with patch.dict(os.environ, {}, clear=True):
+        return Settings(_env_file=None, **values)
 
 
 def test_parse_list_env_supports_csv() -> None:

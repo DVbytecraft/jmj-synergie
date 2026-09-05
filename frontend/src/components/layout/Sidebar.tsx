@@ -103,6 +103,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
             alt="JMJ Synergie"
             width={32}
             height={32}
+            priority
             className="w-8 h-8 rounded-lg shadow-lg flex-shrink-0"
           />
           <div>
@@ -205,6 +206,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
               alt="JMJ Synergie"
               width={32}
               height={32}
+              priority
               className="w-full h-full object-cover"
             />
           </div>

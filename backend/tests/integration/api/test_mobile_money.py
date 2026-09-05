@@ -15,6 +15,11 @@ from app.core.security import create_access_token
 from app.infrastructure.database.models import UserModel, OrderModel, PaymentTransactionModel
 
 
+pytestmark = pytest.mark.skip(
+    reason="Mobile Money initiation is intentionally disabled in the JMJ Synergie manual-payment rollout."
+)
+
+
 ORG_ID = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
 ORDER_ID = uuid.UUID("eeeeeeee-0000-0000-0000-000000000001")
 TXN_ID = uuid.UUID("ffffffff-0000-0000-0000-000000000001")

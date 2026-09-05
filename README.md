@@ -65,7 +65,7 @@ Ports exposés :
 ### 3. Migrations base de données
 
 ```bash
-docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
+docker compose -f docker-compose.dev.yml exec -w /app -e PYTHONPATH=/app backend alembic upgrade head
 ```
 
 ### 4. Créer le premier super admin

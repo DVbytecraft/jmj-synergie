@@ -138,7 +138,6 @@ async def test_record_payment_returns_201(monkeypatch):
 
     monkeypatch.setattr(payments, "log_audit_event", AsyncMock())
     monkeypatch.setattr(payments, "publish_notification", AsyncMock())
-    monkeypatch.setattr(payments, "enqueue_payment_receipt", AsyncMock())
 
     app.dependency_overrides[get_record_payment_uc] = lambda: mock_uc
     try:
@@ -158,7 +157,6 @@ async def test_record_payment_returns_201(monkeypatch):
         assert data["transaction_number"] == "TXN-202605-00001"
         assert data["amount_cents"] == 50000
         payments.publish_notification.assert_awaited_once()
-        payments.enqueue_payment_receipt.assert_awaited_once()
     finally:
         app.dependency_overrides.pop(get_record_payment_uc, None)
         app.dependency_overrides.clear()
@@ -374,7 +372,6 @@ async def test_record_payment_claims_lock_and_caches_result(monkeypatch):
     monkeypatch.setattr(payments, "get_redis", lambda: fake_redis)
     monkeypatch.setattr(payments, "log_audit_event", AsyncMock())
     monkeypatch.setattr(payments, "publish_notification", AsyncMock())
-    monkeypatch.setattr(payments, "enqueue_payment_receipt", AsyncMock())
 
     app.dependency_overrides[get_record_payment_uc] = lambda: mock_uc
     try:
@@ -417,7 +414,6 @@ async def test_record_payment_swallows_cache_write_error_after_success(monkeypat
     monkeypatch.setattr(payments, "get_redis", lambda: FakeRedis())
     monkeypatch.setattr(payments, "log_audit_event", AsyncMock())
     monkeypatch.setattr(payments, "publish_notification", AsyncMock())
-    monkeypatch.setattr(payments, "enqueue_payment_receipt", AsyncMock())
 
     app.dependency_overrides[get_record_payment_uc] = lambda: mock_uc
     try:
@@ -614,7 +610,6 @@ async def test_record_payment_fail_open_when_redis_is_unavailable(monkeypatch):
     monkeypatch.setattr(payments, "get_redis", lambda: BrokenRedis())
     monkeypatch.setattr(payments, "log_audit_event", AsyncMock())
     monkeypatch.setattr(payments, "publish_notification", AsyncMock())
-    monkeypatch.setattr(payments, "enqueue_payment_receipt", AsyncMock())
 
     app.dependency_overrides[get_record_payment_uc] = lambda: mock_uc
     try:
@@ -637,7 +632,7 @@ async def test_record_payment_fail_open_when_redis_is_unavailable(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_record_payment_skips_notification_and_receipt_without_organization_or_order(monkeypatch):
+async def test_record_payment_skips_notification_without_organization(monkeypatch):
     from app.main import app
     from app.api.v1.deps import get_record_payment_uc
     from app.api.v1.endpoints import payments
@@ -650,7 +645,6 @@ async def test_record_payment_skips_notification_and_receipt_without_organizatio
 
     monkeypatch.setattr(payments, "log_audit_event", AsyncMock())
     monkeypatch.setattr(payments, "publish_notification", AsyncMock())
-    monkeypatch.setattr(payments, "enqueue_payment_receipt", AsyncMock())
 
     app.dependency_overrides[get_record_payment_uc] = lambda: mock_uc
     try:
@@ -666,7 +660,6 @@ async def test_record_payment_skips_notification_and_receipt_without_organizatio
             )
         assert resp.status_code == 201
         payments.publish_notification.assert_not_awaited()
-        payments.enqueue_payment_receipt.assert_not_awaited()
     finally:
         app.dependency_overrides.pop(get_record_payment_uc, None)
         app.dependency_overrides.clear()

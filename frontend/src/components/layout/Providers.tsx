@@ -79,8 +79,9 @@ function shouldRetry(failureCount: number, error: unknown): boolean {
     (error as any)?.status ??
     (error as any)?.code;
 
-  // Pas de retry sur erreurs d'auth ou de permission
-  if (status === 401 || status === 403) return false;
+  // Pas de retry sur erreurs d'auth, de permission ou de quota. Retenter un 429
+  // immédiatement ne fait que prolonger le blocage côté serveur.
+  if (status === 401 || status === 403 || status === 429) return false;
 
   // Max 2 tentatives sur les autres erreurs
   return failureCount < 2;
