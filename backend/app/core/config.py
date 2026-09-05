@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_MINUTES: int = 15
+    ADMIN_RECOVERY_KEY: str = ""
 
     # ── CORS ─────────────────────────────────────────────────────────────────
     ALLOWED_ORIGINS: str = ""

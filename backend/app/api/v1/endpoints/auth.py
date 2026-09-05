@@ -3,9 +3,10 @@ Auth endpoints — login, register, refresh, logout, and password reset.
 """
 from datetime import datetime, timedelta, timezone
 import html
+import secrets
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from authlib.jose.errors import JoseError as JWTError
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -314,11 +315,23 @@ async def reset_password(
     body: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
     _rl: None = Depends(_password_rate_limit),
+    recovery_key: str | None = Header(default=None, alias="X-Admin-Recovery-Key"),
 ):
     """
-    Réinitialise directement le mot de passe à partir de l'email du compte.
+    Réinitialisation d'urgence réservée à l'administrateur Render.
     Toutes les sessions actives (refresh tokens) sont révoquées.
     """
+    configured_key = settings.ADMIN_RECOVERY_KEY
+    if (
+        not configured_key
+        or not recovery_key
+        or not secrets.compare_digest(recovery_key, configured_key)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Réinitialisation publique désactivée. Contactez l'administrateur.",
+        )
+
     result = await db.execute(
         select(UserModel).where(
             UserModel.email == body.email,

@@ -506,6 +506,7 @@ async def test_reset_password_updates_user_and_revokes_sessions(monkeypatch: pyt
 
     monkeypatch.setattr(auth_endpoint, "hash_password_async", _hash_password)
     monkeypatch.setattr(auth_endpoint, "_send_password_reset_notice", _send_notice)
+    monkeypatch.setattr(auth_endpoint.settings, "ADMIN_RECOVERY_KEY", "recovery-secret")
 
     app.dependency_overrides[get_db] = _yield
     try:
@@ -513,6 +514,7 @@ async def test_reset_password_updates_user_and_revokes_sessions(monkeypatch: pyt
             resp = await c.post(
                 "/api/v1/auth/reset-password",
                 json={"email": user.email, "new_password": "StrongPass1"},
+                headers={"X-Admin-Recovery-Key": "recovery-secret"},
             )
         assert resp.status_code == 200
         assert user.hashed_password == "hashed::StrongPass1"
@@ -527,9 +529,12 @@ async def test_reset_password_updates_user_and_revokes_sessions(monkeypatch: pyt
 
 
 @pytest.mark.asyncio
-async def test_reset_password_unknown_user_returns_404():
+async def test_reset_password_unknown_user_returns_404(monkeypatch: pytest.MonkeyPatch):
     from app.main import app
     from app.core.database import get_db
+    from app.api.v1.endpoints import auth as auth_endpoint
+
+    monkeypatch.setattr(auth_endpoint.settings, "ADMIN_RECOVERY_KEY", "recovery-secret")
 
     app.dependency_overrides[get_db] = _db_override(None)
     try:
@@ -537,7 +542,27 @@ async def test_reset_password_unknown_user_returns_404():
             resp = await c.post(
                 "/api/v1/auth/reset-password",
                 json={"email": "ghost@example.com", "new_password": "StrongPass1"},
+                headers={"X-Admin-Recovery-Key": "recovery-secret"},
             )
         assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_public_requests(monkeypatch: pytest.MonkeyPatch):
+    from app.main import app
+    from app.core.database import get_db
+    from app.api.v1.endpoints import auth as auth_endpoint
+
+    monkeypatch.setattr(auth_endpoint.settings, "ADMIN_RECOVERY_KEY", "recovery-secret")
+    app.dependency_overrides[get_db] = _db_override(None)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
+            resp = await c.post(
+                "/api/v1/auth/reset-password",
+                json={"email": "test@example.com", "new_password": "StrongPass1"},
+            )
+        assert resp.status_code == 403
     finally:
         app.dependency_overrides.pop(get_db, None)
