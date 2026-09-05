@@ -87,6 +87,32 @@ function applyDynamicPageHeaders(response: NextResponse) {
   response.headers.set("Expires", "0");
 }
 
+function createPageResponse(request: NextRequest, nonce: string): NextResponse {
+  if (!nonce) {
+    const response = NextResponse.next();
+    applyDynamicPageHeaders(response);
+    return response;
+  }
+
+  const csp = buildCsp(nonce);
+  const requestHeaders = new Headers(request.headers);
+
+  // Next.js lit le CSP de la requete pendant le rendu serveur afin d'extraire
+  // le nonce et de l'ajouter a ses scripts inline et a ses bundles.
+  requestHeaders.set("Content-Security-Policy", csp);
+  requestHeaders.set("x-nonce", nonce);
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+  response.headers.set("Content-Security-Policy", csp);
+  response.headers.set("x-nonce", nonce);
+  applyDynamicPageHeaders(response);
+  return response;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isDev = process.env.NODE_ENV === "development";
@@ -96,13 +122,7 @@ export function middleware(request: NextRequest) {
 
   // 1. Routes publiques — laisser passer (avec nonce si besoin)
   if (isPublic(pathname)) {
-    const res = NextResponse.next();
-    applyDynamicPageHeaders(res);
-    if (!isDev && nonce) {
-      res.headers.set("Content-Security-Policy", buildCsp(nonce));
-      res.headers.set("x-nonce", nonce);
-    }
-    return res;
+    return createPageResponse(request, nonce);
   }
 
   // 2. Vérifier le token
@@ -137,15 +157,10 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
-  applyDynamicPageHeaders(response);
+  const response = createPageResponse(request, nonce);
   if (payload) {
     response.headers.set("x-user-id", payload.sub);
     response.headers.set("x-user-role", payload.role);
-  }
-  if (!isDev && nonce) {
-    response.headers.set("Content-Security-Policy", buildCsp(nonce));
-    response.headers.set("x-nonce", nonce);
   }
   return response;
 }

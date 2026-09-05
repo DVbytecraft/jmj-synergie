@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   },
 };
 
+// Une CSP basee sur un nonce exige un rendu par requete : une page statique est
+// construite avant que le middleware puisse generer et injecter son nonce.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
