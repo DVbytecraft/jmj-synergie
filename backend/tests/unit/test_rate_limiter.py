@@ -84,10 +84,29 @@ class FakeRedis:
     def __init__(self, results: list[Any]) -> None:
         self.results = results
         self.pipeline_calls = 0
+        self.deleted_keys: list[str] = []
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
         self.pipeline_calls += 1
         return FakePipeline(self.results)
+
+    async def delete(self, key: str) -> int:
+        self.deleted_keys.append(key)
+        return 1
+
+
+@pytest.mark.asyncio
+async def test_reset_rate_limit_clears_redis_and_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    fake_redis = FakeRedis([0, 1, 1, True])
+    monkeypatch.setattr(rl, "get_redis", lambda: fake_redis)
+    request = Request({"type": "http", "client": ("127.0.0.1", 12345), "headers": []})
+    rl._mem_store["auth_login:127.0.0.1"] = [100.0]
+
+    await rl.reset_rate_limit(request, "auth_login")
+
+    assert fake_redis.deleted_keys == ["auth_login:127.0.0.1"]
+    assert "auth_login:127.0.0.1" not in rl._mem_store
 
 
 def test_rate_limit_middleware_allows_requests_within_redis_limit(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,7 +6,7 @@ import html
 import secrets
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from authlib.jose.errors import JoseError as JWTError
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -14,14 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.middleware.rate_limiter import rate_limit_dependency
+from app.middleware.rate_limiter import rate_limit_dependency, reset_rate_limit
 
 # Authentication operations use separate buckets so a silent refresh cannot
 # consume the user's login allowance (and vice versa).
-# Le verrouillage persistant du compte s'active deja apres 5 mots de passe
-# incorrects. Le quota reseau, qui compte aussi les connexions reussies, reste
-# volontairement plus large pour ne pas bloquer l'administrateur legitime.
-_login_rate_limit = rate_limit_dependency(calls=15, period=60, key_prefix="auth_login")
+_login_rate_limit = rate_limit_dependency(calls=10, period=60, key_prefix="auth_login")
 _password_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_password")
 _refresh_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_refresh")
 from app.core.database import get_db
@@ -229,6 +226,7 @@ def _issue_tokens(user: UserModel, response: Response) -> TokenResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    request: Request,
     response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
@@ -286,6 +284,9 @@ async def login(
         entity_type="user",
         entity_id=str(user.id),
     )
+    # Une connexion valide remet le quota reseau a zero. Seules les tentatives
+    # consecutives avant un succes peuvent donc provoquer un 429.
+    await reset_rate_limit(request, "auth_login")
     return tokens
 
 

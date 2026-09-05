@@ -45,6 +45,30 @@ async def _mem_check(key: str, calls: int, period: int, now: float) -> bool:
         return True
 
 
+def _client_key(request: Request, key_prefix: str) -> str:
+    client_ip = request.client.host if request.client else "unknown"
+    return f"{key_prefix}:{client_ip}"
+
+
+async def reset_rate_limit(request: Request, key_prefix: str) -> None:
+    """Forget a client's endpoint counter after a successful operation."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+
+    key = _client_key(request, key_prefix)
+    try:
+        await get_redis().delete(key)
+    except Exception as exc:
+        logger.warning(
+            "rate_limiter.reset_redis_failed",
+            error=str(exc),
+            key_prefix=key_prefix,
+        )
+
+    async with _mem_lock:
+        _mem_store.pop(key, None)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, calls: int = 100, period: int = 60):
         super().__init__(app)
@@ -68,8 +92,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
-        key = f"rate_limit:{client_ip}"
+        key = _client_key(request, "rate_limit")
         now = time.time()
         window_start = now - self.period
 
@@ -127,8 +150,7 @@ def rate_limit_dependency(calls: int, period: int, key_prefix: str = "rl"):
         if os.environ.get("PYTEST_CURRENT_TEST"):
             return
 
-        client_ip = request.client.host if request.client else "unknown"
-        key = f"{key_prefix}:{client_ip}"
+        key = _client_key(request, key_prefix)
         now = time.time()
         window_start = now - period
 
