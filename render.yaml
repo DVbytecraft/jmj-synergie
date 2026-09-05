@@ -2,16 +2,15 @@ databases:
   - name: jmj-db
     databaseName: jmj
     user: jmj_admin
-    plan: basic-256mb
+    plan: free
     region: frankfurt
     postgresMajorVersion: "17"
-    diskSizeGB: 5
     ipAllowList: []
 
 services:
   - type: keyvalue
     name: jmj-cache
-    plan: starter
+    plan: free
     region: frankfurt
     maxmemoryPolicy: allkeys-lru
     ipAllowList: []
@@ -20,7 +19,7 @@ services:
     name: jmj-backend
     runtime: docker
     region: frankfurt
-    plan: starter
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
@@ -97,7 +96,7 @@ services:
     name: jmj-frontend
     runtime: docker
     region: frankfurt
-    plan: starter
+    plan: free
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     healthCheckPath: /
