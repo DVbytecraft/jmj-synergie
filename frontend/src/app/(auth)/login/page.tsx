@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +20,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 function LoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [isWaking, setIsWaking] = useState(false);
+  const [retryAfter, setRetryAfter] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -32,7 +33,17 @@ function LoginContent() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
+  useEffect(() => {
+    if (retryAfter <= 0) return;
+    const timer = window.setTimeout(
+      () => setRetryAfter((seconds) => Math.max(0, seconds - 1)),
+      1_000
+    );
+    return () => window.clearTimeout(timer);
+  }, [retryAfter]);
+
   const onSubmit = async (data: LoginForm) => {
+    if (retryAfter > 0) return;
     setError(null);
     setIsWaking(false);
     try {
@@ -45,14 +56,25 @@ function LoginContent() {
       setAuth(res.data.access_token);
       router.replace("/dashboard");
     } catch (e: unknown) {
-      const err = e as { response?: { status?: number; data?: { detail?: unknown } } };
+      const err = e as {
+        response?: {
+          status?: number;
+          data?: { detail?: unknown };
+          headers?: { get?: (name: string) => string | null; [key: string]: unknown };
+        };
+      };
       const status = err.response?.status;
       if (status === 502 || status === 503 || status === 504) {
         setIsWaking(true);
         return;
       }
       if (status === 429) {
-        setError("Trop de tentatives de connexion. Veuillez patienter quelques minutes avant de réessayer.");
+        const rawRetryAfter =
+          err.response?.headers?.get?.("retry-after") ??
+          err.response?.headers?.["retry-after"];
+        const seconds = Math.max(1, Number(rawRetryAfter) || 60);
+        setRetryAfter(seconds);
+        setError(`Trop de tentatives de connexion. Réessayez dans ${seconds} secondes.`);
         return;
       }
       const detail = err.response?.data?.detail;
@@ -209,15 +231,17 @@ function LoginContent() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || retryAfter > 0}
               className="btn-primary w-full py-2.5 mt-2"
             >
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
+              ) : retryAfter > 0 ? (
+                `Réessayer dans ${retryAfter}s`
               ) : (
                 <ArrowRight className="w-4 h-4" />
               )}
-              Se connecter
+              {retryAfter <= 0 && "Se connecter"}
             </button>
           </form>
         </div>

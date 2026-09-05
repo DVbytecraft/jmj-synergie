@@ -17,7 +17,10 @@ from app.middleware.rate_limiter import rate_limit_dependency
 
 # Authentication operations use separate buckets so a silent refresh cannot
 # consume the user's login allowance (and vice versa).
-_login_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_login")
+# Le verrouillage persistant du compte s'active deja apres 5 mots de passe
+# incorrects. Le quota reseau, qui compte aussi les connexions reussies, reste
+# volontairement plus large pour ne pas bloquer l'administrateur legitime.
+_login_rate_limit = rate_limit_dependency(calls=15, period=60, key_prefix="auth_login")
 _password_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_password")
 _refresh_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_refresh")
 from app.core.database import get_db
