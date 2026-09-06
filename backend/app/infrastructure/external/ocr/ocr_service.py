@@ -229,6 +229,7 @@ def _run_tesseract_data(img: "np.ndarray", y_offset: int = 0) -> list[dict]:
 def _parse_invoice(text: str, words: list[dict]) -> dict[str, Any]:
     """Orchestre l'extraction de tous les champs structurés."""
     return {
+        "document_type":    _detect_document_type(text),
         "invoice_number":    _extract_invoice_number(text),
         "date":              _extract_date(text),
         "due_date":          _extract_due_date(text),
@@ -247,6 +248,17 @@ def _parse_invoice(text: str, words: list[dict]) -> dict[str, Any]:
         "discount":          None,
         "shipping":          None,
     }
+
+
+def _detect_document_type(text: str) -> str:
+    """Distinguish a purchase order from an invoice before mapping its parties."""
+    purchase_order_hits = len(re.findall(
+        r"\b(?:bon\s+de\s+commande|purchase\s+order|commande\s+n[°o]?|\bBC\b|\bPO\b)\b",
+        text,
+        re.IGNORECASE,
+    ))
+    invoice_hits = len(re.findall(r"\b(?:facture|invoice)\b", text, re.IGNORECASE))
+    return "purchase_order" if purchase_order_hits > invoice_hits else "invoice"
 
 
 # ── Utilitaire numérique ──────────────────────────────────────────────────────
@@ -408,10 +420,45 @@ def _extract_client(text: str) -> dict[str, Any]:
     if m:
         client["name"] = m.group(1).strip()
 
+    # Limit contact extraction to the client block so the issuer's details are
+    # not accidentally copied when both parties are present on the document.
+    client_section = text[m.start():m.start() + 600] if m else ""
+
+    phone_match = re.search(
+        r"(?:t[eé]l\.?|t[eé]l[eé]phone|phone)\s*[:.]?\s*([\+\d][\d\s\.\-\(\)]{6,})",
+        client_section,
+        re.IGNORECASE,
+    )
+    if phone_match:
+        client["phone"] = phone_match.group(1).strip()
+
+    address_match = re.search(
+        r"(?:adresse|address)\s*[:.]?\s*([^\n]{3,180})",
+        client_section,
+        re.IGNORECASE,
+    )
+    if address_match:
+        client["address"] = address_match.group(1).strip()
+
+    tax_match = re.search(
+        r"(?:nif|ifu|n[°o]?\s*(?:fiscal|contribuable)|niu|rccm|siret|siren)\s*[:.]?\s*([A-Z0-9/\-]{4,25})",
+        client_section,
+        re.IGNORECASE,
+    )
+    if tax_match:
+        client["tax_id"] = tax_match.group(1).strip()
+
     # Deuxième email dans le document → souvent le client
     emails = re.findall(r"\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b", text)
     if len(emails) >= 2:
         client["email"] = emails[1]
+    else:
+        section_email = re.search(
+            r"\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b",
+            client_section,
+        )
+        if section_email:
+            client["email"] = section_email.group(1)
 
     return client
 
@@ -755,6 +802,7 @@ def _format_output(extracted: dict[str, Any], confidence: float = 0.0) -> dict[s
     """Formate la sortie dans le format exact attendu (compatible avec l'ancien code Gemini)."""
     _empty_party = {"name": None, "address": None, "phone": None, "email": None, "tax_id": None}
     return {
+        "document_type":     extracted.get("document_type", "invoice"),
         "invoice_number":     extracted.get("invoice_number"),
         "date":               extracted.get("date"),
         "due_date":           extracted.get("due_date"),

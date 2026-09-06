@@ -2,6 +2,7 @@
 import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
 import { use, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commandesApi } from "@/lib/api/commandes";
 import { clientsApi } from "@/lib/api/clients";
@@ -34,6 +35,9 @@ type DocType = "purchase_order" | "pro_forma" | "invoice" | "delivery_note" | "p
 
 export default function CommandeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const generatedInvoiceId = searchParams.get("invoice_document_id");
+  const generatedDeliveryId = searchParams.get("delivery_document_id");
   const qc = useQueryClient();
   const [showPayModal, setShowPayModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
@@ -80,6 +84,18 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
       await runPreview(async () => {
         const postRes = await apiClient.post<{ document_id: string }>(endpoint);
         const fileRes = await apiClient.get(`/documents/${postRes.data.document_id}/preview`, { responseType: "blob" });
+        return new Blob([fileRes.data], { type: "application/pdf" });
+      }, fileName);
+    } finally {
+      setDocLoading(null);
+    }
+  };
+
+  const previewExisting = async (documentId: string, fileName: string, loadingKey: string) => {
+    setDocLoading(loadingKey);
+    try {
+      await runPreview(async () => {
+        const fileRes = await apiClient.get(`/documents/${documentId}/preview`, { responseType: "blob" });
         return new Blob([fileRes.data], { type: "application/pdf" });
       }, fileName);
     } finally {
@@ -335,9 +351,35 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           </div>
 
           {/* Documents flow */}
-          <div className="card p-5">
+          <div id="documents" className="card p-5 scroll-mt-6">
             <h2 className="font-semibold text-gray-900 mb-4">Documents</h2>
             <div className="space-y-2">
+
+              {generatedInvoiceId && generatedDeliveryId && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3">
+                  <p className="text-sm font-semibold text-emerald-800 mb-2">
+                    Bon de livraison et facture générés avec succès
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => previewExisting(generatedDeliveryId, `bon_livraison-${id.slice(0, 8)}.pdf`, "generated_delivery")}
+                      disabled={docLoading !== null}
+                      className="btn-secondary py-1.5 px-2 text-xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Voir le bon de livraison
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => previewExisting(generatedInvoiceId, `facture-${id.slice(0, 8)}.pdf`, "generated_invoice")}
+                      disabled={docLoading !== null}
+                      className="btn-primary py-1.5 px-2 text-xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Voir la facture
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* 1. Bon de commande */}
               <DocStep

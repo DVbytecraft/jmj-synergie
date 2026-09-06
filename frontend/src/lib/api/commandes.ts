@@ -16,8 +16,10 @@ export const commandesApi = {
     return res.data;
   },
 
-  create: async (payload: OrderCreate) => {
-    const res = await apiClient.post<Order>("/orders", payload);
+  create: async (payload: OrderCreate, idempotencyKey?: string) => {
+    const res = await apiClient.post<Order>("/orders", payload, {
+      headers: idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : undefined,
+    });
     return res.data;
   },
 

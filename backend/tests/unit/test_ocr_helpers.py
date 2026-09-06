@@ -14,6 +14,7 @@ from PIL import Image
 from app.infrastructure.external.ocr.ocr_service import (
     OCRService,
     _deskew,
+    _detect_document_type,
     _extract_client,
     _extract_currency,
     _extract_date,
@@ -73,6 +74,12 @@ def test_extract_invoice_identifiers_and_currency() -> None:
     assert _extract_currency("Total TTC 12 500 F CFA") == "XAF"
     assert _extract_currency("Amount due 99 EUR") == "EUR"
     assert _extract_currency("Pay 100 USD") == "USD"
+
+
+def test_detect_document_type() -> None:
+    assert _detect_document_type("BON DE COMMANDE N° BC-7788") == "purchase_order"
+    assert _detect_document_type("PURCHASE ORDER PO-2026-14") == "purchase_order"
+    assert _detect_document_type("FACTURE N° FAC-2026-14") == "invoice"
 
 
 def test_extract_payment_method() -> None:
@@ -143,7 +150,10 @@ def test_extract_vendor_and_client_details() -> None:
     Email: contact@jmj.example
     NIF: M12345
     Client: Alice Industries
+    Téléphone: +237 677 11 22 33
+    Adresse: Douala, Akwa
     Email client: achat@alice.example
+    NIU: P098765
     """
 
     vendor = _extract_vendor(text)
@@ -153,6 +163,10 @@ def test_extract_vendor_and_client_details() -> None:
     assert vendor["email"] == "contact@jmj.example"
     assert vendor["tax_id"] == "M12345"
     assert client["name"] is not None
+    assert client["phone"] == "+237 677 11 22 33"
+    assert client["address"] == "Douala, Akwa"
+    assert client["email"] == "achat@alice.example"
+    assert client["tax_id"] == "P098765"
 
 
 def test_extract_line_items_from_positioned_words() -> None:
