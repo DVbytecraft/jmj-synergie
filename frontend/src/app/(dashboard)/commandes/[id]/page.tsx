@@ -9,7 +9,7 @@ import { clientsApi } from "@/lib/api/clients";
 import { paiementsApi } from "@/lib/api/paiements";
 import { apiClient } from "@/lib/api/client";
 import { portalApi } from "@/lib/api/portal";
-import { formatCents } from "@/lib/utils/money";
+import { amountToCents, centsToAmount, formatCents } from "@/lib/utils/money";
 import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
 import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
 import type { PaymentMethod } from "@/types";
@@ -44,6 +44,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const [paymentRecorded, setPaymentRecorded] = useState(false);
   const {
     previewUrl, previewTitle, error: docError,
     run: runPreview, close: closePreview, download: downloadPreview, clearError: clearDocError,
@@ -132,10 +133,10 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
 
   const canConfirm = commande.status === "draft";
   const canCancel = !["delivered", "cancelled", "refunded"].includes(commande.status);
-  const canPay = commande.status === "confirmed";
   const canRecordDelivery = ["confirmed", "in_progress", "partially_delivered"].includes(commande.status);
   const isConfirmed = ["confirmed", "in_progress", "in_production", "ready", "partially_delivered", "delivered"].includes(commande.status);
   const hasPaid = commande.paid_cents > 0;
+  const canPay = isConfirmed && commande.balance_due_cents > 0;
 
   const latestPayment = payments?.items?.find((p) => p.status === "completed") ?? payments?.items?.[0];
 
@@ -243,6 +244,16 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
           <span>{docError}</span>
           <button onClick={clearDocError} className="ml-3 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
+
+      {paymentRecorded && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-4 py-3 rounded-lg flex flex-wrap items-center gap-3">
+          <CheckCircle className="w-4 h-4" />
+          <span className="flex-1">Paiement enregistré avec succès dans le journal.</span>
+          <Link href="/journal/paiements" className="font-semibold text-emerald-700 hover:text-emerald-900">
+            Ouvrir le journal
+          </Link>
         </div>
       )}
 
@@ -377,6 +388,15 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                     >
                       <Eye className="w-3.5 h-3.5" /> Voir la facture
                     </button>
+                    {canPay && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPayModal(true)}
+                        className="btn-primary py-1.5 px-2 text-xs"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" /> Enregistrer le paiement
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -538,8 +558,10 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           onClose={() => setShowPayModal(false)}
           onSuccess={() => {
             setShowPayModal(false);
+            setPaymentRecorded(true);
             qc.invalidateQueries({ queryKey: ["commandes", id] });
             qc.invalidateQueries({ queryKey: ["payments", id] });
+            qc.invalidateQueries({ queryKey: ["journal"] });
           }}
         />
       )}
@@ -702,7 +724,7 @@ function PaymentModal({
   onSuccess: () => void;
 }) {
   const [methode, setMethode] = useState<PaymentMethod>("bank_transfer");
-  const [montantXAF, setMontantXAF] = useState(String(balanceCents));
+  const [amount, setAmount] = useState(String(centsToAmount(balanceCents)));
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -710,7 +732,7 @@ function PaymentModal({
     mutationFn: () =>
       paiementsApi.enregistrer({
         order_id: orderId,
-        amount_cents: parseInt(montantXAF, 10) || balanceCents,
+        amount_cents: amountToCents(Number(amount)),
         method: methode,
         external_reference: reference || undefined,
         notes: notes || undefined,
@@ -748,9 +770,11 @@ function PaymentModal({
           <label className="label">Montant (en {currency})</label>
           <input
             type="number"
-            min={1}
-            value={montantXAF}
-            onChange={(e) => setMontantXAF(e.target.value)}
+            min="0.01"
+            max={centsToAmount(balanceCents)}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
             className="input"
           />
         </div>
@@ -783,7 +807,11 @@ function PaymentModal({
 
         <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
           <button onClick={onClose} className="btn-secondary">Annuler</button>
-          <button onClick={() => mutate()} disabled={isPending} className="btn-primary">
+          <button
+            onClick={() => mutate()}
+            disabled={isPending || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || amountToCents(Number(amount)) > balanceCents}
+            className="btn-primary"
+          >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
             Confirmer le paiement
           </button>
