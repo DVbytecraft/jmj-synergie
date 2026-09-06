@@ -25,20 +25,20 @@ from app.api.v1.deps import (
     CurrentUser, AdminUser, ManagerUser,
     get_create_order_uc, get_order_uc, get_list_orders_uc,
     get_update_order_uc, get_confirm_order_uc, get_cancel_order_uc,
-    get_delete_order_uc, get_add_item_uc, get_remove_item_uc, get_record_delivery_uc,
+    get_delete_order_uc, get_add_item_uc, get_remove_item_uc, get_update_item_uc, get_record_delivery_uc,
 )
 from app.core.audit import log_audit_event
 from app.core.redis_client import get_redis
 from app.api.v1.deps import DB
 from app.application.dto.order_dto import (
     CreateOrderDTO, UpdateOrderDTO,
-    OrderResponseDTO, OrderListResponseDTO, OrderItemInputDTO, OrderDeliveryItemDTO,
+    OrderResponseDTO, OrderListResponseDTO, OrderItemInputDTO, OrderItemUpdateDTO, OrderDeliveryItemDTO,
 )
 from app.application.use_cases.order.create_order import CreateOrderUseCase
 from app.application.use_cases.order.manage_order import (
     GetOrderUseCase, ListOrdersUseCase, UpdateOrderUseCase,
     ConfirmOrderUseCase, CancelOrderUseCase, DeleteOrderUseCase,
-    AddOrderItemUseCase, RemoveOrderItemUseCase, RecordDeliveryUseCase,
+    AddOrderItemUseCase, RemoveOrderItemUseCase, UpdateOrderItemUseCase, RecordDeliveryUseCase,
 )
 from app.infrastructure.database.models import (
     ClientModel, OrderModel, OrderItemModel, PaymentTransactionModel,
@@ -310,6 +310,17 @@ async def remove_order_item(
     uc: Annotated[RemoveOrderItemUseCase, Depends(get_remove_item_uc)],
 ) -> OrderResponseDTO:
     return await uc.execute(order_id, item_id)
+
+
+@router.patch("/{order_id}/items/{item_id}", response_model=OrderResponseDTO)
+async def update_order_item(
+    order_id: UUID,
+    item_id: UUID,
+    body: OrderItemUpdateDTO,
+    current_user: CurrentUser,
+    uc: Annotated[UpdateOrderItemUseCase, Depends(get_update_item_uc)],
+) -> OrderResponseDTO:
+    return await uc.execute(order_id, item_id, body)
 
 
 @router.post("/{order_id}/deliveries", response_model=OrderResponseDTO)

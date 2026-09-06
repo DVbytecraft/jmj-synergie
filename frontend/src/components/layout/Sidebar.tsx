@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, ShoppingCart, FileText,
   CreditCard, ScanLine, Settings, LogOut, Package,
   BookOpen, RotateCcw, X, UserCircle,
-  ClipboardList, Warehouse,
+  ClipboardList, Warehouse, ShoppingBag,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -44,9 +44,10 @@ const navGroups: NavGroup[] = [
     label: "Commercial",
     items: [
       { href: "/clients",   icon: Users,          label: "Clients",   roles: ORG_ROLES },
-      { href: "/commandes", icon: ShoppingCart,   label: "Commandes", roles: ORG_ROLES },
-      { href: "/devis",     icon: ClipboardList,  label: "Devis",     roles: MANAGER_ROLES },
       { href: "/produits",  icon: Package,        label: "Produits",  roles: MANAGER_ROLES },
+      { href: "/devis",     icon: ClipboardList,  label: "Devis",     roles: MANAGER_ROLES },
+      { href: "/commandes", icon: ShoppingCart,   label: "Commandes clients", roles: ORG_ROLES },
+      { href: "/achats",    icon: ShoppingBag,    label: "Achats fournisseurs", roles: MANAGER_ROLES },
       { href: "/stock",     icon: Warehouse,      label: "Stock",     roles: MANAGER_ROLES },
     ],
   },
@@ -62,7 +63,7 @@ const navGroups: NavGroup[] = [
     label: "Documents",
     items: [
       { href: "/documents", icon: FileText, label: "Documents",     roles: ORG_ROLES },
-      { href: "/scan",      icon: ScanLine, label: "Scan facture",  roles: MANAGER_ROLES },
+      { href: "/scan",      icon: ScanLine, label: "Scan facture / commande",  roles: MANAGER_ROLES },
     ],
   },
 ];

@@ -249,11 +249,11 @@ export default function ScanPage() {
         default_tax_rate: Number(extracted.tax_rate) || 0,
       });
 
-      const taxRate = Number(extracted.tax_rate) || (
-        Number(extracted.subtotal) > 0
+      const taxRate = typeof extracted.tax_rate === "number"
+        ? extracted.tax_rate
+        : Number(extracted.subtotal) > 0
           ? (Number(extracted.tax_amount) / Number(extracted.subtotal)) * 100
-          : 0
-      );
+          : 0;
       const sourceReference = extracted.purchase_order_ref || extracted.invoice_number;
       const sourceLabel = extracted.document_type === "purchase_order"
         ? "Bon de commande scanné"
@@ -677,16 +677,23 @@ export default function ScanPage() {
                 </div>
               )}
               <div>
-                <label className="label">Taux TVA (%)</label>
-                <input
-                  value={extracted.tax_rate ?? ""}
-                  onChange={(event) => updateExtracted("tax_rate", Number(event.target.value))}
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  className="input"
-                />
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={(extracted.tax_rate ?? 0) > 0}
+                    onChange={(event) => updateExtracted("tax_rate", event.target.checked ? 19.25 : 0)}
+                  />
+                  Appliquer la TVA
+                </label>
+                {(extracted.tax_rate ?? 0) > 0 && <input
+                    value={extracted.tax_rate ?? ""}
+                    onChange={(event) => updateExtracted("tax_rate", Number(event.target.value))}
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    className="input"
+                  />}
               </div>
               {extracted.tax_amount !== undefined && (
                 <div>

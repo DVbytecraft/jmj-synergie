@@ -158,7 +158,7 @@ function NewDevisForm() {
       client_id: "",
       items: [{ description: "", quantity: 1, unit_price: 0 }],
       notes: "",
-      tax_rate: 19.25,
+      tax_rate: 0,
       valid_until: "",
     },
   });
@@ -315,16 +315,19 @@ function NewDevisForm() {
           </div>
 
           {/* TVA */}
-          <div className="mt-4">
-            <label className="label">Taux TVA (%)</label>
-            <input
-              {...register("tax_rate")}
-              type="number"
-              min={0}
-              max={100}
-              step={0.01}
-              className="input w-32 text-sm"
-            />
+          <div className="mt-4 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={watchTaxRate > 0}
+                onChange={(event) => setValue("tax_rate", event.target.checked ? 19.25 : 0)}
+              />
+              Appliquer la TVA à ce devis
+            </label>
+            {watchTaxRate > 0 && <div>
+              <label className="label">Taux TVA (%)</label>
+              <input {...register("tax_rate")} type="number" min={0.01} max={100} step={0.01} className="input w-32 text-sm" />
+            </div>}
           </div>
 
           {/* Totaux */}

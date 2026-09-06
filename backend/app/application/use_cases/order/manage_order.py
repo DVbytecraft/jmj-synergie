@@ -13,6 +13,7 @@ from app.application.dto.order_dto import (
     OrderListResponseDTO,
     OrderItemInputDTO,
     OrderDeliveryItemDTO,
+    OrderItemUpdateDTO,
 )
 from app.application.mappers.order_mapper import OrderMapper
 from app.core.exceptions import EntityNotFoundError, InvalidOrderStateError, PermissionDeniedError
@@ -62,8 +63,8 @@ class UpdateOrderUseCase:
         order = await self._repo.get_by_id(order_id)
         if not order or order.is_deleted:
             raise EntityNotFoundError("Order", order_id)
-        if order.status != OrderStatus.DRAFT:
-            raise InvalidOrderStateError(order.status.value, "draft")
+        if not order.can_edit_commercial_terms:
+            raise InvalidOrderStateError(order.status.value, "editable before delivery, invoicing or payment")
 
         if dto.tax_rate is not None:
             order.tax_rate = dto.tax_rate
@@ -79,6 +80,19 @@ class UpdateOrderUseCase:
             order.due_date = dto.due_date
         if dto.delivery_date is not None:
             order.delivery_date = dto.delivery_date
+        if dto.items is not None:
+            order.items = [
+                OrderItem(
+                    description=item.description,
+                    quantity=item.quantity,
+                    unit_price=Money(item.unit_price_cents, order.currency),
+                    unit=item.unit,
+                    item_code=item.item_code,
+                    notes=item.notes,
+                    sort_order=item.sort_order,
+                )
+                for item in dto.items
+            ]
 
         saved = await self._repo.save(order)
         logger.info("order.updated", order_id=str(order_id))
@@ -171,6 +185,28 @@ class RemoveOrderItemUseCase:
             order.remove_item(item_id)
         except ValueError as e:
             raise InvalidOrderStateError(order.status.value, "draft") from e
+        saved = await self._repo.save(order)
+        return OrderMapper.to_response_dto(saved)
+
+
+class UpdateOrderItemUseCase:
+    def __init__(self, repo: IOrderRepository) -> None:
+        self._repo = repo
+
+    async def execute(self, order_id: UUID, item_id: UUID, dto: OrderItemUpdateDTO) -> OrderResponseDTO:
+        order = await self._repo.get_by_id(order_id)
+        if not order or order.is_deleted:
+            raise EntityNotFoundError("Order", order_id)
+        try:
+            order.update_item(
+                item_id,
+                description=dto.description,
+                quantity=dto.quantity,
+                unit_price=Money(dto.unit_price_cents, order.currency) if dto.unit_price_cents is not None else None,
+                unit=dto.unit,
+            )
+        except ValueError as exc:
+            raise InvalidOrderStateError(order.status.value, "editable before delivery, invoicing or payment") from exc
         saved = await self._repo.save(order)
         return OrderMapper.to_response_dto(saved)
 

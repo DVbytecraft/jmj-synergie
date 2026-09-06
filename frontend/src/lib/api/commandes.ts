@@ -58,6 +58,15 @@ export const commandesApi = {
     await apiClient.delete(`/orders/${id}/items/${itemId}`);
   },
 
+  updateItem: async (
+    id: string,
+    itemId: string,
+    item: { description?: string; quantity?: number; unit_price_cents?: number; unit?: string }
+  ) => {
+    const res = await apiClient.patch<Order>(`/orders/${id}/items/${itemId}`, item);
+    return res.data;
+  },
+
   enregistrerLivraison: async (
     id: string,
     items: Array<{ item_id: string; quantity: number }>

@@ -33,6 +33,7 @@ from app.application.use_cases.order.manage_order import (
     GetOrderUseCase, ListOrdersUseCase, UpdateOrderUseCase,
     ConfirmOrderUseCase, CancelOrderUseCase, DeleteOrderUseCase,
     AddOrderItemUseCase, RemoveOrderItemUseCase, RecordDeliveryUseCase,
+    UpdateOrderItemUseCase,
 )
 from app.application.use_cases.payment.record_payment import RecordPaymentUseCase
 from app.application.use_cases.refund.manage_refund import (
@@ -194,6 +195,9 @@ def get_add_item_uc(db: DB, current_user: CurrentUser) -> AddOrderItemUseCase:
 
 def get_remove_item_uc(db: DB, current_user: CurrentUser) -> RemoveOrderItemUseCase:
     return RemoveOrderItemUseCase(OrderRepository(db, _require_org(current_user)))
+
+def get_update_item_uc(db: DB, current_user: CurrentUser) -> UpdateOrderItemUseCase:
+    return UpdateOrderItemUseCase(OrderRepository(db, _require_org(current_user)))
 
 def get_record_delivery_uc(db: DB, current_user: CurrentUser) -> RecordDeliveryUseCase:
     return RecordDeliveryUseCase(OrderRepository(db, _require_org(current_user)))

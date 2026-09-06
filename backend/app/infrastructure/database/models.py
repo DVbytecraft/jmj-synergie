@@ -216,6 +216,75 @@ class OrderItemModel(Base):
     order: Mapped[OrderModel] = relationship("OrderModel", back_populates="items")
 
 
+# ─── Procurement (supplier purchases, kept separate from customer sales) ──────
+
+class SupplierModel(Base):
+    __tablename__ = "suppliers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str] = mapped_column(String(30), nullable=False)
+    address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tax_id: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="XAF")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+class PurchaseOrderModel(Base):
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    purchase_number: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
+    sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="XAF")
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    subtotal_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    tax_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total_cents: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    expected_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    supplier: Mapped[SupplierModel] = relationship("SupplierModel")
+    sales_order: Mapped[OrderModel | None] = relationship("OrderModel")
+    items: Mapped[list[PurchaseOrderItemModel]] = relationship(
+        "PurchaseOrderItemModel", back_populates="purchase_order", cascade="all, delete-orphan"
+    )
+
+
+class PurchaseOrderItemModel(Base):
+    __tablename__ = "purchase_order_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
+    description: Mapped[str] = mapped_column(String(1000), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    received_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    purchase_unit_price_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    purchase_order: Mapped[PurchaseOrderModel] = relationship("PurchaseOrderModel", back_populates="items")
+    product: Mapped[ProductModel | None] = relationship("ProductModel")
+
+
 # ─── Payments ──────────────────────────────────────────────────────────────────
 
 class PaymentTransactionModel(Base):

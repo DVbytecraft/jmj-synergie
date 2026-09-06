@@ -290,6 +290,7 @@ export interface OrderUpdate {
   notes?: string;
   due_date?: string;
   delivery_date?: string;
+  items?: OrderItemCreate[];
 }
 
 export interface OrderListResponse {

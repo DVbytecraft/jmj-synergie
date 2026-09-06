@@ -40,14 +40,14 @@ class TestOrderItems:
         order.add_item(_make_item())
         assert len(order.items) == 2
 
-    def test_add_item_to_in_production_raises(self):
+    def test_add_item_to_in_production_before_fulfilment(self):
         order = _make_order()
         order.add_item(_make_item())
         actor = uuid.uuid4()
         order.confirm(actor)
         order.start_production(actor)
-        with pytest.raises(ValueError):
-            order.add_item(_make_item())
+        order.add_item(_make_item())
+        assert len(order.items) == 2
 
     def test_item_quantity_must_be_positive(self):
         with pytest.raises(ValueError):
@@ -84,11 +84,23 @@ class TestOrderItems:
         order.remove_item(item.id)
         assert not order.items
 
-    def test_remove_item_from_confirmed_raises(self):
+    def test_remove_item_from_confirmed_before_fulfilment(self):
         order = _make_order()
         item = _make_item()
         order.add_item(item)
         order.confirm(uuid.uuid4())
+        order.remove_item(item.id)
+        assert not order.items
+
+    def test_editing_items_after_delivery_starts_raises(self):
+        order = _make_order()
+        item = _make_item(qty=2)
+        order.add_item(item)
+        actor = uuid.uuid4()
+        order.confirm(actor)
+        order.record_delivery(actor, [(item.id, 1)])
+        with pytest.raises(ValueError):
+            order.add_item(_make_item())
         with pytest.raises(ValueError):
             order.remove_item(item.id)
 

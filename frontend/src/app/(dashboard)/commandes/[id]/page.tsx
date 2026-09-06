@@ -12,11 +12,12 @@ import { portalApi } from "@/lib/api/portal";
 import { amountToCents, centsToAmount, formatCents } from "@/lib/utils/money";
 import { PdfPreviewPanel } from "@/components/ui/PdfPreviewPanel";
 import { useBlobPreview } from "@/lib/hooks/use-blob-preview";
-import type { PaymentMethod } from "@/types";
+import type { Order, PaymentMethod } from "@/types";
 import {
   ArrowLeft, CheckCircle, XCircle, Eye, FileText,
   CreditCard, Loader2, Package, Truck, Wallet, Receipt,
   ShoppingCart, ClipboardList, ChevronRight, Share2, Copy, Check,
+  Pencil, ShoppingBag, Plus, Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { OrderStatusBadge } from "@/components/ui/OrderStatusBadge";
@@ -41,6 +42,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const qc = useQueryClient();
   const [showPayModal, setShowPayModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
@@ -137,6 +139,9 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const isConfirmed = ["confirmed", "in_progress", "in_production", "ready", "partially_delivered", "delivered"].includes(commande.status);
   const hasPaid = commande.paid_cents > 0;
   const canPay = isConfirmed && commande.balance_due_cents > 0;
+  const canEdit = ["draft", "confirmed", "in_production", "ready"].includes(commande.status)
+    && commande.paid_cents === 0
+    && commande.items.every((item) => item.delivered_quantity === 0 && item.invoiced_quantity === 0);
 
   const latestPayment = payments?.items?.find((p) => p.status === "completed") ?? payments?.items?.[0];
 
@@ -161,6 +166,14 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
 
         {/* Action buttons */}
         <div className="flex gap-2 flex-wrap">
+          {canEdit && (
+            <button onClick={() => setShowEditModal(true)} className="btn-secondary">
+              <Pencil className="w-4 h-4" /> Modifier
+            </button>
+          )}
+          <Link href={`/achats?sales_order_id=${id}`} className="btn-secondary">
+            <ShoppingBag className="w-4 h-4" /> Acheter chez un fournisseur
+          </Link>
           {canConfirm && (
             <button
               onClick={() => confirmerMut.mutate()}
@@ -565,6 +578,16 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           }}
         />
       )}
+      {showEditModal && (
+        <OrderEditModal
+          order={commande}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            setShowEditModal(false);
+            qc.invalidateQueries({ queryKey: ["commandes", id] });
+          }}
+        />
+      )}
       {showDeliveryModal && (
         <DeliveryModal
           order={commande}
@@ -625,6 +648,61 @@ function DocStep({
       </button>
     </div>
   );
+}
+
+function OrderEditModal({ order, onClose, onSuccess }: { order: Order; onClose: () => void; onSuccess: () => void }) {
+  type EditableLine = { id?: string; description: string; quantity: number; unit_price: number; unit: string };
+  const [lines, setLines] = useState<EditableLine[]>(order.items.map((item) => ({
+    id: item.id,
+    description: item.description,
+    quantity: item.quantity,
+    unit_price: centsToAmount(item.unit_price_cents),
+    unit: item.unit ?? "",
+  })));
+  const [applyTax, setApplyTax] = useState(order.tax_rate > 0);
+  const [taxRate, setTaxRate] = useState(order.tax_rate || 19.25);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!lines.length || lines.some((line) => !line.description.trim() || line.quantity <= 0 || line.unit_price < 0)) {
+      setError("La commande doit contenir au moins une ligne valide.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await commandesApi.update(order.id, {
+        tax_rate: applyTax ? taxRate : 0,
+        items: lines.map((line) => ({
+          description: line.description.trim(), quantity: Number(line.quantity),
+          unit_price_cents: amountToCents(Number(line.unit_price)), unit: line.unit,
+        })),
+      });
+      onSuccess();
+    } catch (caught: any) {
+      setError(caught?.response?.data?.detail ?? "Impossible de modifier cette commande");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="flex justify-between"><div><h2 className="text-lg font-bold">Modifier la commande préparée</h2><p className="text-xs text-slate-500">Possible jusqu’à la première livraison, facture ou paiement.</p></div><button onClick={onClose} className="btn-secondary">Fermer</button></div>
+      {lines.map((line, index) => <div key={line.id ?? index} className="grid sm:grid-cols-12 gap-2 items-end border rounded-lg p-3">
+        <div className="sm:col-span-5"><label className="label">Description</label><input value={line.description} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, description: e.target.value } : v))} className="input" /></div>
+        <div className="sm:col-span-2"><label className="label">Quantité</label><input type="number" min="1" value={line.quantity} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, quantity: Number(e.target.value) } : v))} className="input" /></div>
+        <div className="sm:col-span-3"><label className="label">Prix de vente</label><input type="number" min="0" value={line.unit_price} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, unit_price: Number(e.target.value) } : v))} className="input" /></div>
+        <div className="sm:col-span-1"><label className="label">Unité</label><input value={line.unit} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, unit: e.target.value } : v))} className="input" /></div>
+        <button onClick={() => setLines((all) => all.filter((_, i) => i !== index))} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
+      </div>)}
+      <button onClick={() => setLines((all) => [...all, { description: "", quantity: 1, unit_price: 0, unit: "" }])} className="btn-secondary"><Plus className="w-4 h-4" /> Ajouter un produit</button>
+      <div className="flex flex-wrap items-center gap-4 border-t pt-4"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} /> Appliquer la TVA</label>{applyTax && <input type="number" min="0.01" max="100" step="0.01" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} className="input w-28" />}</div>
+      {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>}
+      <div className="flex justify-end"><button onClick={save} disabled={saving} className="btn-primary">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer</button></div>
+    </div>
+  </div>;
 }
 
 function DeliveryModal({

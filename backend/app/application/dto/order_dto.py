@@ -23,6 +23,13 @@ class OrderDeliveryItemDTO(BaseModel):
     quantity: int = Field(..., gt=0)
 
 
+class OrderItemUpdateDTO(BaseModel):
+    description: Optional[str] = Field(None, min_length=1, max_length=1000)
+    quantity: Optional[int] = Field(None, gt=0)
+    unit_price_cents: Optional[int] = Field(None, ge=0)
+    unit: Optional[str] = Field(None, max_length=20)
+
+
 class CreateOrderDTO(BaseModel):
     client_id: UUID
     currency: str = Field("XAF", min_length=3, max_length=3)
@@ -44,6 +51,7 @@ class UpdateOrderDTO(BaseModel):
     notes: Optional[str] = None
     due_date: Optional[date] = None
     delivery_date: Optional[date] = None
+    items: Optional[list[OrderItemInputDTO]] = Field(None, min_length=1)
 
 
 class OrderItemResponseDTO(BaseModel):

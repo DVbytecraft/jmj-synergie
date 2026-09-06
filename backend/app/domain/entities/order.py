@@ -192,6 +192,15 @@ class Order:
         return any(item.delivered_quantity > 0 for item in self.items)
 
     @property
+    def can_edit_commercial_terms(self) -> bool:
+        """A prepared order stays editable until money, delivery or invoicing starts."""
+        return (
+            self.status in (OrderStatus.DRAFT, OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY)
+            and self.paid_cents == 0
+            and not any(item.delivered_quantity or item.invoiced_quantity for item in self.items)
+        )
+
+    @property
     def paid(self) -> Money:
         return Money(self.paid_cents, self.currency)
 
@@ -220,18 +229,46 @@ class Order:
     # ── Item management ───────────────────────────────────────────────────────
 
     def add_item(self, item: OrderItem) -> None:
-        if self.status not in (OrderStatus.DRAFT, OrderStatus.CONFIRMED):
+        if not self.can_edit_commercial_terms:
             raise ValueError(f"Cannot add items when order is '{self.status.value}'")
         self.items.append(item)
         self._touch()
 
     def remove_item(self, item_id: UUID) -> None:
-        if self.status != OrderStatus.DRAFT:
-            raise ValueError("Items can only be removed from DRAFT orders")
+        if not self.can_edit_commercial_terms:
+            raise ValueError("Items can no longer be removed after delivery, invoicing or payment")
         original = len(self.items)
         self.items = [i for i in self.items if i.id != item_id]
         if len(self.items) == original:
             raise ValueError(f"Item {item_id} not found in order")
+        self._touch()
+
+    def update_item(
+        self,
+        item_id: UUID,
+        *,
+        description: str | None = None,
+        quantity: int | None = None,
+        unit_price: Money | None = None,
+        unit: str | None = None,
+    ) -> None:
+        if not self.can_edit_commercial_terms:
+            raise ValueError("Order can no longer be edited after delivery, invoicing or payment")
+        item = next((candidate for candidate in self.items if candidate.id == item_id), None)
+        if item is None:
+            raise ValueError(f"Item {item_id} not found in order")
+        if description is not None:
+            if not description.strip():
+                raise ValueError("description is required")
+            item.description = description.strip()
+        if quantity is not None:
+            if quantity <= 0:
+                raise ValueError("quantity must be positive")
+            item.quantity = quantity
+        if unit_price is not None:
+            item.unit_price = unit_price
+        if unit is not None:
+            item.unit = unit or None
         self._touch()
 
     # ── State machine ─────────────────────────────────────────────────────────

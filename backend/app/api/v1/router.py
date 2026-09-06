@@ -19,6 +19,7 @@ from app.api.v1.endpoints import (
     exports,
     notifications,
     portal,
+    purchases,
 )
 
 api_router = APIRouter()
@@ -30,6 +31,7 @@ api_router.include_router(orders.router,          prefix="/orders",          tag
 api_router.include_router(products.router,        prefix="/products",        tags=["Products"])
 api_router.include_router(stock.router,           prefix="/stock",           tags=["Stock"])
 api_router.include_router(quotes.router,          prefix="/quotes",          tags=["Quotes"])
+api_router.include_router(purchases.router,       prefix="/purchases",       tags=["Purchases"])
 api_router.include_router(payments.router,        prefix="/payments",        tags=["Payments"])
 api_router.include_router(refunds.router,         prefix="/refunds",         tags=["Refunds"])
 api_router.include_router(documents.router,       prefix="/documents",       tags=["Documents"])
