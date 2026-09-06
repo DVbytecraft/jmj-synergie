@@ -397,7 +397,7 @@ def test_analyser_facture_tesseract_reads_file_and_formats_output(monkeypatch, t
 def test_load_images_pdf_success(monkeypatch) -> None:
     fake_page = Image.new("RGB", (4, 4), color="white")
     import pdf2image
-    monkeypatch.setattr(pdf2image, "convert_from_bytes", lambda content, dpi, last_page: [fake_page])
+    monkeypatch.setattr(pdf2image, "convert_from_bytes", lambda content, dpi, last_page, size: [fake_page])
 
     images = _load_images(b"%PDF-1.4 fake", "application/pdf")
 
@@ -760,6 +760,10 @@ def test_validate_amounts_skips_ttc_check_when_fields_missing() -> None:
 
 def test_score_extraction_returns_zero_for_empty_data() -> None:
     assert _score_extraction({}) == 0.0
+
+
+def test_validate_amounts_marks_empty_extraction_for_review() -> None:
+    assert _validate_amounts({})["needs_review"] is True
 
 
 def test_score_extraction_penalizes_needs_review_without_going_negative() -> None:

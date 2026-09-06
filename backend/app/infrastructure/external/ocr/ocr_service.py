@@ -33,8 +33,9 @@ _TESS_CONFIG = "--oem 3 --psm 3"
 _TESS_LANG = "fra+eng"
 
 # Memory guards for Render Starter plan (512 MB RAM)
-_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024   # 15 MB hard limit
+_MAX_FILE_SIZE_BYTES = settings.max_file_size_bytes
 _MAX_IMG_WIDTH_PX    = 2000               # downscale images wider than this
+_MAX_IMAGE_PIXELS    = 24_000_000          # reject decompression bombs
 _MAX_PDF_PAGES       = 3                  # analyse first N pages only
 _PDF_DPI             = 200               # lower than 300 to halve RAM usage
 
@@ -107,13 +108,25 @@ def _load_images(content: bytes, content_type: str) -> list[Image.Image]:
     if "pdf" in content_type:
         try:
             from pdf2image import convert_from_bytes
-            pages = convert_from_bytes(content, dpi=_PDF_DPI, last_page=_MAX_PDF_PAGES)
+            pages = convert_from_bytes(
+                content,
+                dpi=_PDF_DPI,
+                last_page=_MAX_PDF_PAGES,
+                size=_MAX_IMG_WIDTH_PX,
+            )
             return pages
         except Exception:
             logger.exception("ocr.pdf_convert_failed")
             return []
     try:
-        return [Image.open(io.BytesIO(content))]
+        image = Image.open(io.BytesIO(content))
+        width, height = image.size
+        if width <= 0 or height <= 0 or width * height > _MAX_IMAGE_PIXELS:
+            logger.warning("ocr.image_dimensions_rejected", width=width, height=height)
+            image.close()
+            return []
+        image.load()
+        return [image]
     except Exception:
         logger.exception("ocr.image_load_failed")
         return []
@@ -742,7 +755,13 @@ def _validate_amounts(extracted: dict[str, Any]) -> dict[str, Any]:
     Tolérance : 2 unités monétaires (arrondi, frais divers).
     """
     TOLERANCE = 2.0
-    needs_review = False
+    meaningful_fields = (
+        "invoice_number", "date", "vendor", "client", "line_items",
+        "subtotal", "tax_amount", "total_amount",
+    )
+    needs_review = not any(extracted.get(field) for field in meaningful_fields)
+    if needs_review:
+        logger.warning("ocr.validation.empty_extraction")
 
     line_items   = extracted.get("line_items") or []
     subtotal     = extracted.get("subtotal")

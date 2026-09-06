@@ -14,7 +14,7 @@ const schema = z.object({
   name:        z.string().min(1, "Le nom est requis").max(255),
   unit_price:  z.coerce.number({ invalid_type_error: "Prix invalide" }).min(0, "Le prix doit être ≥ 0"),
   description: z.string().max(1000).optional().or(z.literal("")),
-  tax_rate:    z.coerce.number().min(0).max(100).default(19.25),
+  tax_rate:    z.coerce.number().min(0).max(100).default(0),
   unit:        z.string().min(1, "Unité requise").max(20).default("unité"),
   category:    z.string().max(100).optional().or(z.literal("")),
 });
@@ -45,11 +45,14 @@ export default function NewProduitPage() {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { tax_rate: 19.25, unit: "unité" },
+    defaultValues: { tax_rate: 0, unit: "unité" },
   });
+  const taxRate = watch("tax_rate") ?? 0;
 
   const onSubmit = async (data: FormValues) => {
     setServerError(null);
@@ -160,19 +163,19 @@ export default function NewProduitPage() {
               </div>
 
               {/* TVA */}
-              <div>
-                <label className="label">Taux TVA (%)</label>
-                <input
-                  {...register("tax_rate")}
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.01}
-                  className="input"
-                />
-                {errors.tax_rate && (
-                  <p className="field-error">{errors.tax_rate.message}</p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={taxRate > 0}
+                    onChange={(event) => setValue("tax_rate", event.target.checked ? 19.25 : 0, { shouldDirty: true })}
+                  />
+                  Appliquer la TVA
+                </label>
+                {taxRate > 0 && (
+                  <input {...register("tax_rate")} aria-label="Taux TVA" type="number" min={0.01} max={100} step={0.01} className="input" />
                 )}
+                {errors.tax_rate && <p className="field-error">{errors.tax_rate.message}</p>}
               </div>
 
               {/* Unité */}

@@ -110,6 +110,7 @@ class IssuerProfileModel(Base):
     primary_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     secondary_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     font_family: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    document_template: Mapped[str] = mapped_column(String(30), nullable=False, default="jmj_reference")
     logo_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     stamp_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     tax_included: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

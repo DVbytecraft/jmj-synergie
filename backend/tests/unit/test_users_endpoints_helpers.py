@@ -79,6 +79,7 @@ def test_to_issuer_profile_response_uses_defaults_without_profile():
     assert payload.primary_color == "#1a56db"
     assert payload.secondary_color == "#eff6ff"
     assert payload.font_family == "Helvetica"
+    assert payload.document_template == "jmj_reference"
 
 
 def test_to_issuer_profile_response_prefers_profile_values():

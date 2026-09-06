@@ -28,6 +28,7 @@ type SettingsForm = {
   primary_color: string;
   secondary_color: string;
   font_family: string;
+  document_template: "jmj_reference" | "modern";
 };
 
 type OrganizationForm = {
@@ -79,6 +80,7 @@ export default function SettingsPage() {
       primary_color: "#1a56db",
       secondary_color: "#eff6ff",
       font_family: "Helvetica",
+      document_template: "jmj_reference",
     },
   });
   const orgForm = useForm<OrganizationForm>({
@@ -121,6 +123,7 @@ export default function SettingsPage() {
       primary_color: data.primary_color ?? "#1a56db",
       secondary_color: data.secondary_color ?? "#eff6ff",
       font_family: data.font_family ?? "Helvetica",
+      document_template: data.document_template ?? "jmj_reference",
     });
   }, [data, reset]);
 
@@ -167,6 +170,7 @@ export default function SettingsPage() {
         primary_color: saved.primary_color ?? "#1a56db",
         secondary_color: saved.secondary_color ?? "#eff6ff",
         font_family: saved.font_family ?? "Helvetica",
+        document_template: saved.document_template ?? "jmj_reference",
       });
     },
   });
@@ -422,6 +426,16 @@ export default function SettingsPage() {
               <option value="Courier">Courier</option>
               <option value="Courier-Bold">Courier Bold</option>
             </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="label">Design des documents</label>
+            <select className="input" {...register("document_template")}>
+              <option value="jmj_reference">JMJ Reference — modele du pro forma fourni</option>
+              <option value="modern">Moderne — ancien modele</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Le design JMJ Reference est applique par defaut a tous les documents commerciaux.
+            </p>
           </div>
         </div>
 

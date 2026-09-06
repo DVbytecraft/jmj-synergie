@@ -67,7 +67,7 @@ export default function PDFPage() {
               <div>
                 <p className="font-semibold text-gray-900">Factures</p>
                 <p className="mt-0.5 text-sm text-gray-500">
-                  Document officiel avec TVA et coordonnées bancaires.
+                  Document officiel avec TVA facultative et coordonnées bancaires.
                 </p>
               </div>
             </div>

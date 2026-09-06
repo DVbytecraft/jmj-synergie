@@ -747,6 +747,7 @@ def _make_issuer(**overrides) -> dict:
         "signature_text": "",
         "signer_name": "Alice Admin",
         "signature_title": "Directrice",
+        "document_template": "modern",
     }
     issuer.update(overrides)
     return issuer
@@ -916,6 +917,32 @@ def test_build_payment_receipt_pdf_without_reference_or_paid_at_creates_file() -
         service._build_payment_receipt_pdf(str(path), order, payment, "REC-2026-02", issuer)
 
         assert path.exists() and path.stat().st_size > 0
+
+
+def test_reference_template_builds_every_document_type_and_escapes_user_text() -> None:
+    with TemporaryDirectory() as tmp:
+        service = make_service(tmp)
+        order = _make_order(notes="Maintenance <urgence> & installation")
+        order.client.full_name = "Client <A> & Associés"
+        issuer = _make_issuer(
+            document_template="jmj_reference",
+            footer_notes="NIF <123> & RCCM",
+            signature_text="A. <Direction>",
+        )
+        payment = SimpleNamespace(method="cash", amount_cents=100_000, reference=None)
+        builders = (
+            ("quote.pdf", service._build_quote_pdf, (order, "DEV-1", issuer)),
+            ("purchase.pdf", service._build_purchase_order_pdf, (order, "BC-1", issuer)),
+            ("proforma.pdf", service._build_pro_forma_pdf, (order, "PF-1", issuer)),
+            ("invoice.pdf", service._build_invoice_pdf, (order, "FAC-1", issuer)),
+            ("delivery.pdf", service._build_delivery_note_pdf, (order, "BL-1", issuer)),
+            ("receipt.pdf", service._build_payment_receipt_pdf, (order, payment, "REC-1", issuer)),
+        )
+
+        for filename, builder, args in builders:
+            path = Path(tmp) / filename
+            builder(str(path), *args)
+            assert path.exists() and path.stat().st_size > 0
 
 
 def test_signing_block_renders_signature_image_and_signer_name(monkeypatch) -> None:

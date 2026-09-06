@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ScanLine, Upload, X, FileText, AlertCircle,
@@ -60,6 +60,9 @@ const apiErrorMessage = (error: unknown, fallback: string) => {
   return response?.data?.detail || fallback;
 };
 
+const MAX_SCAN_BYTES = 10 * 1024 * 1024;
+const ALLOWED_SCAN_TYPES = new Set(["image/png", "image/jpeg", "application/pdf"]);
+
 export default function ScanPage() {
   const router = useRouter();
   const [step, setStep] = useState<ScanStep>("upload");
@@ -85,6 +88,15 @@ export default function ScanPage() {
   const { data: suppliers } = useQuery({ queryKey: ["suppliers", "scan"], queryFn: achatsApi.suppliers });
 
   const handleFile = (f: File) => {
+    if (!ALLOWED_SCAN_TYPES.has(f.type)) {
+      setExtractError("Format non supporté. Utilisez PNG, JPG ou PDF.");
+      return;
+    }
+    if (f.size > MAX_SCAN_BYTES) {
+      setExtractError("Fichier trop volumineux. Maximum 10 Mo.");
+      return;
+    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFile(f);
     setExtractError(null);
     if (f.type.startsWith("image/")) {
@@ -96,14 +108,12 @@ export default function ScanPage() {
     setStep("preview");
   };
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const f = e.dataTransfer.files[0];
-    if (f && (f.type.startsWith("image/") || f.type === "application/pdf")) {
-      handleFile(f);
-    }
-  }, []);
+    if (f) handleFile(f);
+  };
 
   const runExtraction = async () => {
     if (!file) return;
@@ -133,7 +143,7 @@ export default function ScanPage() {
       const status = err.response?.status;
       const detail = err.response?.data?.detail;
       if (status === 413) {
-        setExtractError("Fichier trop volumineux. Maximum 15 Mo.");
+        setExtractError("Fichier trop volumineux. Maximum 10 Mo.");
       } else if (status === 415) {
         setExtractError("Format non supporté. Utilisez PNG, JPG ou PDF.");
       } else if (status === 503) {
@@ -474,7 +484,7 @@ export default function ScanPage() {
           <div className="flex justify-center">
             <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full">
               <Cpu className="w-3.5 h-3.5" />
-              OCR local — aucune donnée envoyée en ligne
+              OCR local — document conservé dans votre espace sécurisé
             </div>
           </div>
         </div>

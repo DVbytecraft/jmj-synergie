@@ -65,6 +65,7 @@ export interface IssuerProfile {
   primary_color: string | null;
   secondary_color: string | null;
   font_family: string | null;
+  document_template: "jmj_reference" | "modern";
   logo_path: string | null;
   stamp_path: string | null;
   signature_path: string | null;

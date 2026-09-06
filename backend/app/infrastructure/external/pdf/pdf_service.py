@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -36,6 +37,11 @@ from app.infrastructure.database.models import (
     PaymentTransactionModel,
     UserModel,
 )
+
+
+def _safe(value: Any) -> str:
+    """Escape user-managed text before inserting it into ReportLab markup."""
+    return escape(str(value or ""))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,7 +342,7 @@ class PDFService:
         story.append(Spacer(1, 6 * mm))
 
         if order.notes:
-            story.append(Paragraph(f"<b>Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Paragraph(f"<b>Notes :</b> {_safe(order.notes)}", styles["Normal"]))
             story.append(Spacer(1, 6 * mm))
 
         story += self._signing_block(styles, issuer, order.total_cents, currency)
@@ -368,7 +374,7 @@ class PDFService:
         story.append(Spacer(1, 6 * mm))
 
         if order.notes:
-            story.append(Paragraph(f"<b>Conditions / Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Paragraph(f"<b>Conditions / Notes :</b> {_safe(order.notes)}", styles["Normal"]))
             story.append(Spacer(1, 6 * mm))
 
         story += self._signing_block(styles, issuer, order.total_cents, order.currency)
@@ -406,7 +412,7 @@ class PDFService:
         story.append(Spacer(1, 6 * mm))
 
         if order.notes:
-            story.append(Paragraph(f"<b>Notes :</b> {order.notes}", styles["Normal"]))
+            story.append(Paragraph(f"<b>Notes :</b> {_safe(order.notes)}", styles["Normal"]))
             story.append(Spacer(1, 6 * mm))
 
         story += self._signing_block(styles, issuer, order.total_cents, order.currency)
@@ -415,6 +421,7 @@ class PDFService:
 
     def _build_invoice_pdf(self, path: str, order: Any, doc_number: str, issuer: dict, delivered_only: bool = False) -> None:
         doc, styles, story = self._init_doc(path)
+        is_reference = issuer.get("document_template") == "jmj_reference"
 
         subtotal_cents = self._subtotal_cents_for_invoice(order, delivered_only=delivered_only)
         tax_c = int(subtotal_cents * order.tax_rate / 100)
@@ -426,17 +433,20 @@ class PDFService:
 
         story += self._header_section(styles, issuer, doc_number, order)
         story.append(Paragraph("FACTURE", self._title_style(issuer)))
-        story.append(Spacer(1, 2 * mm))
-        story.append(self._invoice_intro(order, issuer))
-        story.append(Spacer(1, 4 * mm))
-        story.append(self._invoice_summary_banner(order, issuer, total_for_words))
-        story.append(Spacer(1, 5 * mm))
-        story.append(self._section_label("Client et destinataire", issuer))
-        story.append(Spacer(1, 2 * mm))
+        if not is_reference:
+            story.append(Spacer(1, 2 * mm))
+            story.append(self._invoice_intro(order, issuer))
+            story.append(Spacer(1, 4 * mm))
+            story.append(self._invoice_summary_banner(order, issuer, total_for_words))
+            story.append(Spacer(1, 5 * mm))
+            story.append(self._section_label("Client et destinataire", issuer))
+            story.append(Spacer(1, 2 * mm))
+        else:
+            story.append(Spacer(1, 4 * mm))
 
         if order.notes:
             story.append(Paragraph(
-                f"<b>Objet :</b> {order.notes}",
+                f"<b>Objet :</b> {_safe(order.notes)}",
                 ParagraphStyle("objet", fontSize=9, textColor=colors.HexColor("#374151")),
             ))
             story.append(Spacer(1, 4 * mm))
@@ -453,17 +463,20 @@ class PDFService:
                 self._fmt(item["unit_price_cents"], order.currency),
                 self._fmt(int(item["unit_price_cents"] * item["quantity"]), order.currency),
             ])
-        story.append(self._section_label("Prestations et lignes facturees", issuer))
-        story.append(Spacer(1, 2 * mm))
+        if not is_reference:
+            story.append(self._section_label("Prestations et lignes facturees", issuer))
+            story.append(Spacer(1, 2 * mm))
         story.append(self._items_table(rows, issuer))
         story.append(Spacer(1, 6 * mm))
 
-        story.append(self._section_label("Synthese financiere", issuer))
-        story.append(Spacer(1, 2 * mm))
+        if not is_reference:
+            story.append(self._section_label("Synthese financiere", issuer))
+            story.append(Spacer(1, 2 * mm))
         story.append(self._totals_table_from_cents(order, issuer, subtotal_cents))
         story.append(Spacer(1, 6 * mm))
-        story.append(self._payment_terms_block(order, issuer, total_for_words, discount))
-        story.append(Spacer(1, 6 * mm))
+        if not is_reference:
+            story.append(self._payment_terms_block(order, issuer, total_for_words, discount))
+            story.append(Spacer(1, 6 * mm))
 
         # "Arrêtée la présente facture à la somme de..."
         arretee_style = ParagraphStyle(
@@ -475,9 +488,10 @@ class PDFService:
             f"<b>{amount_in_words(total_for_words, order.currency)} TTC</b>",
             arretee_style,
         ))
-        story.append(Spacer(1, 4 * mm))
-        story.append(self._gratitude_note(issuer))
-        story.append(Spacer(1, 8 * mm))
+        story.append(Spacer(1, 8 * mm if is_reference else 4 * mm))
+        if not is_reference:
+            story.append(self._gratitude_note(issuer))
+            story.append(Spacer(1, 8 * mm))
 
         story += self._signing_block(styles, issuer, total_for_words, order.currency)
         story += self._footer_section(styles, issuer)
@@ -612,9 +626,11 @@ class PDFService:
         return doc, styles, []
 
     def _title_style(self, issuer: dict) -> ParagraphStyle:
+        is_reference = issuer.get("document_template") == "jmj_reference"
         return ParagraphStyle(
-            "title", fontSize=19, fontName="Helvetica-Bold",
-            alignment=TA_CENTER, textColor=colors.HexColor(issuer["primary_color"]),
+            "title", fontSize=17 if is_reference else 19, fontName="Helvetica-Bold",
+            alignment=TA_RIGHT if is_reference else TA_CENTER,
+            textColor=colors.HexColor(issuer["primary_color"]),
             leading=20,
             spaceAfter=2,
         )
@@ -640,7 +656,7 @@ class PDFService:
     def _invoice_intro(self, order: Any, issuer: dict) -> Table:
         client_name = getattr(order.client, "company_name", None) or getattr(order.client, "full_name", "Client")
         intro = Paragraph(
-            f"<font size='10' color='#0f172a'><b>Bonjour {client_name},</b></font><br/>"
+            f"<font size='10' color='#0f172a'><b>Bonjour {_safe(client_name)},</b></font><br/>"
             f"<font size='8.5' color='#475569'>Nous vous remercions pour votre confiance. "
             f"Cette facture reprend avec clarte les prestations livrees et le montant du.</font>",
             ParagraphStyle("invoice_intro", leading=13),
@@ -677,6 +693,38 @@ class PDFService:
         return table
 
     def _header_section(self, styles, issuer: dict, doc_number: str, order: Any) -> list:
+        if issuer.get("document_template") == "jmj_reference":
+            tagline = Paragraph(
+                "<b>Service et entretien technique, Commerce général,<br/>"
+                "vente de matériels informatiques</b>",
+                ParagraphStyle(
+                    "jmj_tagline", alignment=TA_RIGHT, fontSize=9, leading=12,
+                    textColor=colors.HexColor(issuer["primary_color"]),
+                ),
+            )
+            right = Table(
+                [[tagline], [Spacer(1, 2 * mm)], [self._document_meta_card(styles, doc_number, order)]],
+                colWidths=[80 * mm],
+            )
+            right.setStyle(TableStyle([
+                ("LINEBELOW", (0, 0), (0, 0), 1, colors.HexColor(issuer["primary_color"])),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]))
+            header_table = Table(
+                [[self._company_block(styles, issuer), right]],
+                colWidths=[95 * mm, 80 * mm],
+            )
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]))
+            return [header_table, Spacer(1, 4 * mm)]
+
         header_data = [[self._company_block(styles, issuer), self._document_meta_card(styles, doc_number, order)]]
         header_table = Table(header_data, colWidths=[100 * mm, 75 * mm])
         header_table.setStyle(TableStyle([
@@ -735,9 +783,9 @@ class PDFService:
         )
         rows = [
             [Paragraph("<b>Document</b>", ParagraphStyle("meta_heading", alignment=TA_RIGHT, fontSize=11, textColor=colors.HexColor("#111827")))],
-            [Paragraph(doc_number, ParagraphStyle("meta_number", alignment=TA_RIGHT, fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#111827")))],
+            [Paragraph(_safe(doc_number), ParagraphStyle("meta_number", alignment=TA_RIGHT, fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#111827")))],
             [Paragraph(
-                f"<b>Reference :</b> {order.order_number}<br/>"
+                f"<b>Reference :</b> {_safe(order.order_number)}<br/>"
                 f"<b>Date d'emission :</b> {datetime.now(timezone.utc).strftime('%d/%m/%Y')}<br/>"
                 f"<b>Echeance :</b> {due_value}<br/>"
                 f"<b>Devise :</b> {order.currency}",
@@ -846,7 +894,7 @@ class PDFService:
         elif sig_text:
             vendor_rows.append([
                 Paragraph(
-                    f"<i>{sig_text}</i>",
+                    f"<i>{_safe(sig_text)}</i>",
                     ParagraphStyle("sig_txt", fontSize=12, fontName="Helvetica-Oblique",
                                    textColor=colors.HexColor("#1a56db")),
                 )
@@ -855,9 +903,9 @@ class PDFService:
             vendor_rows.append([Spacer(1, 14 * mm)])
 
         if signer_name or signer_title:
-            name_line = (f"<b>{signer_name}</b>" if signer_name else "")
+            name_line = (f"<b>{_safe(signer_name)}</b>" if signer_name else "")
             if signer_title:
-                name_line += f"<br/><font size='8'>{signer_title}</font>"
+                name_line += f"<br/><font size='8'>{_safe(signer_title)}</font>"
             vendor_rows.append([Paragraph(name_line, name_style)])
 
         vendor_nested = Table(vendor_rows, colWidths=[85 * mm])
@@ -885,12 +933,21 @@ class PDFService:
             "footer", fontSize=8, alignment=TA_CENTER,
             textColor=colors.HexColor("#6b7280"),
         )
+        reference = issuer.get("document_template") == "jmj_reference"
         elements: list[Any] = [
-            HRFlowable(width="100%", thickness=1, color=colors.HexColor("#d1d5db")),
+            HRFlowable(
+                width="100%", thickness=1.2 if reference else 1,
+                color=colors.HexColor(issuer["primary_color"] if reference else "#d1d5db"),
+            ),
             Spacer(1, 3 * mm),
         ]
+        if reference:
+            contacts = [issuer.get("phone"), issuer.get("email"), issuer.get("address")]
+            contact_line = "  •  ".join(value for value in contacts if value)
+            if contact_line:
+                elements.append(Paragraph(_safe(contact_line), footer_style))
         if issuer.get("footer_notes"):
-            elements.append(Paragraph(issuer["footer_notes"], footer_style))
+            elements.append(Paragraph(_safe(issuer["footer_notes"]), footer_style))
         return elements
 
     def _company_block(self, styles, issuer: dict) -> Any:
@@ -903,11 +960,11 @@ class PDFService:
             textColor=colors.HexColor("#334155"),
         )
         text = Paragraph(
-            f"<font size='14' color='{primary_color}'><b>{issuer['name']}</b></font><br/>"
-            f"{issuer['address']}<br/>"
-            f"{'Tél: ' + issuer['phone'] + '<br/>' if issuer['phone'] else ''}"
-            f"{'Email: ' + issuer['email'] + '<br/>' if issuer['email'] else ''}"
-            f"{'NIF: ' + issuer['tax_id'] if issuer['tax_id'] else ''}",
+            f"<font size='14' color='{primary_color}'><b>{_safe(issuer['name'])}</b></font><br/>"
+            f"{_safe(issuer['address'])}<br/>"
+            f"{'Tél: ' + _safe(issuer['phone']) + '<br/>' if issuer['phone'] else ''}"
+            f"{'Email: ' + _safe(issuer['email']) + '<br/>' if issuer['email'] else ''}"
+            f"{'NIF: ' + _safe(issuer['tax_id']) if issuer['tax_id'] else ''}",
             company_style,
         )
         logo = self._load_image_asset(issuer.get("logo_path", ""), width=28 * mm, height=28 * mm)
@@ -953,12 +1010,15 @@ class PDFService:
         return None
 
     def _load_local_image(self, path: str, width: float, height: float) -> Image | None:
-        storage_root = os.path.realpath(self.settings.STORAGE_PATH)
         try:
+            storage_root = os.path.realpath(self.settings.STORAGE_PATH)
+            bundled_root = os.path.realpath(Path(__file__).parent / "assets")
             resolved = os.path.realpath(path)
         except Exception:
             return None
-        if not (resolved == storage_root or resolved.startswith(storage_root + os.sep)):
+        is_stored = resolved == storage_root or resolved.startswith(storage_root + os.sep)
+        is_bundled = resolved == bundled_root or resolved.startswith(bundled_root + os.sep)
+        if not (is_stored or is_bundled):
             return None
         try:
             return Image(resolved, width=width, height=height)
@@ -966,27 +1026,28 @@ class PDFService:
             return None
 
     def _client_block(self, styles, client: Any, label: str = "Client", issuer: dict | None = None) -> Any:
-        lines = [f"<b>{label} :</b> {client.full_name}"]
+        lines = [f"<b>{_safe(label)} :</b> {_safe(client.full_name)}"]
         if client.company_name:
-            lines.append(f"<b>Société :</b> {client.company_name}")
+            lines.append(f"<b>Société :</b> {_safe(client.company_name)}")
         if getattr(client, "tax_id", None):
-            lines.append(f"<b>NIF :</b> {client.tax_id}")
+            lines.append(f"<b>NIF :</b> {_safe(client.tax_id)}")
         if client.phone:
-            lines.append(f"<b>Téléphone :</b> {client.phone}")
+            lines.append(f"<b>Téléphone :</b> {_safe(client.phone)}")
         if client.email:
-            lines.append(f"<b>Email :</b> {client.email}")
+            lines.append(f"<b>Email :</b> {_safe(client.email)}")
         if client.address_line1:
-            city_part = f", {client.city}" if getattr(client, "city", None) else ""
-            lines.append(f"<b>Adresse :</b> {client.address_line1}{city_part}")
+            city_part = f", {_safe(client.city)}" if getattr(client, "city", None) else ""
+            lines.append(f"<b>Adresse :</b> {_safe(client.address_line1)}{city_part}")
         bg_color = colors.HexColor((issuer or {}).get("secondary_color", "#eff6ff"))
         p = Paragraph(
             "<br/>".join(lines),
             ParagraphStyle("client_info", fontSize=9, leading=14, textColor=colors.HexColor("#1f2937")),
         )
         t = Table([[p]], colWidths=[180 * mm])
+        reference = (issuer or {}).get("document_template") == "jmj_reference"
         t.setStyle(TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-            ("BACKGROUND", (0, 0), (-1, -1), bg_color),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor((issuer or {}).get("primary_color", "#1a56db") if reference else "#d1d5db")),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white if reference else bg_color),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -1011,6 +1072,21 @@ class PDFService:
     def _items_table(self, rows: list, issuer: dict, col_widths: list | None = None) -> Table:
         col_widths = col_widths or [10 * mm, 70 * mm, 15 * mm, 15 * mm, 28 * mm, 27 * mm]
         t = Table(rows, colWidths=col_widths, repeatRows=1)
+        if issuer.get("document_template") == "jmj_reference":
+            t.setStyle(TableStyle([
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor(issuer["primary_color"])),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("LEADING", (0, 0), (-1, -1), 12),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LINEABOVE", (0, 0), (-1, 0), 0.8, colors.HexColor(issuer["primary_color"])),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor(issuer["primary_color"])),
+                ("LINEBELOW", (0, 1), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]))
+            return t
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(issuer["primary_color"])),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -1038,7 +1114,7 @@ class PDFService:
         rows: list[list[str]] = [["Montant HT", self._fmt(subtotal_cents, order.currency)]]
         if order.tax_rate > 0:
             rows.append([f"TVA ({order.tax_rate}%)", self._fmt(tax_cents, order.currency)])
-        else:
+        elif issuer.get("document_template") != "jmj_reference":
             rows.append(["TVA", "—"])
         if order.discount_cents > 0:
             discount = self._discount_cents_for_invoice(order, subtotal_cents)
@@ -1051,6 +1127,18 @@ class PDFService:
 
         total_idx = next(i for i, r in enumerate(rows) if r[0] == "Montant TTC")
         t = Table(rows, colWidths=[130 * mm, 45 * mm])
+        if issuer.get("document_template") == "jmj_reference":
+            t.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                ("FONTNAME", (0, total_idx), (-1, total_idx), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BACKGROUND", (0, total_idx), (-1, total_idx), colors.HexColor(issuer["secondary_color"])),
+                ("TEXTCOLOR", (0, total_idx), (-1, total_idx), colors.HexColor(issuer["primary_color"])),
+                ("LINEABOVE", (0, total_idx), (-1, total_idx), 0.7, colors.HexColor(issuer["primary_color"])),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            return t
         t.setStyle(TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
             ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#111827")),
@@ -1213,7 +1301,7 @@ class PDFService:
         logo_path = (
             (profile.logo_path if profile else None)
             or (org.logo_url if org else None)
-            or ""
+            or str(Path(__file__).parent / "assets" / "jmj-synergie-logo.png")
         )
 
         # Informations juridiques / bancaires pour le footer
@@ -1247,6 +1335,7 @@ class PDFService:
             "primary_color":    (profile.primary_color if profile else None) or "#1a56db",
             "secondary_color":  (profile.secondary_color if profile else None) or "#eff6ff",
             "font_family":      (profile.font_family if profile else None) or "Helvetica",
+            "document_template": (getattr(profile, "document_template", None) if profile else None) or "jmj_reference",
             "logo_path":        logo_path,
             "stamp_path":       (profile.stamp_path if profile else None) or "",
             "signature_path":   (user.signature_path if user else None) or "",

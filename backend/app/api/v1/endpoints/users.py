@@ -125,6 +125,7 @@ class IssuerProfileUpdate(BaseModel):
         max_length=50,
         pattern=r"^(Helvetica|Times-Roman|Courier|Helvetica-Bold|Times-Bold|Courier-Bold)$",
     )
+    document_template: str = Field(default="jmj_reference", pattern="^(jmj_reference|modern)$")
 
 
 class IssuerProfileResponse(BaseModel):
@@ -146,6 +147,7 @@ class IssuerProfileResponse(BaseModel):
     primary_color: str | None
     secondary_color: str | None
     font_family: str | None
+    document_template: str
     logo_path: str | None
     stamp_path: str | None
     signature_path: str | None
@@ -323,6 +325,7 @@ async def update_my_issuer_profile(
         current_user.signature_text = body.signature_text.strip() or None
     profile.secondary_color = _normalize_optional(body.secondary_color)
     profile.font_family = _normalize_optional(body.font_family)
+    profile.document_template = body.document_template
 
     await db.flush()
     await db.refresh(profile)
@@ -519,6 +522,7 @@ def _to_issuer_profile_response(
         primary_color=profile.primary_color if profile else "#1a56db",
         secondary_color=profile.secondary_color if profile else "#eff6ff",
         font_family=profile.font_family if profile else "Helvetica",
+        document_template=getattr(profile, "document_template", "jmj_reference") if profile else "jmj_reference",
         logo_path=profile.logo_path if profile else None,
         stamp_path=profile.stamp_path if profile else None,
         signature_path=user.signature_path,
