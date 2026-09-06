@@ -146,7 +146,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const latestPayment = payments?.items?.find((p) => p.status === "completed") ?? payments?.items?.[0];
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl min-w-0">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <Link href="/commandes" className="btn-secondary py-1.5 px-3">
@@ -165,7 +165,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
           {canEdit && (
             <button onClick={() => setShowEditModal(true)} className="btn-secondary">
               <Pencil className="w-4 h-4" /> Modifier
@@ -230,7 +230,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
 
       {/* Share link banner */}
       {shareLink && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
           <Share2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
           <span className="text-blue-700 font-medium flex-1 truncate">{shareLink}</span>
           <button
@@ -687,20 +687,20 @@ function OrderEditModal({ order, onClose, onSuccess }: { order: Order; onClose: 
     }
   };
 
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-      <div className="flex justify-between"><div><h2 className="text-lg font-bold">Modifier la commande préparée</h2><p className="text-xs text-slate-500">Possible jusqu’à la première livraison, facture ou paiement.</p></div><button onClick={onClose} className="btn-secondary">Fermer</button></div>
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-4 sm:p-6 space-y-4 max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-y-auto">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><h2 className="text-lg font-bold">Modifier la commande préparée</h2><p className="text-xs text-slate-500">Possible jusqu’à la première livraison, facture ou paiement.</p></div><button onClick={onClose} className="btn-secondary w-full sm:w-auto">Fermer</button></div>
       {lines.map((line, index) => <div key={line.id ?? index} className="grid sm:grid-cols-12 gap-2 items-end border rounded-lg p-3">
         <div className="sm:col-span-5"><label className="label">Description</label><input value={line.description} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, description: e.target.value } : v))} className="input" /></div>
         <div className="sm:col-span-2"><label className="label">Quantité</label><input type="number" min="1" value={line.quantity} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, quantity: Number(e.target.value) } : v))} className="input" /></div>
         <div className="sm:col-span-3"><label className="label">Prix de vente</label><input type="number" min="0" value={line.unit_price} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, unit_price: Number(e.target.value) } : v))} className="input" /></div>
         <div className="sm:col-span-1"><label className="label">Unité</label><input value={line.unit} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, unit: e.target.value } : v))} className="input" /></div>
-        <button onClick={() => setLines((all) => all.filter((_, i) => i !== index))} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
+        <button aria-label="Supprimer la ligne" onClick={() => setLines((all) => all.filter((_, i) => i !== index))} className="min-h-10 min-w-10 rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 className="mx-auto h-4 w-4" /></button>
       </div>)}
-      <button onClick={() => setLines((all) => [...all, { description: "", quantity: 1, unit_price: 0, unit: "" }])} className="btn-secondary"><Plus className="w-4 h-4" /> Ajouter un produit</button>
+      <button onClick={() => setLines((all) => [...all, { description: "", quantity: 1, unit_price: 0, unit: "" }])} className="btn-secondary w-full sm:w-auto"><Plus className="w-4 h-4" /> Ajouter un produit</button>
       <div className="flex flex-wrap items-center gap-4 border-t pt-4"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} /> Appliquer la TVA</label>{applyTax && <input type="number" min="0.01" max="100" step="0.01" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} className="input w-28" />}</div>
       {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>}
-      <div className="flex justify-end"><button onClick={save} disabled={saving} className="btn-primary">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer</button></div>
+      <div className="flex justify-end"><button onClick={save} disabled={saving} className="btn-primary w-full sm:w-auto">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer</button></div>
     </div>
   </div>;
 }
@@ -733,9 +733,9 @@ function DeliveryModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-4 sm:p-6 space-y-4 max-h-[calc(100dvh-1rem)] overflow-y-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-gray-900">Enregistrer une livraison</h2>
           <button onClick={onClose} className="btn-secondary py-1.5">Fermer</button>
         </div>
@@ -774,7 +774,7 @@ function DeliveryModal({
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 [&>*]:w-full sm:[&>*]:w-auto">
           <button onClick={onClose} className="btn-secondary" disabled={isPending}>
             Annuler
           </button>
@@ -819,8 +819,8 @@ function PaymentModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-5 max-h-[calc(100dvh-1rem)] overflow-y-auto">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Enregistrer un paiement</h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -883,7 +883,7 @@ function PaymentModal({
           </div>
         )}
 
-        <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+        <div className="flex flex-col-reverse sm:flex-row gap-3 justify-end pt-2 border-t border-gray-100 [&>*]:w-full sm:[&>*]:w-auto">
           <button onClick={onClose} className="btn-secondary">Annuler</button>
           <button
             onClick={() => mutate()}

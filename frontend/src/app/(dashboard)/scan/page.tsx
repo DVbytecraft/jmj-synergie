@@ -301,7 +301,7 @@ export default function ScanPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="min-w-0 max-w-3xl space-y-6">
       {/* En-tête */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Scan de facture ou bon de commande</h1>
@@ -311,15 +311,15 @@ export default function ScanPage() {
       </div>
 
       {/* Étapes */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:gap-2">
         {(["upload", "preview", "extracted"] as const).map((s, i) => {
           const labels = ["Import", "Aperçu", "Extraction"];
           const done = (["upload", "preview", "extracted"] as const).indexOf(step) > i;
           const active = step === s;
           return (
-            <div key={s} className="flex items-center gap-2">
+            <div key={s} className="flex shrink-0 items-center gap-1 sm:gap-2">
               <div
-                className={`flex items-center gap-2 text-sm font-medium ${
+                className={`flex items-center gap-1 text-xs font-medium sm:gap-2 sm:text-sm ${
                   active ? "text-blue-700" : done ? "text-emerald-600" : "text-slate-400"
                 }`}
               >
@@ -413,8 +413,8 @@ export default function ScanPage() {
       {/* ── Étape : Aperçu ── */}
       {step === "preview" && file && (
         <div className="space-y-4">
-          <div className="card p-5">
-            <div className="flex items-center justify-between mb-4">
+          <div className="card p-4 sm:p-5">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <FileText className="w-5 h-5 text-blue-600" />
@@ -456,7 +456,7 @@ export default function ScanPage() {
             </div>
           )}
 
-          <div className="flex gap-3 justify-end">
+          <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
             <button onClick={reset} className="btn-secondary">
               <X className="w-4 h-4" /> Annuler
             </button>
@@ -590,7 +590,7 @@ export default function ScanPage() {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full text-sm">
+                  <table className="w-full min-w-[640px] text-sm">
                     <thead className="bg-slate-50">
                       <tr>
                         <th className="table-header text-left w-1/2">Description</th>
@@ -659,7 +659,7 @@ export default function ScanPage() {
             )}
 
             {/* Totaux */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3">
               {extracted.subtotal !== undefined && (
                 <div>
                   <label className="label">
@@ -761,7 +761,7 @@ export default function ScanPage() {
             </div>
           )}
 
-          <div className="flex gap-3 justify-end">
+          <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
             <button onClick={reset} className="btn-secondary">
               <X className="w-4 h-4" /> Recommencer
             </button>

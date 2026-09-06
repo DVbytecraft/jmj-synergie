@@ -95,16 +95,25 @@ function AchatsContent() {
     setFormError(null); saveMut.mutate();
   };
 
+  const purchaseActions = (purchase: PurchaseOrder, mobile = false) => (
+    <div className={`flex flex-wrap gap-2 ${mobile ? "[&>*]:flex-1" : ""}`}>
+      <button onClick={() => loadForEdit(purchase)} disabled={!(["draft", "ordered"].includes(purchase.status))} className="btn-secondary py-1 text-xs">Modifier</button>
+      <button onClick={() => downloadPdf(purchase)} className="btn-secondary py-1 text-xs"><Download className="w-3 h-3" /> PDF</button>
+      {purchase.status === "draft" && <button onClick={() => actionMut.mutate({ purchase, action: "confirm" })} className="btn-primary py-1 text-xs"><CheckCircle className="w-3 h-3" /> Envoyer</button>}
+      {["ordered", "partially_received"].includes(purchase.status) && <button onClick={() => actionMut.mutate({ purchase, action: "receive" })} className="btn-primary py-1 text-xs"><PackageCheck className="w-3 h-3" /> Réceptionner</button>}
+    </div>
+  );
+
   return (
     <div className="page-container space-y-6">
       <div className="page-header">
         <div><h1 className="page-title">Achats fournisseurs</h1><p className="page-subtitle">Approvisionner une commande client sans mélanger prix d’achat et prix de vente</p></div>
-        <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Nouveau bon d’achat</button>
+        <button onClick={() => setShowForm(true)} className="btn-primary w-full sm:w-auto"><Plus className="w-4 h-4" /> Nouveau bon d’achat</button>
       </div>
 
       {showForm && (
-        <div className="card p-5 space-y-5">
-          <div className="flex justify-between"><div><h2 className="font-semibold">{editing ? `Modifier ${editing.purchase_number}` : "Bon de commande fournisseur"}</h2><p className="text-xs text-slate-500">Les prix ci-dessous sont vos coûts d’achat et ne sont jamais repris comme prix de vente.</p></div><button onClick={resetForm} className="btn-secondary">Fermer</button></div>
+        <div className="card space-y-5 p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><h2 className="font-semibold">{editing ? `Modifier ${editing.purchase_number}` : "Bon de commande fournisseur"}</h2><p className="text-xs text-slate-500">Les prix ci-dessous sont vos coûts d’achat et ne sont jamais repris comme prix de vente.</p></div><button onClick={resetForm} className="btn-secondary w-full sm:w-auto">Fermer</button></div>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="label">Entreprise fournisseur C *</label><select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input"><option value="">— Choisir —</option>{suppliers?.items.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div><label className="label">Commande client A liée (optionnel)</label><select value={salesOrderId} onChange={(e) => setSalesOrderId(e.target.value)} className="input"><option value="">— Achat libre —</option>{orders?.items.map((o) => <option key={o.id} value={o.id}>{o.order_number}</option>)}</select></div>
@@ -117,23 +126,36 @@ function AchatsContent() {
               <div className="md:col-span-4"><label className="label">Description *</label><input value={line.description} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, description: e.target.value } : v))} className="input" /></div>
               <div className="md:col-span-2"><label className="label">Quantité</label><input type="number" min="1" value={line.quantity} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, quantity: Number(e.target.value) } : v))} className="input" /></div>
               <div className="md:col-span-2"><label className="label">Prix d’achat</label><input type="number" min="0" value={line.purchase_price} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, purchase_price: Number(e.target.value) } : v))} className="input" /></div>
-              <button onClick={() => setLines((all) => all.filter((_, i) => i !== index))} disabled={lines.length === 1} className="p-2 text-red-500 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
+              <button aria-label="Supprimer la ligne" onClick={() => setLines((all) => all.filter((_, i) => i !== index))} disabled={lines.length === 1} className="min-h-10 min-w-10 rounded-lg p-2 text-red-500 hover:bg-red-50 disabled:opacity-30"><Trash2 className="mx-auto h-4 w-4" /></button>
             </div>)}
-            <button onClick={() => setLines((all) => [...all, blankLine()])} className="btn-secondary"><Plus className="w-4 h-4" /> Ajouter une ligne</button>
+            <button onClick={() => setLines((all) => [...all, blankLine()])} className="btn-secondary w-full sm:w-auto"><Plus className="w-4 h-4" /> Ajouter une ligne</button>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
-            <label className="flex items-center gap-2 mt-6"><input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} /> Appliquer la TVA à cet achat</label>
+            <label className="flex items-center gap-2 md:mt-6"><input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} /> Appliquer la TVA à cet achat</label>
             {applyTax && <div><label className="label">Taux TVA (%)</label><input type="number" min="0" max="100" step="0.01" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} className="input" /></div>}
             <div><label className="label">Livraison prévue</label><input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} className="input" /></div>
           </div>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Conditions d'achat, délai, transport…" className="input" rows={2} />
           {formError && <p className="text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg">{formError}</p>}
-          <div className="flex justify-end"><button onClick={submit} disabled={saveMut.isPending} className="btn-primary">{saveMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />} {editing ? "Enregistrer les modifications" : "Créer le bon d’achat"}</button></div>
+          <div className="flex justify-end"><button onClick={submit} disabled={saveMut.isPending} className="btn-primary w-full sm:w-auto">{saveMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />} {editing ? "Enregistrer les modifications" : "Créer le bon d’achat"}</button></div>
         </div>
       )}
 
-      <div className="card overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="table-header">Bon d’achat</th><th className="table-header">Fournisseur C</th><th className="table-header">Commande client A</th><th className="table-header">Statut</th><th className="table-header text-right">Coût d’achat HT</th><th className="table-header text-right">Vente HT</th><th className="table-header text-right">Marge brute</th><th className="table-header">Actions</th></tr></thead><tbody>
+      <div className="space-y-3 md:hidden">
+        {isLoading ? <div className="card p-10"><Loader2 className="animate-spin mx-auto" /></div> : purchases?.items.length === 0 ? <div className="card p-6 text-center text-sm text-slate-500">Aucun bon d&apos;achat pour le moment.</div> : purchases?.items.map((purchase) => {
+          const sale = orders?.items.find((order) => order.id === purchase.sales_order_id);
+          const comparable = sale?.currency === purchase.currency;
+          return <article key={purchase.id} className="card p-4 space-y-4">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-sm font-semibold truncate">{purchase.purchase_number}</p><p className="text-sm text-slate-600 truncate">{purchase.supplier_name}</p></div><span className="badge-blue flex-shrink-0">{purchase.status}</span></div>
+            {purchase.sales_order_id && <Link className="block text-sm text-blue-600 font-medium" href={`/commandes/${purchase.sales_order_id}`}>Commande client liée →</Link>}
+            <dl className="grid grid-cols-1 gap-2 text-center min-[380px]:grid-cols-3"><div className="rounded-lg bg-orange-50 p-2"><dt className="text-[11px] text-orange-700">Achat HT</dt><dd className="break-words text-xs font-bold text-orange-800">{formatCents(purchase.subtotal_cents, purchase.currency)}</dd></div><div className="rounded-lg bg-blue-50 p-2"><dt className="text-[11px] text-blue-700">Vente HT</dt><dd className="break-words text-xs font-bold text-blue-800">{sale ? formatCents(sale.subtotal_cents, sale.currency) : "—"}</dd></div><div className="rounded-lg bg-emerald-50 p-2"><dt className="text-[11px] text-emerald-700">Marge</dt><dd className="break-words text-xs font-bold text-emerald-800">{sale && comparable ? formatCents(sale.subtotal_cents - purchase.subtotal_cents, sale.currency) : "—"}</dd></div></dl>
+            {purchaseActions(purchase, true)}
+          </article>;
+        })}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead className="bg-slate-50"><tr><th className="table-header">Bon d’achat</th><th className="table-header">Fournisseur C</th><th className="table-header">Commande client A</th><th className="table-header">Statut</th><th className="table-header text-right">Coût d’achat HT</th><th className="table-header text-right">Vente HT</th><th className="table-header text-right">Marge brute</th><th className="table-header">Actions</th></tr></thead><tbody>
         {isLoading ? <tr><td colSpan={8} className="p-10 text-center"><Loader2 className="animate-spin mx-auto" /></td></tr> : purchases?.items.map((purchase) => {
           const sale = orders?.items.find((order) => order.id === purchase.sales_order_id);
           const comparable = sale?.currency === purchase.currency;
@@ -141,7 +163,7 @@ function AchatsContent() {
             <td className="table-cell font-mono">{purchase.purchase_number}</td><td className="table-cell font-medium">{purchase.supplier_name}</td><td className="table-cell">{purchase.sales_order_id ? <Link className="text-blue-600" href={`/commandes/${purchase.sales_order_id}`}>Voir la vente</Link> : "—"}</td><td className="table-cell">{purchase.status}</td><td className="table-cell text-right font-semibold text-orange-700">{formatCents(purchase.subtotal_cents, purchase.currency)}</td>
             <td className="table-cell text-right font-semibold text-blue-700">{sale ? formatCents(sale.subtotal_cents, sale.currency) : "—"}</td>
             <td className="table-cell text-right font-bold text-emerald-700">{sale && comparable ? formatCents(sale.subtotal_cents - purchase.subtotal_cents, sale.currency) : "—"}</td>
-            <td className="table-cell"><div className="flex flex-wrap gap-1"><button onClick={() => loadForEdit(purchase)} disabled={!(["draft", "ordered"].includes(purchase.status))} className="btn-secondary py-1 text-xs">Modifier</button><button onClick={() => downloadPdf(purchase)} className="btn-secondary py-1 text-xs"><Download className="w-3 h-3" /> PDF</button>{purchase.status === "draft" && <button onClick={() => actionMut.mutate({ purchase, action: "confirm" })} className="btn-primary py-1 text-xs"><CheckCircle className="w-3 h-3" /> Envoyer</button>}{["ordered", "partially_received"].includes(purchase.status) && <button onClick={() => actionMut.mutate({ purchase, action: "receive" })} className="btn-primary py-1 text-xs"><PackageCheck className="w-3 h-3" /> Réceptionner</button>}</div></td>
+            <td className="table-cell">{purchaseActions(purchase)}</td>
           </tr>;
         })}</tbody></table></div></div>
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Lecture du flux :</strong> A commande chez vous (vente) → vous créez ce bon pour C (achat) → la réception augmente le stock → vous livrez et facturez A avec votre propre prix de vente.</div>

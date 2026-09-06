@@ -74,8 +74,8 @@ function CreateClientModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[calc(100dvh-1rem)] w-full max-w-md space-y-4 overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Nouveau client</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -119,7 +119,7 @@ function CreateClientModal({
               {(error as any)?.response?.data?.detail ?? "Erreur lors de la création"}
             </div>
           )}
-          <div className="flex gap-2 pt-1 justify-end">
+          <div className="flex flex-col-reverse justify-end gap-2 pt-1 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
             <button type="button" onClick={onClose} className="btn-secondary text-sm py-1.5">Annuler</button>
             <button type="submit" disabled={isPending} className="btn-primary text-sm py-1.5">
               {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
@@ -202,7 +202,7 @@ function NewDevisForm() {
   ];
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="min-w-0 max-w-3xl space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/devis" className="btn-secondary py-1.5 px-3">
           <ArrowLeft className="w-4 h-4" />
@@ -216,12 +216,12 @@ function NewDevisForm() {
       <form onSubmit={handleSubmit((d) => mutate(d))} className="space-y-5">
         {/* Client */}
         <div className="card p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="font-semibold text-gray-900">Client</h2>
             <button
               type="button"
               onClick={() => setShowNewClient(true)}
-              className="btn-secondary py-1.5 text-xs"
+              className="btn-secondary w-full py-1.5 text-xs sm:w-auto"
             >
               <UserPlus className="w-3.5 h-3.5" />
               Nouveau client
@@ -245,12 +245,12 @@ function NewDevisForm() {
 
         {/* Lignes */}
         <div className="card p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="font-semibold text-gray-900">Lignes du devis</h2>
             <button
               type="button"
               onClick={() => append({ description: "", quantity: 1, unit_price: 0 })}
-              className="btn-secondary py-1.5 text-xs"
+              className="btn-secondary w-full py-1.5 text-xs sm:w-auto"
             >
               <Plus className="w-3.5 h-3.5" />
               Ajouter une ligne
@@ -355,7 +355,7 @@ function NewDevisForm() {
             <input
               {...register("valid_until")}
               type="date"
-              className="input w-48 text-sm"
+              className="input w-full text-sm sm:w-48"
             />
           </div>
           <div>
@@ -375,7 +375,7 @@ function NewDevisForm() {
           </div>
         )}
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
           <Link href="/devis" className="btn-secondary">Annuler</Link>
           <button type="submit" disabled={isPending} className="btn-primary">
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}

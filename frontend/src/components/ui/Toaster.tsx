@@ -94,7 +94,7 @@ export function Toaster() {
           </RadixToast.Close>
         </RadixToast.Root>
       ))}
-      <RadixToast.Viewport className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-full max-w-[360px] m-0 list-none outline-none" />
+      <RadixToast.Viewport className="fixed bottom-4 left-4 right-4 z-[100] m-0 flex w-auto max-w-[360px] list-none flex-col gap-2 outline-none sm:left-auto sm:w-full" />
     </RadixToast.Provider>
   );
 }

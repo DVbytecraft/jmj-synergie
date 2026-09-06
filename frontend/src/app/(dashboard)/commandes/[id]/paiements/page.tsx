@@ -71,8 +71,8 @@ function RefundModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[calc(100dvh-1rem)] w-full max-w-md space-y-5 overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">Demande de remboursement</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
@@ -129,7 +129,7 @@ function RefundModal({
 
             {error && <div className="alert-error">{error}</div>}
 
-            <div className="flex gap-3 justify-end">
+            <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
               <button onClick={onClose} className="btn-secondary">Annuler</button>
               <button
                 onClick={() => mut.mutate()}
@@ -183,8 +183,8 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
   const currency = commande.currency;
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center gap-3">
+    <div className="min-w-0 max-w-3xl space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <Link href={`/commandes/${id}`} className="btn-secondary py-1.5 px-3">
           <ArrowLeft className="w-4 h-4" />
         </Link>
@@ -198,7 +198,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
           </p>
         </div>
         {commande.status === "confirmed" && commande.balance_due_cents > 0 && (
-          <button onClick={() => setShowPayModal(true)} className="btn-primary">
+          <button onClick={() => setShowPayModal(true)} className="btn-primary w-full sm:w-auto">
             <Plus className="w-4 h-4" />
             Enregistrer un paiement
           </button>
@@ -216,7 +216,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
       </div>
 
       {/* Récap */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 min-[380px]:grid-cols-3">
         <div className="card p-4 text-center">
           <p className="text-xs text-gray-500 mb-1">Total TTC</p>
           <p className="text-lg font-bold text-gray-900">{formatCents(commande.total_cents, currency)}</p>
@@ -241,7 +241,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
         {!paiements?.items?.length ? (
           <div className="py-10 text-center text-gray-400 text-sm">Aucun paiement enregistré</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="table-header">N° Transaction</th>
@@ -279,7 +279,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
@@ -322,8 +322,8 @@ function PaymentModal({
   const [reference, setReference] = useState("");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[calc(100dvh-1rem)] w-full max-w-md space-y-5 overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
         <h2 className="text-lg font-bold text-gray-900">Enregistrer un paiement</h2>
         <p className="text-sm text-gray-500">
           Aucun encaissement n&apos;est lancé ici. Vous consignez simplement un règlement externe.
@@ -354,7 +354,7 @@ function PaymentModal({
           </div>
         )}
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
           <button onClick={onClose} className="btn-secondary">Annuler</button>
           <button
             onClick={() =>
