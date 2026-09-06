@@ -2,14 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ScanLine, Upload, X, FileText, AlertCircle,
-  ChevronRight, Loader2, CheckCircle, ShieldAlert, Cpu, Camera, Plus, Trash2,
+  ChevronRight, Loader2, CheckCircle, ShieldAlert, Cpu, Camera, Plus, Trash2, Building2,
 } from "lucide-react";
 import { documentsApi } from "@/lib/api/documents";
 import { clientsApi } from "@/lib/api/clients";
 import { commandesApi } from "@/lib/api/commandes";
 import { amountToCents } from "@/lib/utils/money";
+import { achatsApi } from "@/lib/api/achats";
 
 interface LineItem {
   description: string;
@@ -17,6 +19,7 @@ interface LineItem {
   unit_price: number;
   unit?: string;
   total?: number;
+  supplier_unit_price?: number;
 }
 
 interface PartyInfo {
@@ -47,6 +50,7 @@ interface ExtractedData {
 }
 
 type ScanStep = "upload" | "preview" | "extracted";
+type WorkflowTarget = "customer_documents" | "supplier_purchase";
 
 const partyFrom = (value: PartyInfo | string | undefined): PartyInfo =>
   typeof value === "string" ? { name: value } : { ...(value ?? {}) };
@@ -70,8 +74,15 @@ export default function ScanPage() {
   const [creatingDocuments, setCreatingDocuments] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [scannedDocumentId, setScannedDocumentId] = useState<string | null>(null);
+  const [workflowTarget, setWorkflowTarget] = useState<WorkflowTarget>("customer_documents");
+  const [supplierId, setSupplierId] = useState("");
+  const [applyPurchaseTax, setApplyPurchaseTax] = useState(false);
+  const [purchaseTaxRate, setPurchaseTaxRate] = useState(19.25);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const { data: suppliers } = useQuery({ queryKey: ["suppliers", "scan"], queryFn: achatsApi.suppliers });
 
   const handleFile = (f: File) => {
     setFile(f);
@@ -111,7 +122,9 @@ export default function ScanPage() {
         : fallbackClient.name
           ? fallbackClient
           : fallbackVendor;
+      data.line_items = (data.line_items ?? []).map((line) => ({ ...line, supplier_unit_price: 0 }));
       setExtracted(data);
+      setScannedDocumentId(result.document_id);
       setConfidence(result.confidence);
       setRawText(result.raw_text);
       setStep("extracted");
@@ -143,6 +156,12 @@ export default function ScanPage() {
     setWorkflowError(null);
     setCreatingDocuments(false);
     setIdempotencyKey(crypto.randomUUID());
+    setScannedDocumentId(null);
+    setWorkflowTarget("customer_documents");
+    setSupplierId("");
+    setApplyPurchaseTax(false);
+    setPurchaseTaxRate(19.25);
+    setReviewConfirmed(false);
     setRawText("");
   };
 
@@ -221,6 +240,20 @@ export default function ScanPage() {
       setWorkflowError("Vérifiez les lignes : description, quantité entière positive et prix positif ou nul.");
       return;
     }
+    if ((confidence < 0.7 || extracted.needs_review) && !reviewConfirmed) {
+      setWorkflowError("Confirmez que vous avez vérifié les données OCR avant de continuer.");
+      return;
+    }
+    if (workflowTarget === "supplier_purchase") {
+      if (!supplierId) {
+        setWorkflowError("Choisissez l'entreprise fournisseur destinataire du nouveau bon de commande.");
+        return;
+      }
+      if (items.some((line) => Number(line.supplier_unit_price) < 0 || !Number.isFinite(Number(line.supplier_unit_price)))) {
+        setWorkflowError("Vérifiez chaque prix d'achat fournisseur.");
+        return;
+      }
+    }
 
     setCreatingDocuments(true);
     let createdOrderId: string | null = null;
@@ -276,11 +309,48 @@ export default function ScanPage() {
       }, idempotencyKey);
       createdOrderId = order.id;
 
-      const confirmed = await commandesApi.confirmer(order.id);
-      await commandesApi.enregistrerLivraison(
-        order.id,
-        confirmed.items.map((line) => ({ item_id: line.id, quantity: line.quantity }))
-      );
+      if (scannedDocumentId) {
+        await documentsApi.linkScanToOrder(scannedDocumentId, order.id);
+      }
+
+      const confirmed = order.status === "draft" ? await commandesApi.confirmer(order.id) : order;
+      if (workflowTarget === "supplier_purchase") {
+        if (scannedDocumentId) {
+          const existingPurchases = await achatsApi.list();
+          const existingPurchase = existingPurchases.items.find((purchase) => purchase.source_document_id === scannedDocumentId);
+          if (existingPurchase) {
+            router.push(`/achats?purchase_id=${existingPurchase.id}`);
+            return;
+          }
+        }
+        const purchase = await achatsApi.create({
+          supplier_id: supplierId,
+          sales_order_id: confirmed.id,
+          source_document_id: scannedDocumentId || undefined,
+          currency,
+          apply_tax: applyPurchaseTax,
+          tax_rate: applyPurchaseTax ? purchaseTaxRate : 0,
+          notes: [
+            `Approvisionnement lié à la commande client ${confirmed.order_number}`,
+            sourceReference ? `Document client source : ${sourceReference}` : undefined,
+          ].filter(Boolean).join("\n"),
+          items: items.map((line) => ({
+            description: line.description.trim(),
+            quantity: Number(line.quantity),
+            unit: line.unit?.trim() || undefined,
+            purchase_unit_price_cents: amountToCents(Number(line.supplier_unit_price) || 0),
+          })),
+        });
+        router.push(`/achats?purchase_id=${purchase.id}`);
+        return;
+      }
+      const currentOrder = await commandesApi.get(order.id);
+      if (currentOrder.status !== "delivered") {
+        const remaining = currentOrder.items
+          .map((line) => ({ item_id: line.id, quantity: line.remaining_quantity }))
+          .filter((line) => line.quantity > 0);
+        if (remaining.length) await commandesApi.enregistrerLivraison(order.id, remaining);
+      }
       const [deliveryNote, invoice] = await Promise.all([
         documentsApi.genererBonLivraison(order.id),
         documentsApi.genererFacture(order.id),
@@ -510,6 +580,39 @@ export default function ScanPage() {
             </div>
           )}
 
+          <div className="card space-y-4 p-4 sm:p-5">
+            <div>
+              <h2 className="font-semibold text-slate-900">Que voulez-vous produire à partir de ce document ?</h2>
+              <p className="mt-1 text-xs text-slate-500">Le document importé reste attaché au dossier pour assurer la traçabilité.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button type="button" aria-pressed={workflowTarget === "customer_documents"} onClick={() => setWorkflowTarget("customer_documents")} className={`rounded-xl border p-4 text-left transition-colors ${workflowTarget === "customer_documents" ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}>
+                <span className="block font-semibold text-slate-900">Livraison + facture client</span>
+                <span className="mt-1 block text-xs text-slate-500">Crée la commande client, enregistre la livraison complète, puis génère le bon de livraison et la facture.</span>
+              </button>
+              <button type="button" aria-pressed={workflowTarget === "supplier_purchase"} onClick={() => setWorkflowTarget("supplier_purchase")} className={`rounded-xl border p-4 text-left transition-colors ${workflowTarget === "supplier_purchase" ? "border-orange-500 bg-orange-50 ring-2 ring-orange-100" : "border-slate-200 hover:border-orange-300"}`}>
+                <span className="block font-semibold text-slate-900">Commande client + achat fournisseur</span>
+                <span className="mt-1 block text-xs text-slate-500">Conserve le prix de vente client et crée un bon d'achat séparé avec vos prix fournisseur.</span>
+              </button>
+            </div>
+            {workflowTarget === "supplier_purchase" && (
+              <div className="grid gap-4 rounded-xl border border-orange-200 bg-orange-50 p-4 sm:grid-cols-2">
+                <div>
+                  <label className="label">Entreprise fournisseur destinataire *</label>
+                  <select value={supplierId} onChange={(event) => setSupplierId(event.target.value)} className="input bg-white">
+                    <option value="">— Choisir un fournisseur —</option>
+                    {suppliers?.items.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-orange-800"><Building2 className="mr-1 inline h-3 w-3" />Les fournisseurs se créent et se relient aux clients dans le module Achats.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={applyPurchaseTax} onChange={(event) => setApplyPurchaseTax(event.target.checked)} /> Appliquer la TVA à l'achat fournisseur</label>
+                  {applyPurchaseTax && <input aria-label="Taux TVA achat fournisseur" type="number" min="0.01" max="100" step="0.01" value={purchaseTaxRate} onChange={(event) => setPurchaseTaxRate(Number(event.target.value))} className="input bg-white" />}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Formulaire de données extraites */}
           <div className="card p-6 space-y-5">
             <h2 className="font-semibold text-slate-900 flex items-center gap-2">
@@ -590,13 +693,14 @@ export default function ScanPage() {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[640px] text-sm">
+                  <table className={`w-full text-sm ${workflowTarget === "supplier_purchase" ? "min-w-[760px]" : "min-w-[640px]"}`}>
                     <thead className="bg-slate-50">
                       <tr>
                         <th className="table-header text-left w-1/2">Description</th>
                         <th className="table-header text-right">Qté</th>
                         <th className="table-header text-right">Unité</th>
                         <th className="table-header text-right">Prix U.</th>
+                        {workflowTarget === "supplier_purchase" && <th className="table-header text-right">Prix achat</th>}
                         <th className="table-header"><span className="sr-only">Actions</span></th>
                       </tr>
                     </thead>
@@ -637,6 +741,9 @@ export default function ScanPage() {
                               placeholder="Prix"
                             />
                           </td>
+                          {workflowTarget === "supplier_purchase" && <td className="w-28 px-2 py-2">
+                            <input value={l.supplier_unit_price ?? 0} onChange={(event) => updateLine(i, "supplier_unit_price", Number(event.target.value))} type="number" min="0" className="input py-1.5 text-right text-sm" placeholder="Prix achat" />
+                          </td>}
                           <td className="px-2 py-2 w-12">
                             <button
                               type="button"
@@ -761,6 +868,13 @@ export default function ScanPage() {
             </div>
           )}
 
+          {(confidence < 0.7 || extracted.needs_review) && (
+            <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              <input className="mt-0.5" type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} />
+              <span>J'ai vérifié le client, les références, les quantités, les prix et la TVA. Les données sont correctes.</span>
+            </label>
+          )}
+
           <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row [&>*]:w-full sm:[&>*]:w-auto">
             <button onClick={reset} className="btn-secondary">
               <X className="w-4 h-4" /> Recommencer
@@ -769,7 +883,11 @@ export default function ScanPage() {
               {creatingDocuments
                 ? <Loader2 className="w-4 h-4 animate-spin" />
                 : <ChevronRight className="w-4 h-4" />}
-              {creatingDocuments ? "Création des documents…" : "Créer livraison et facture"}
+              {creatingDocuments
+                ? "Création en cours…"
+                : workflowTarget === "supplier_purchase"
+                  ? "Créer la commande client et le bon fournisseur"
+                  : "Créer livraison et facture"}
             </button>
           </div>
         </div>

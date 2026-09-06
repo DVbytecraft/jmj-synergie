@@ -36,6 +36,10 @@ class ScanResult(BaseModel):
     raw_text: str
 
 
+class LinkScannedDocumentRequest(BaseModel):
+    order_id: UUID
+
+
 def _is_document_owner(current_user, document: Document, order: OrderModel | None) -> bool:
     if current_user.role == "admin":
         return True
@@ -356,6 +360,27 @@ async def scan_invoice(
         import structlog as _sl
         _sl.get_logger(__name__).exception("scan.failed", error=str(exc))
         raise HTTPException(status_code=500, detail="Erreur lors de l'analyse OCR. V?rifiez le format du fichier et r?essayez.")
+
+
+@router.post("/scans/{document_id}/link-order")
+async def link_scanned_document_to_order(
+    document_id: UUID,
+    body: LinkScannedDocumentRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach the uploaded source to the resulting customer order for traceability."""
+    document, linked_order = await _get_document_with_order(db, document_id, current_user.organization_id)
+    if not _is_document_owner(current_user, document, linked_order):
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    if document.document_type != "scanned":
+        raise HTTPException(status_code=409, detail="Seul un document scanné peut être relié")
+    order = await _get_order_or_404(db, body.order_id, current_user.organization_id)
+    if document.order_id and document.order_id != order.id:
+        raise HTTPException(status_code=409, detail="Ce document est déjà relié à une autre commande")
+    document.order_id = order.id
+    await db.commit()
+    return {"document_id": str(document.id), "order_id": str(order.id)}
 
 
 @router.get("/{document_id}/preview")

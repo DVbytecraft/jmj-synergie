@@ -3,6 +3,7 @@ import { apiClient } from "./client";
 export interface Supplier {
   id: string;
   code: string;
+  client_id: string | null;
   name: string;
   contact_name: string | null;
   email: string | null;
@@ -30,6 +31,7 @@ export interface PurchaseOrder {
   supplier_id: string;
   supplier_name: string;
   sales_order_id: string | null;
+  source_document_id: string | null;
   status: "draft" | "ordered" | "partially_received" | "received";
   currency: string;
   tax_rate: number;
@@ -45,6 +47,7 @@ export interface PurchaseOrder {
 export interface PurchaseInput {
   supplier_id: string;
   sales_order_id?: string;
+  source_document_id?: string;
   currency: string;
   apply_tax: boolean;
   tax_rate: number;
@@ -61,8 +64,12 @@ export interface PurchaseInput {
 
 export const achatsApi = {
   suppliers: () => apiClient.get<{ items: Supplier[]; total: number }>("/purchases/suppliers").then((r) => r.data),
-  createSupplier: (data: Omit<Supplier, "id" | "code" | "contact_name" | "address_line1" | "tax_id" | "notes"> & Partial<Supplier>) =>
+  createSupplier: (data: { name: string; phone: string; currency: string; email?: string | null; contact_name?: string; address_line1?: string; tax_id?: string; notes?: string }) =>
     apiClient.post<Supplier>("/purchases/suppliers", data).then((r) => r.data),
+  supplierFromClient: (clientId: string) =>
+    apiClient.post<Supplier>(`/purchases/suppliers/from-client/${clientId}`).then((r) => r.data),
+  supplierAsClient: (supplierId: string) =>
+    apiClient.post<{ client_id: string; created: boolean }>(`/purchases/suppliers/${supplierId}/as-client`).then((r) => r.data),
   list: () => apiClient.get<{ items: PurchaseOrder[]; total: number }>("/purchases").then((r) => r.data),
   create: (data: PurchaseInput) => apiClient.post<PurchaseOrder>("/purchases", data).then((r) => r.data),
   update: (id: string, data: PurchaseInput) => apiClient.put<PurchaseOrder>(`/purchases/${id}`, data).then((r) => r.data),

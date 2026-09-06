@@ -99,4 +99,9 @@ export const documentsApi = {
       })
       .then((r) => r.data);
   },
+
+  linkScanToOrder: (documentId: string, orderId: string) =>
+    apiClient
+      .post<{ document_id: string; order_id: string }>(`/documents/scans/${documentId}/link-order`, { order_id: orderId })
+      .then((r) => r.data),
 };

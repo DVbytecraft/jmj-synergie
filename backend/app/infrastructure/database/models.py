@@ -223,6 +223,7 @@ class SupplierModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
     code: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -237,6 +238,8 @@ class SupplierModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
 
+    client: Mapped[ClientModel | None] = relationship("ClientModel")
+
 
 class PurchaseOrderModel(Base):
     __tablename__ = "purchase_orders"
@@ -246,6 +249,7 @@ class PurchaseOrderModel(Base):
     purchase_number: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
     supplier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
+    source_document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="XAF")
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
@@ -262,6 +266,7 @@ class PurchaseOrderModel(Base):
 
     supplier: Mapped[SupplierModel] = relationship("SupplierModel")
     sales_order: Mapped[OrderModel | None] = relationship("OrderModel")
+    source_document: Mapped[DocumentModel | None] = relationship("DocumentModel")
     items: Mapped[list[PurchaseOrderItemModel]] = relationship(
         "PurchaseOrderItemModel", back_populates="purchase_order", cascade="all, delete-orphan"
     )

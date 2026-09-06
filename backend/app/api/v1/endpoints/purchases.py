@@ -11,11 +11,13 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import DB, ManagerUser
 from app.infrastructure.database.models import (
+    ClientModel,
+    DocumentModel,
     OrderModel,
     OrganizationModel,
     ProductModel,
@@ -54,6 +56,7 @@ class PurchaseItemInput(BaseModel):
 class PurchaseInput(BaseModel):
     supplier_id: UUID
     sales_order_id: Optional[UUID] = None
+    source_document_id: Optional[UUID] = None
     currency: str = Field("XAF", min_length=3, max_length=3)
     apply_tax: bool = False
     tax_rate: Decimal = Field(Decimal("0"), ge=0, le=100)
@@ -70,6 +73,7 @@ class ReceiptItemInput(BaseModel):
 def _supplier_dict(row: SupplierModel) -> dict:
     return {
         "id": str(row.id), "code": row.code, "name": row.name,
+        "client_id": str(row.client_id) if row.client_id else None,
         "contact_name": row.contact_name, "email": row.email, "phone": row.phone,
         "address_line1": row.address_line1, "tax_id": row.tax_id,
         "currency": row.currency, "notes": row.notes, "is_active": row.is_active,
@@ -83,6 +87,7 @@ def _purchase_dict(row: PurchaseOrderModel) -> dict:
         "supplier_id": str(row.supplier_id),
         "supplier_name": row.supplier.name if row.supplier else None,
         "sales_order_id": str(row.sales_order_id) if row.sales_order_id else None,
+        "source_document_id": str(row.source_document_id) if row.source_document_id else None,
         "status": row.status, "currency": row.currency,
         "tax_rate": float(row.tax_rate), "subtotal_cents": row.subtotal_cents,
         "tax_cents": row.tax_cents, "total_cents": row.total_cents,
@@ -116,6 +121,30 @@ async def _load_purchase(db: DB, purchase_id: UUID, organization_id: UUID) -> Pu
     return row
 
 
+async def _validate_source_document(
+    db: DB,
+    source_document_id: UUID | None,
+    organization_id: UUID,
+    current_purchase_id: UUID | None = None,
+) -> None:
+    if source_document_id is None:
+        return
+    document = await db.scalar(select(DocumentModel).where(
+        DocumentModel.id == source_document_id,
+        DocumentModel.organization_id == organization_id,
+        DocumentModel.document_type == "scanned",
+    ))
+    if not document:
+        raise HTTPException(status_code=404, detail="Document source scanné introuvable")
+    duplicate = await db.scalar(select(PurchaseOrderModel.id).where(
+        PurchaseOrderModel.organization_id == organization_id,
+        PurchaseOrderModel.source_document_id == source_document_id,
+        *([PurchaseOrderModel.id != current_purchase_id] if current_purchase_id else []),
+    ))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Ce document source est déjà lié à un bon d'achat")
+
+
 def _set_totals(row: PurchaseOrderModel, apply_tax: bool, tax_rate: Decimal) -> None:
     row.subtotal_cents = sum(item.quantity * item.purchase_unit_price_cents for item in row.items)
     row.tax_rate = tax_rate if apply_tax else Decimal("0")
@@ -138,6 +167,16 @@ async def list_suppliers(current_user: ManagerUser, db: DB, search: str | None =
 
 @router.post("/suppliers", status_code=status.HTTP_201_CREATED)
 async def create_supplier(body: SupplierInput, current_user: ManagerUser, db: DB) -> dict:
+    identity_checks = [SupplierModel.phone == body.phone, SupplierModel.name.ilike(body.name)]
+    if body.email:
+        identity_checks.append(SupplierModel.email == str(body.email))
+    duplicate = await db.scalar(select(SupplierModel).where(
+        SupplierModel.organization_id == current_user.organization_id,
+        SupplierModel.is_active.is_(True),
+        or_(*identity_checks),
+    ))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Cette entreprise fournisseur existe déjà")
     code = f"FOU-{uuid4().hex[:8].upper()}"
     row = SupplierModel(
         organization_id=current_user.organization_id, code=code, created_by=current_user.id,
@@ -147,6 +186,95 @@ async def create_supplier(body: SupplierInput, current_user: ManagerUser, db: DB
     await db.commit()
     await db.refresh(row)
     return _supplier_dict(row)
+
+
+@router.post("/suppliers/from-client/{client_id}", status_code=status.HTTP_201_CREATED)
+async def create_supplier_from_client(client_id: UUID, current_user: ManagerUser, db: DB) -> dict:
+    """Give an existing company the supplier role without duplicating its identity."""
+    client = await db.scalar(select(ClientModel).where(
+        ClientModel.id == client_id,
+        ClientModel.organization_id == current_user.organization_id,
+        ClientModel.is_deleted.is_(False),
+    ))
+    if not client:
+        raise HTTPException(status_code=404, detail="Entreprise cliente introuvable")
+    identity_checks = [SupplierModel.client_id == client.id, SupplierModel.phone == client.phone]
+    if client.email:
+        identity_checks.append(SupplierModel.email == client.email)
+    existing = await db.scalar(select(SupplierModel).where(
+        SupplierModel.organization_id == current_user.organization_id,
+        or_(*identity_checks),
+    ))
+    if existing:
+        if existing.client_id is None:
+            existing.client_id = client.id
+            await db.commit()
+            await db.refresh(existing)
+        return _supplier_dict(existing)
+    row = SupplierModel(
+        organization_id=current_user.organization_id,
+        client_id=client.id,
+        code=f"FOU-{uuid4().hex[:8].upper()}",
+        name=client.company_name or client.full_name,
+        contact_name=client.full_name,
+        email=client.email,
+        phone=client.phone,
+        address_line1=client.address_line1,
+        tax_id=client.tax_id,
+        currency=client.currency,
+        notes=client.notes,
+        created_by=current_user.id,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _supplier_dict(row)
+
+
+@router.post("/suppliers/{supplier_id}/as-client")
+async def make_supplier_a_client(supplier_id: UUID, current_user: ManagerUser, db: DB) -> dict:
+    """Give a supplier the customer role and retain a stable cross-reference."""
+    supplier = await db.scalar(select(SupplierModel).where(
+        SupplierModel.id == supplier_id,
+        SupplierModel.organization_id == current_user.organization_id,
+    ))
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Fournisseur introuvable")
+    if supplier.client_id:
+        return {"client_id": str(supplier.client_id), "created": False}
+    identity_checks = [ClientModel.phone == supplier.phone, ClientModel.company_name == supplier.name]
+    if supplier.email:
+        identity_checks.append(ClientModel.email == supplier.email)
+    candidate = await db.scalar(select(ClientModel).where(
+        ClientModel.organization_id == current_user.organization_id,
+        ClientModel.is_deleted.is_(False),
+        or_(*identity_checks),
+    ))
+    created = candidate is None
+    if candidate is None:
+        sequence = (await db.execute(text("SELECT nextval('seq_client_code')"))).scalar_one()
+        candidate = ClientModel(
+            organization_id=current_user.organization_id,
+            code=f"CLT-{sequence:05d}",
+            client_type="company",
+            status="active",
+            full_name=supplier.contact_name or supplier.name,
+            company_name=supplier.name,
+            tax_id=supplier.tax_id,
+            email=supplier.email,
+            phone=supplier.phone,
+            address_line1=supplier.address_line1,
+            country="CM",
+            currency=supplier.currency,
+            default_tax_rate=Decimal("0"),
+            notes=supplier.notes,
+            created_by=current_user.id,
+        )
+        db.add(candidate)
+        await db.flush()
+    supplier.client_id = candidate.id
+    await db.commit()
+    return {"client_id": str(candidate.id), "created": created}
 
 
 @router.get("")
@@ -175,6 +303,7 @@ async def create_purchase(body: PurchaseInput, current_user: ManagerUser, db: DB
         ))
         if not sales_order:
             raise HTTPException(status_code=404, detail="Commande client introuvable")
+    await _validate_source_document(db, body.source_document_id, current_user.organization_id)
     product_ids = [item.product_id for item in body.items if item.product_id]
     if product_ids:
         found_ids = set((await db.scalars(select(ProductModel.id).where(
@@ -187,6 +316,7 @@ async def create_purchase(body: PurchaseInput, current_user: ManagerUser, db: DB
         organization_id=current_user.organization_id,
         purchase_number=f"BA-{datetime.now(timezone.utc).year}-{uuid4().hex[:8].upper()}",
         supplier_id=body.supplier_id, sales_order_id=body.sales_order_id,
+        source_document_id=body.source_document_id,
         currency=body.currency.upper(), expected_date=body.expected_date,
         notes=body.notes, created_by=current_user.id,
         items=[PurchaseOrderItemModel(**item.model_dump()) for item in body.items],
@@ -272,6 +402,7 @@ async def update_purchase(purchase_id: UUID, body: PurchaseInput, current_user: 
         ))
         if not sales_order:
             raise HTTPException(status_code=404, detail="Commande client introuvable")
+    await _validate_source_document(db, body.source_document_id, current_user.organization_id, row.id)
     product_ids = [item.product_id for item in body.items if item.product_id]
     if product_ids:
         found_ids = set((await db.scalars(select(ProductModel.id).where(
@@ -282,6 +413,7 @@ async def update_purchase(purchase_id: UUID, body: PurchaseInput, current_user: 
             raise HTTPException(status_code=400, detail="Un produit sélectionné est introuvable")
     row.supplier_id = body.supplier_id
     row.sales_order_id = body.sales_order_id
+    row.source_document_id = body.source_document_id
     row.currency = body.currency.upper()
     row.expected_date = body.expected_date
     row.notes = body.notes

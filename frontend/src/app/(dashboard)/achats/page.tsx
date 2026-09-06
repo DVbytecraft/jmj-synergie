@@ -3,11 +3,12 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CheckCircle, Download, Loader2, PackageCheck, Plus, Trash2 } from "lucide-react";
+import { Building2, CheckCircle, Download, Loader2, PackageCheck, Plus, Trash2, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 import { achatsApi, type PurchaseInput, type PurchaseOrder } from "@/lib/api/achats";
 import { produitsApi } from "@/lib/api/produits";
 import { commandesApi } from "@/lib/api/commandes";
+import { clientsApi } from "@/lib/api/clients";
 import { amountToCents, formatCents } from "@/lib/utils/money";
 import { apiClient } from "@/lib/api/client";
 
@@ -29,12 +30,14 @@ function AchatsContent() {
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [supplierName, setSupplierName] = useState("");
   const [supplierPhone, setSupplierPhone] = useState("");
+  const [partnerClientId, setPartnerClientId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data: purchases, isLoading } = useQuery({ queryKey: ["purchases"], queryFn: achatsApi.list });
   const { data: suppliers } = useQuery({ queryKey: ["suppliers"], queryFn: achatsApi.suppliers });
   const { data: products } = useQuery({ queryKey: ["products", "purchase"], queryFn: () => produitsApi.list({ limit: 100, status: "active" }) });
   const { data: orders } = useQuery({ queryKey: ["commandes", "purchase-link"], queryFn: () => commandesApi.list({ limit: 100 }) });
+  const { data: clients } = useQuery({ queryKey: ["clients", "supplier-link"], queryFn: () => clientsApi.list({ limit: 100, client_type: "company" }) });
 
   const resetForm = () => {
     setEditing(null); setSupplierId(""); setSalesOrderId(""); setCurrency("XAF");
@@ -55,6 +58,7 @@ function AchatsContent() {
 
   const payload = (): PurchaseInput => ({
     supplier_id: supplierId, sales_order_id: salesOrderId || undefined, currency,
+    source_document_id: editing?.source_document_id || undefined,
     apply_tax: applyTax, tax_rate: applyTax ? taxRate : 0,
     expected_date: expectedDate || undefined, notes: notes || undefined,
     items: lines.map((line) => ({
@@ -73,6 +77,21 @@ function AchatsContent() {
     onSuccess: (supplier) => {
       setSupplierId(supplier.id); setSupplierName(""); setSupplierPhone("");
       qc.invalidateQueries({ queryKey: ["suppliers"] });
+    },
+  });
+  const partnerMut = useMutation({
+    mutationFn: () => achatsApi.supplierFromClient(partnerClientId),
+    onSuccess: (supplier) => {
+      setSupplierId(supplier.id); setPartnerClientId("");
+      qc.invalidateQueries({ queryKey: ["suppliers"] });
+    },
+    onError: (error: any) => setFormError(error?.response?.data?.detail ?? "Impossible d'activer le rôle fournisseur"),
+  });
+  const supplierAsClientMut = useMutation({
+    mutationFn: (id: string) => achatsApi.supplierAsClient(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["suppliers"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
     },
   });
   const actionMut = useMutation({
@@ -101,6 +120,7 @@ function AchatsContent() {
       <button onClick={() => downloadPdf(purchase)} className="btn-secondary py-1 text-xs"><Download className="w-3 h-3" /> PDF</button>
       {purchase.status === "draft" && <button onClick={() => actionMut.mutate({ purchase, action: "confirm" })} className="btn-primary py-1 text-xs"><CheckCircle className="w-3 h-3" /> Envoyer</button>}
       {["ordered", "partially_received"].includes(purchase.status) && <button onClick={() => actionMut.mutate({ purchase, action: "receive" })} className="btn-primary py-1 text-xs"><PackageCheck className="w-3 h-3" /> Réceptionner</button>}
+      {!suppliers?.items.find((supplier) => supplier.id === purchase.supplier_id)?.client_id && <button onClick={() => supplierAsClientMut.mutate(purchase.supplier_id)} className="btn-secondary py-1 text-xs" title="Cette entreprise pourra aussi acheter chez vous"><UserRoundCheck className="h-3 w-3" /> Rôle client</button>}
     </div>
   );
 
@@ -111,6 +131,15 @@ function AchatsContent() {
         <button onClick={() => setShowForm(true)} className="btn-primary w-full sm:w-auto"><Plus className="w-4 h-4" /> Nouveau bon d’achat</button>
       </div>
 
+      <section className="card space-y-4 p-4 sm:p-5">
+        <div><h2 className="font-semibold text-slate-900">Entreprises fournisseurs</h2><p className="text-xs text-slate-500">Une même entreprise peut être cliente, fournisseur, ou les deux.</p></div>
+        <div className="grid gap-2 md:grid-cols-3"><input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Nom du nouveau fournisseur" className="input" /><input value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value)} placeholder="Téléphone" className="input" /><button onClick={() => supplierMut.mutate()} disabled={supplierMut.isPending || supplierName.length < 2 || supplierPhone.length < 6} className="btn-secondary"><Building2 className="h-4 w-4" /> Ajouter le fournisseur</button></div>
+        <div className="flex flex-wrap gap-2">
+          {suppliers?.items.map((supplier) => <div key={supplier.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"><span className="font-medium text-slate-800">{supplier.name}</span><span className={supplier.client_id ? "badge-green" : "badge-blue"}>{supplier.client_id ? "Client + fournisseur" : "Fournisseur"}</span>{!supplier.client_id && <button onClick={() => supplierAsClientMut.mutate(supplier.id)} className="text-xs font-medium text-blue-700 hover:underline">Activer aussi comme client</button>}</div>)}
+          {!suppliers?.items.length && <p className="text-sm text-slate-500">Aucun fournisseur enregistré.</p>}
+        </div>
+      </section>
+
       {showForm && (
         <div className="card space-y-5 p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><h2 className="font-semibold">{editing ? `Modifier ${editing.purchase_number}` : "Bon de commande fournisseur"}</h2><p className="text-xs text-slate-500">Les prix ci-dessous sont vos coûts d’achat et ne sont jamais repris comme prix de vente.</p></div><button onClick={resetForm} className="btn-secondary w-full sm:w-auto">Fermer</button></div>
@@ -118,7 +147,7 @@ function AchatsContent() {
             <div><label className="label">Entreprise fournisseur C *</label><select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input"><option value="">— Choisir —</option>{suppliers?.items.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div><label className="label">Commande client A liée (optionnel)</label><select value={salesOrderId} onChange={(e) => setSalesOrderId(e.target.value)} className="input"><option value="">— Achat libre —</option>{orders?.items.map((o) => <option key={o.id} value={o.id}>{o.order_number}</option>)}</select></div>
           </div>
-          {!editing && <div className="rounded-lg bg-slate-50 p-3 grid md:grid-cols-3 gap-2"><input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Nouveau fournisseur" className="input" /><input value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value)} placeholder="Téléphone" className="input" /><button onClick={() => supplierMut.mutate()} disabled={supplierMut.isPending || supplierName.length < 2 || supplierPhone.length < 6} className="btn-secondary"><Building2 className="w-4 h-4" /> Ajouter le fournisseur</button></div>}
+          {!editing && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3"><p className="mb-2 text-xs font-medium text-blue-900">Entreprise déjà cliente ? Activez aussi son rôle fournisseur sans créer de doublon.</p><div className="grid gap-2 md:grid-cols-[1fr_auto]"><select value={partnerClientId} onChange={(event) => setPartnerClientId(event.target.value)} className="input"><option value="">— Choisir une entreprise cliente —</option>{clients?.items.map((client) => <option key={client.id} value={client.id}>{client.company_name || client.full_name}</option>)}</select><button onClick={() => partnerMut.mutate()} disabled={!partnerClientId || partnerMut.isPending} className="btn-secondary"><Building2 className="h-4 w-4" /> Activer comme fournisseur</button></div></div>}
 
           <div className="space-y-3">
             {lines.map((line, index) => <div key={index} className="grid md:grid-cols-12 gap-2 items-end border rounded-lg p-3">
