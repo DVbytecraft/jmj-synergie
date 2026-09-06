@@ -241,6 +241,14 @@ def _run_tesseract_data(img: "np.ndarray", y_offset: int = 0) -> list[dict]:
 
 def _parse_invoice(text: str, words: list[dict]) -> dict[str, Any]:
     """Orchestre l'extraction de tous les champs structurés."""
+    line_items = _extract_line_items(text, words)
+    subtotal = _extract_subtotal(text)
+    if subtotal is None and line_items:
+        subtotal = round(sum(
+            float(item.get("total") or 0)
+            or float(item.get("quantity") or 1) * float(item.get("unit_price") or 0)
+            for item in line_items
+        ), 2)
     return {
         "document_type":    _detect_document_type(text),
         "invoice_number":    _extract_invoice_number(text),
@@ -248,8 +256,8 @@ def _parse_invoice(text: str, words: list[dict]) -> dict[str, Any]:
         "due_date":          _extract_due_date(text),
         "vendor":            _extract_vendor(text),
         "client":            _extract_client(text),
-        "line_items":        _extract_line_items(text, words),
-        "subtotal":          _extract_subtotal(text),
+        "line_items":        line_items,
+        "subtotal":          subtotal,
         "tax_rate":          _extract_tax_rate(text),
         "tax_amount":        _extract_tax_amount(text),
         "total_amount":      _extract_total(text),
@@ -265,6 +273,8 @@ def _parse_invoice(text: str, words: list[dict]) -> dict[str, Any]:
 
 def _detect_document_type(text: str) -> str:
     """Distinguish a purchase order from an invoice before mapping its parties."""
+    if re.search(r"\b(?:pro\s*forma|proforma)\b", text, re.IGNORECASE):
+        return "pro_forma"
     purchase_order_hits = len(re.findall(
         r"\b(?:bon\s+de\s+commande|purchase\s+order|commande\s+n[°o]?|\bBC\b|\bPO\b)\b",
         text,
@@ -394,7 +404,15 @@ def _extract_vendor(text: str) -> dict[str, Any]:
         if header_parts:  # pragma: no branch — re.split always returns a non-empty list
             lines = [ln.strip() for ln in header_parts[0].splitlines() if ln.strip() and len(ln.strip()) > 2]
             for line in lines[:6]:
-                if not re.match(r"^[\d\/\-\.\s]+$", line) and len(line) > 3:
+                if re.search(r"d[eé]signation\s+quantit[eé]", line, re.IGNORECASE):
+                    break
+                is_business_tagline = re.search(
+                    r"service\s+et\s+entretien|commerce\s+g[eé]n[eé]ral|vente\s+de\s+mat[eé]riel|"
+                    r"d[eé]signation\s+quantit[eé]",
+                    line,
+                    re.IGNORECASE,
+                )
+                if not is_business_tagline and not re.match(r"^[\d\/\-\.\s]+$", line) and len(line) > 3:
                     vendor["name"] = line[:100]
                     break
 
@@ -603,6 +621,60 @@ def _extract_items_positional(words: list[dict]) -> list[dict]:
 
 def _extract_items_regex(text: str) -> list[dict]:
     """Fallback : extraction des lignes de tableau via regex dans le texte brut."""
+    normalized = text.replace("\u00a0", " ").replace("\u202f", " ")
+    lines = [line.strip() for line in normalized.splitlines()]
+    header_index = next((
+        index for index, line in enumerate(lines)
+        if re.search(r"(?:description|d[eé]signation|libell[eé])", line, re.IGNORECASE)
+        and re.search(r"(?:qt[eé]|quantit[eé]|qty|prix|p\.u)", line, re.IGNORECASE)
+    ), None)
+    compact_items: list[dict] = []
+    pending_description: list[str] = []
+    if header_index is not None:
+        row_pattern = re.compile(r"^(.+?)\s+(\d+(?:[.,]\d+)?)\s+([\d., ]+)$")
+        for raw_line in lines[header_index + 1:]:
+            if re.search(r"^(?:sous[-\s]?total|total\s*h\.?t\.?|tva|total\s*t\.?t\.?c\.?)\b", raw_line, re.IGNORECASE):
+                break
+            if not raw_line:
+                continue
+            # Some PDF generators glue the quantity to a unit in the description
+            # (for example ``0,8mm35 48 000 1 680 000``).
+            candidate = re.sub(
+                r"(?<=[A-Za-zÀ-ÿ²])(?=\d+(?:[.,]\d+)?\s+\d[\d ]*\s+\d[\d ]*\s*$)",
+                " ",
+                raw_line,
+            )
+            match = row_pattern.match(candidate)
+            if not match:
+                pending_description.append(raw_line)
+                continue
+            description, quantity_text, amounts_text = match.groups()
+            description = " ".join([*pending_description, description]).strip()
+            pending_description.clear()
+            quantity = _parse_number(quantity_text)
+            amount_tokens = amounts_text.split()
+            candidates: list[tuple[float, float, float]] = []
+            for split_at in range(1, len(amount_tokens)):
+                unit_price = _parse_number("".join(amount_tokens[:split_at]))
+                total = _parse_number("".join(amount_tokens[split_at:]))
+                if not quantity or not unit_price or not total:
+                    continue
+                relative_error = abs(quantity * unit_price - total) / max(total, 1)
+                candidates.append((relative_error, unit_price, total))
+            if not candidates:
+                continue
+            _, unit_price, total = min(candidates, key=lambda candidate: candidate[0])
+            if description and quantity and unit_price is not None:
+                compact_items.append({
+                    "description": description,
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "unit": "",
+                    "total": total,
+                })
+        if compact_items:
+            return compact_items
+
     header_m = re.search(
         r"(?:description|d[eé]signation|libell[eé])\s*(?:.*?)(?:qt[eé]|quantit[eé]|qty|prix|p\.u)",
         text, re.IGNORECASE | re.DOTALL,
@@ -729,7 +801,7 @@ def _extract_payment_reference(text: str) -> str | None:
 
 def _extract_po_ref(text: str) -> str | None:
     m = re.search(
-        r"(?:b\.?c\.?|bon\s*(?:de\s*)?commande|purchase\s*order|p\.?o\.?)\s*(?:n[°o]\.?)?\s*[:.]?\s*([A-Z0-9\-\/\.]{3,25})",
+        r"\b(?:b\.?c\.?|bon\s*(?:de\s*)?commande|purchase\s*order|p\.?o\.?)\b\s*(?:n[°o]\.?)?\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/\.]{2,24})",
         text, re.IGNORECASE,
     )
     return m.group(1).strip() if m else None

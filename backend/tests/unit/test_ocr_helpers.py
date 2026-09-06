@@ -298,6 +298,50 @@ def test_parse_invoice_collects_all_field_extractors() -> None:
     assert parsed["purchase_order_ref"] == "BC-7788"
 
 
+def test_parse_reference_proforma_extracts_compact_rows_without_false_po() -> None:
+    text = """
+    Service et entretien technique,
+    Commerce général, vente de matériels informatique
+    DESIGNATION QUANTITE PRIX UNITAIRE
+    TOLE PLANE ALU
+    1,2*2,4*0,8mm35 48\u202f000 1\u202f680\u202f000
+    VIS AMERICAIN 4mm 10 25\u202f000 250\u202f000
+    TOTAL HT
+    TVA 0
+    TOTAL TTC 1 930 000 FCFA
+    Le Responsable
+    PROFORMA N° 018613
+    BC N° : ……/RAST /26
+    Date: 03/06/2026
+    CLIENT: RUBIS ASPHALT & SPECIALITE TOGO
+    """
+
+    parsed = _validate_amounts(_parse_invoice(text, []))
+
+    assert parsed["document_type"] == "pro_forma"
+    assert parsed["purchase_order_ref"] is None
+    assert parsed["vendor"]["name"] is None
+    assert parsed["client"]["name"] == "RUBIS ASPHALT & SPECIALITE TOGO"
+    assert parsed["line_items"] == [
+        {
+            "description": "TOLE PLANE ALU 1,2*2,4*0,8mm",
+            "quantity": 35.0,
+            "unit_price": 48000.0,
+            "unit": "",
+            "total": 1680000.0,
+        },
+        {
+            "description": "VIS AMERICAIN 4mm",
+            "quantity": 10.0,
+            "unit_price": 25000.0,
+            "unit": "",
+            "total": 250000.0,
+        },
+    ]
+    assert parsed["subtotal"] == 1930000.0
+    assert parsed["needs_review"] is False
+
+
 async def test_scan_invoice_persists_document_and_returns_extraction(monkeypatch) -> None:
     with TemporaryDirectory() as tmp:
         settings = SimpleNamespace(STORAGE_PATH=tmp)
