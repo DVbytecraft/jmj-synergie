@@ -189,7 +189,6 @@ export default function SettingsPage() {
   });
 
   const profileType = watch("profile_type");
-  const taxIncluded = watch("tax_included");
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -441,27 +440,11 @@ export default function SettingsPage() {
 
         {/* ── TVA ── */}
         <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Parametres TVA</h3>
-          <div className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="tax_included"
-              className="h-4 w-4 rounded border-gray-300 mt-0.5"
-              {...register("tax_included")}
-            />
-            <label htmlFor="tax_included" className="cursor-pointer">
-              <p className="text-sm font-medium text-gray-900">Prix TTC (TVA incluse)</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Cochez si vos prix sont affiches toutes taxes comprises.
-                Decochez pour afficher les prix hors taxe (HT).
-              </p>
-            </label>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className={`px-2 py-0.5 rounded-full font-medium ${taxIncluded ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}`}>
-              {taxIncluded ? "Prix TTC — TVA incluse dans les montants" : "Prix HT — TVA calculee separement"}
-            </span>
-          </div>
+          <h3 className="text-sm font-semibold text-gray-900">TVA sur les documents</h3>
+          <p className="text-sm text-gray-600">
+            La TVA se choisit pour chaque produit, devis, commande et document importe.
+            Lorsqu'elle est desactivee, aucune ligne TVA ni mention TTC n'est affichee.
+          </p>
         </div>
 
         {/* ── Coordonnées document ── */}

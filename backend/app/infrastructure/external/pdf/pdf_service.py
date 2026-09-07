@@ -349,14 +349,23 @@ class PDFService:
         story += self._footer_section(styles, issuer)
         doc.build(story)
 
-    def _build_purchase_order_pdf(self, path: str, order: Any, doc_number: str, issuer: dict) -> None:
+    def _build_purchase_order_pdf(
+        self,
+        path: Any,
+        order: Any,
+        doc_number: str,
+        issuer: dict,
+        *,
+        partner_label: str = "Commandé par",
+        title: str = "BON DE COMMANDE",
+    ) -> None:
         doc, styles, story = self._init_doc(path)
 
         story += self._header_section(styles, issuer, doc_number, order)
-        story.append(Paragraph("BON DE COMMANDE", self._title_style(issuer)))
+        story.append(Paragraph(title, self._title_style(issuer)))
         story.append(Spacer(1, 6 * mm))
 
-        story.append(self._client_block(styles, order.client, label="Commandé par", issuer=issuer))
+        story.append(self._client_block(styles, order.client, label=partner_label, issuer=issuer))
         story.append(Spacer(1, 6 * mm))
 
         rows = [["#", "Désignation", "Qté", "Unité", "P.U. (CFA)", "Total (CFA)"]]
@@ -485,7 +494,8 @@ class PDFService:
         )
         story.append(Paragraph(
             f"Arrêtée la présente facture à la somme de "
-            f"<b>{amount_in_words(total_for_words, order.currency)} TTC</b>",
+            f"<b>{amount_in_words(total_for_words, order.currency)}"
+            f"{' TTC' if order.tax_rate > 0 else ''}</b>",
             arretee_style,
         ))
         story.append(Spacer(1, 8 * mm if is_reference else 4 * mm))
@@ -750,7 +760,12 @@ class PDFService:
         table = Table([[
             self._summary_metric("Reference commande", order.order_number, issuer),
             self._summary_metric("Echeance", due_date, issuer),
-            self._summary_metric("Total TTC", self._fmt(total_cents, order.currency), issuer, emphasize=True),
+            self._summary_metric(
+                "Total TTC" if order.tax_rate > 0 else "Total",
+                self._fmt(total_cents, order.currency),
+                issuer,
+                emphasize=True,
+            ),
             self._summary_metric("Solde a payer", self._fmt(balance_cents, order.currency), issuer, emphasize=balance_cents > 0),
         ]], colWidths=[43 * mm, 35 * mm, 47 * mm, 50 * mm])
         table.setStyle(TableStyle([
@@ -1120,12 +1135,13 @@ class PDFService:
             discount = self._discount_cents_for_invoice(order, subtotal_cents)
             rows.append(["Remise", f"- {self._fmt(discount, order.currency)}"])
             total_cents -= discount
-        rows.append(["Montant TTC", self._fmt(total_cents, order.currency)])
+        total_label = "Montant TTC" if order.tax_rate > 0 else "Montant total"
+        rows.append([total_label, self._fmt(total_cents, order.currency)])
         if order.paid_cents > 0:
             rows.append(["Montant payé", self._fmt(order.paid_cents, order.currency)])
             rows.append(["SOLDE DÛ", self._fmt(max(0, total_cents - order.paid_cents), order.currency)])
 
-        total_idx = next(i for i, r in enumerate(rows) if r[0] == "Montant TTC")
+        total_idx = next(i for i, r in enumerate(rows) if r[0] == total_label)
         t = Table(rows, colWidths=[130 * mm, 45 * mm])
         if issuer.get("document_template") == "jmj_reference":
             t.setStyle(TableStyle([

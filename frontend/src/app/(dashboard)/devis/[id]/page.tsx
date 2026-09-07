@@ -267,12 +267,14 @@ export default function DevisDetailPage({ params }: { params: Promise<{ id: stri
                 <span>Sous-total HT</span>
                 <span>{formatCents(quote.subtotal_cents, quote.currency)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>TVA ({Number(quote.tax_rate)}%)</span>
-                <span>{formatCents(quote.tax_cents, quote.currency)}</span>
-              </div>
+              {Number(quote.tax_rate) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>TVA ({Number(quote.tax_rate)}%)</span>
+                  <span>{formatCents(quote.tax_cents, quote.currency)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-gray-900 text-base pt-2 border-t border-gray-100">
-                <span>Total TTC</span>
+                <span>{Number(quote.tax_rate) > 0 ? "Total TTC" : "Total"}</span>
                 <span className="text-blue-700">{formatCents(quote.total_cents, quote.currency)}</span>
               </div>
             </div>

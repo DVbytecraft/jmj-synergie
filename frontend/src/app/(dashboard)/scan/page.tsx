@@ -812,7 +812,7 @@ export default function ScanPage() {
                     className="input"
                   />}
               </div>
-              {extracted.tax_amount !== undefined && (
+              {(extracted.tax_rate ?? 0) > 0 && extracted.tax_amount !== undefined && (
                 <div>
                   <label className="label">
                     TVA
@@ -831,7 +831,7 @@ export default function ScanPage() {
               {extracted.total_amount !== undefined && (
                 <div>
                   <label className="label">
-                    Total TTC
+                    {(extracted.tax_rate ?? 0) > 0 ? "Total TTC" : "Total"}
                     {extracted.needs_review && (
                       <span className="ml-1 text-amber-500 text-xs font-normal">⚠ à vérifier</span>
                     )}

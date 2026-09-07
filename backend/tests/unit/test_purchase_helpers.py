@@ -6,7 +6,12 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.endpoints.purchases import _set_totals, _supplier_dict, _validate_source_document
+from app.api.v1.endpoints.purchases import (
+    _purchase_pdf_order,
+    _set_totals,
+    _supplier_dict,
+    _validate_source_document,
+)
 from app.infrastructure.database.models import PurchaseOrderItemModel, PurchaseOrderModel, SupplierModel
 
 
@@ -33,6 +38,25 @@ def test_purchase_tax_is_applied_only_when_selected() -> None:
     _set_totals(row, apply_tax=True, tax_rate=Decimal("20"))
     assert row.tax_cents == 5_000
     assert row.total_cents == 30_000
+
+
+def test_purchase_pdf_adapter_keeps_supplier_prices_and_optional_tax() -> None:
+    row = _purchase()
+    row.purchase_number = "BA-2026-01"
+    row.supplier = SimpleNamespace(
+        name="Fournisseur C", tax_id="NIF-C", phone="90000000",
+        email="c@example.com", address_line1="Lomé",
+    )
+    row.expected_date = None
+    row.notes = "Livraison rapide"
+    _set_totals(row, apply_tax=False, tax_rate=Decimal("19.25"))
+
+    adapted = _purchase_pdf_order(row)
+
+    assert adapted.client.full_name == "Fournisseur C"
+    assert adapted.items[0].unit_price_cents == 10_000
+    assert adapted.tax_rate == 0
+    assert adapted.total_cents == adapted.subtotal_cents
 
 
 def test_supplier_response_keeps_shared_client_identity() -> None:

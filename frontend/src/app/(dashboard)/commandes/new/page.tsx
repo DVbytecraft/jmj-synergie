@@ -351,12 +351,14 @@ function NewCommandeForm() {
               <span>Sous-total HT</span>
               <span>{formatMoney(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
-              <span>TVA ({watchTaxRate}%)</span>
-              <span>{formatMoney(taxAmount)}</span>
-            </div>
+            {watchTaxRate > 0 && (
+              <div className="flex justify-between text-gray-600">
+                <span>TVA ({watchTaxRate}%)</span>
+                <span>{formatMoney(taxAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold text-gray-900 text-base pt-1 border-t border-gray-100">
-              <span>Total TTC</span>
+              <span>{watchTaxRate > 0 ? "Total TTC" : "Total"}</span>
               <span>{formatMoney(total)}</span>
             </div>
           </div>

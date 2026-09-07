@@ -218,7 +218,7 @@ export default function CommandePaiementsPage({ params }: { params: Promise<{ id
       {/* Récap */}
       <div className="grid grid-cols-1 gap-4 min-[380px]:grid-cols-3">
         <div className="card p-4 text-center">
-          <p className="text-xs text-gray-500 mb-1">Total TTC</p>
+          <p className="text-xs text-gray-500 mb-1">{Number(commande.tax_rate) > 0 ? "Total TTC" : "Total"}</p>
           <p className="text-lg font-bold text-gray-900">{formatCents(commande.total_cents, currency)}</p>
         </div>
         <div className="card p-4 text-center">

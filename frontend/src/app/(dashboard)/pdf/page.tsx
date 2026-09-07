@@ -102,7 +102,7 @@ export default function PDFPage() {
                     <th className="table-header">ID Commande</th>
                     <th className="table-header">Client</th>
                     <th className="table-header">Statut</th>
-                    <th className="table-header text-right">Total TTC</th>
+                    <th className="table-header text-right">Total</th>
                     <th className="table-header">Date</th>
                     <th className="table-header text-center">Aperçus</th>
                   </tr>

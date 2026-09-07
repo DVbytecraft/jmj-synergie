@@ -105,7 +105,7 @@ export default function CommandesPage() {
                 <th className="table-header">Statut</th>
                 <th className="table-header text-right">HT</th>
                 <th className="table-header text-right">TVA</th>
-                <th className="table-header text-right">TTC</th>
+                <th className="table-header text-right">Total</th>
                 <th className="table-header">Date</th>
                 <th className="table-header text-center">Actions</th>
               </tr>
@@ -149,7 +149,7 @@ export default function CommandesPage() {
                       {formatCents(c.subtotal_cents, c.currency)}
                     </td>
                     <td className="table-cell text-right tabular-nums text-slate-400">
-                      {formatCents(c.tax_cents, c.currency)}
+                      {Number(c.tax_rate) > 0 ? formatCents(c.tax_cents, c.currency) : "—"}
                     </td>
                     <td className="table-cell text-right tabular-nums font-semibold text-slate-900">
                       {formatCents(c.total_cents, c.currency)}

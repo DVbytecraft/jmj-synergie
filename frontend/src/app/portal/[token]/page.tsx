@@ -107,7 +107,7 @@ export default function PortalPage({ params }: { params: Promise<{ token: string
               <h2 className="font-semibold text-gray-900 text-base">Récapitulatif financier</h2>
               <div className="space-y-2.5 text-sm">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Total TTC</span>
+                  <span className="text-gray-500">{order.tax_rate > 0 ? "Total TTC" : "Total"}</span>
                   <span className="font-bold text-gray-900 text-base">{formatCents(order.total_cents, order.currency)}</span>
                 </div>
                 <div className="flex justify-between items-center">

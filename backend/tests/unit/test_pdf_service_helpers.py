@@ -403,6 +403,7 @@ def test_totals_table_from_cents_handles_zero_tax_discount_and_paid_balance() ->
 
     cells = table._cellvalues
     assert ["TVA", "—"] in cells
+    assert ["Montant total", "45 XAF"] in cells
     assert ["Remise", "- 5 XAF"] in cells
     assert ["SOLDE DÛ", "0 XAF"] in cells
 
@@ -838,6 +839,21 @@ def test_build_purchase_order_pdf_with_notes_creates_file() -> None:
         path = Path(tmp) / "bc.pdf"
 
         service._build_purchase_order_pdf(str(path), order, "BC-2026-01", issuer)
+
+        assert path.exists() and path.stat().st_size > 0
+
+
+def test_build_supplier_purchase_order_uses_shared_reference_template() -> None:
+    with TemporaryDirectory() as tmp:
+        service = make_service(tmp)
+        order = _make_order(notes="Achat fournisseur")
+        issuer = _make_issuer(document_template="jmj_reference")
+        path = Path(tmp) / "supplier-order.pdf"
+
+        service._build_purchase_order_pdf(
+            str(path), order, "BA-2026-01", issuer,
+            partner_label="Fournisseur", title="BON DE COMMANDE FOURNISSEUR",
+        )
 
         assert path.exists() and path.stat().st_size > 0
 

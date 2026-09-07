@@ -339,10 +339,12 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                   <span className="text-red-600">-{formatCents(commande.discount_cents, commande.currency)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-gray-600">
-                <span>TVA ({commande.tax_rate}%)</span>
-                <span>{formatCents(commande.tax_cents, commande.currency)}</span>
-              </div>
+              {Number(commande.tax_rate) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>TVA ({commande.tax_rate}%)</span>
+                  <span>{formatCents(commande.tax_cents, commande.currency)}</span>
+                </div>
+              )}
               {commande.delivered_total_cents > 0 && (
                 <div className="flex justify-between text-blue-600">
                   <span>Total livré facturable</span>
@@ -350,7 +352,7 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               )}
               <div className="flex justify-between font-bold text-gray-900 text-base pt-2 border-t border-gray-100">
-                <span>Total TTC</span>
+                <span>{Number(commande.tax_rate) > 0 ? "Total TTC" : "Total"}</span>
                 <span className="text-blue-700">{formatCents(commande.total_cents, commande.currency)}</span>
               </div>
               {commande.has_reliquat && (

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO
-from html import escape
+from types import SimpleNamespace
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -19,19 +19,52 @@ from app.infrastructure.database.models import (
     ClientModel,
     DocumentModel,
     OrderModel,
-    OrganizationModel,
     ProductModel,
     PurchaseOrderItemModel,
     PurchaseOrderModel,
     SupplierModel,
 )
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from app.core.config import settings
+from app.infrastructure.external.pdf.pdf_service import PDFService
 
 router = APIRouter()
+
+
+def _purchase_pdf_order(row: PurchaseOrderModel) -> SimpleNamespace:
+    """Adapt procurement data to the shared, branded commercial PDF layout."""
+    supplier = SimpleNamespace(
+        full_name=row.supplier.name,
+        company_name=None,
+        tax_id=row.supplier.tax_id,
+        phone=row.supplier.phone,
+        email=row.supplier.email,
+        address_line1=row.supplier.address_line1,
+        city=None,
+    )
+    items = [
+        SimpleNamespace(
+            description=item.description,
+            quantity=item.quantity,
+            unit=item.unit,
+            unit_price_cents=item.purchase_unit_price_cents,
+            total_cents=item.quantity * item.purchase_unit_price_cents,
+        )
+        for item in row.items
+    ]
+    return SimpleNamespace(
+        client=supplier,
+        items=items,
+        order_number=row.purchase_number,
+        currency=row.currency,
+        subtotal_cents=row.subtotal_cents,
+        tax_rate=row.tax_rate,
+        tax_cents=row.tax_cents,
+        discount_cents=0,
+        total_cents=row.total_cents,
+        paid_cents=0,
+        notes=row.notes,
+        due_date=row.expected_date,
+    )
 
 
 class SupplierInput(BaseModel):
@@ -335,47 +368,17 @@ async def get_purchase(purchase_id: UUID, current_user: ManagerUser, db: DB) -> 
 @router.get("/{purchase_id}/pdf")
 async def download_purchase_pdf(purchase_id: UUID, current_user: ManagerUser, db: DB) -> StreamingResponse:
     row = await _load_purchase(db, purchase_id, current_user.organization_id)
-    organization = await db.scalar(select(OrganizationModel).where(OrganizationModel.id == current_user.organization_id))
     buffer = BytesIO()
-    document = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=16 * mm, leftMargin=16 * mm, topMargin=15 * mm, bottomMargin=15 * mm)
-    styles = getSampleStyleSheet()
-    story = [
-        Paragraph(escape(organization.name) if organization else "Entreprise acheteuse", styles["Title"]),
-        Paragraph("BON DE COMMANDE FOURNISSEUR", styles["Heading1"]),
-        Spacer(1, 5 * mm),
-        Paragraph(f"N° {row.purchase_number}", styles["Heading2"]),
-        Paragraph(f"Fournisseur : {escape(row.supplier.name)}", styles["Normal"]),
-        Paragraph(f"Téléphone : {escape(row.supplier.phone)}", styles["Normal"]),
-    ]
-    if row.supplier.address_line1:
-        story.append(Paragraph(f"Adresse : {escape(row.supplier.address_line1)}", styles["Normal"]))
-    story.append(Spacer(1, 6 * mm))
-    table_data = [["Description", "Qté", "Unité", "Prix d'achat", "Total"]]
-    for item in row.items:
-        table_data.append([
-            escape(item.description), str(item.quantity), escape(item.unit) if item.unit else "—",
-            f"{item.purchase_unit_price_cents / 100:,.2f} {row.currency}",
-            f"{item.quantity * item.purchase_unit_price_cents / 100:,.2f} {row.currency}",
-        ])
-    table = Table(table_data, colWidths=[72 * mm, 15 * mm, 20 * mm, 35 * mm, 35 * mm])
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d4ed8")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), .4, colors.HexColor("#cbd5e1")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]))
-    story.extend([
-        table, Spacer(1, 5 * mm),
-        Paragraph(f"Sous-total : {row.subtotal_cents / 100:,.2f} {row.currency}", styles["Normal"]),
-        Paragraph(f"TVA ({row.tax_rate} %) : {row.tax_cents / 100:,.2f} {row.currency}", styles["Normal"]),
-        Paragraph(f"TOTAL ACHAT : {row.total_cents / 100:,.2f} {row.currency}", styles["Heading2"]),
-    ])
-    if row.notes:
-        story.extend([Spacer(1, 4 * mm), Paragraph(f"Notes : {escape(row.notes)}", styles["Normal"])])
-    document.build(story)
+    pdf_service = PDFService(settings)
+    issuer = await pdf_service._load_issuer_context(db, current_user.id)
+    pdf_service._build_purchase_order_pdf(
+        buffer,
+        _purchase_pdf_order(row),
+        row.purchase_number,
+        issuer,
+        partner_label="Fournisseur",
+        title="BON DE COMMANDE FOURNISSEUR",
+    )
     buffer.seek(0)
     return StreamingResponse(
         buffer,

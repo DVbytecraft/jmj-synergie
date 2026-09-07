@@ -52,6 +52,7 @@ def _make_order() -> OrderModel:
     order.payment_status = "pending"
     order.currency = "XAF"
     order.subtotal_cents = 100_000
+    order.tax_rate = 18
     order.tax_cents = 18_000
     order.total_cents = 118_000
     order.paid_cents = 0
@@ -312,6 +313,7 @@ async def test_public_portal_returns_order_payload_with_deduplicated_documents()
     assert data["client_name"] == "Amadou Traore"
     assert data["organization_name"] == "JMJ Synergie Test"
     assert data["organization_logo_url"] == "https://cdn.example.com/logo.png"
+    assert data["tax_rate"] == 18
     assert sorted(data["document_types"]) == ["delivery_note", "invoice"]
 
 

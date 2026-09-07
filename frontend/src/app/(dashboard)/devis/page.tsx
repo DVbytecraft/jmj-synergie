@@ -102,7 +102,7 @@ export default function DevisPage() {
                 <th className="table-header">Client</th>
                 <th className="table-header">Statut</th>
                 <th className="table-header text-right">HT</th>
-                <th className="table-header text-right">TTC</th>
+                <th className="table-header text-right">Total</th>
                 <th className="table-header">Date</th>
                 <th className="table-header text-center">Actions</th>
               </tr>

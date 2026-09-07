@@ -59,6 +59,7 @@ class PortalOrderResponse(BaseModel):
     status: str
     client_name: str
     currency: str
+    tax_rate: float
     total_cents: int
     paid_cents: int
     document_types: list[str]
@@ -214,6 +215,7 @@ async def get_portal_order(
         status=order.status,
         client_name=client_name,
         currency=order.currency,
+        tax_rate=float(order.tax_rate),
         total_cents=order.total_cents,
         paid_cents=order.paid_cents,
         document_types=document_types,

@@ -42,7 +42,7 @@ function ProduitRow({
         {formatCents(produit.unit_price_cents, produit.currency)}
       </td>
       <td className="table-cell text-right text-slate-400 tabular-nums">
-        {produit.tax_rate}%
+        {produit.tax_rate > 0 ? `${produit.tax_rate}%` : "Sans TVA"}
       </td>
       <td className="table-cell text-right font-semibold text-slate-900 tabular-nums">
         {formatCents(produit.unit_price_tax_included_cents, produit.currency)}
@@ -169,7 +169,7 @@ export default function ProduitsPage() {
                 <th className="table-header">Produit</th>
                 <th className="table-header text-right">Prix HT</th>
                 <th className="table-header text-right">TVA</th>
-                <th className="table-header text-right">Prix TTC</th>
+                <th className="table-header text-right">Prix total</th>
                 <th className="table-header text-center">Unité</th>
                 <th className="table-header text-center">Statut</th>
                 <th className="table-header w-20" />

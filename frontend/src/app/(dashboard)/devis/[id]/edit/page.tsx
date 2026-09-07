@@ -53,6 +53,7 @@ export default function DevisEditPage({ params }: { params: Promise<{ id: string
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -161,9 +162,18 @@ export default function DevisEditPage({ params }: { params: Promise<{ id: string
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">TVA (%)</label>
-              <input type="number" step="0.01" min="0" max="100" className="input" {...register("tax_rate")} />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Number(taxRate) > 0}
+                  onChange={(event) => setValue("tax_rate", event.target.checked ? 19.25 : 0, { shouldDirty: true })}
+                />
+                Appliquer la TVA
+              </label>
+              {Number(taxRate) > 0 && (
+                <input aria-label="Taux TVA" type="number" step="0.01" min="0.01" max="100" className="input" {...register("tax_rate")} />
+              )}
             </div>
             <div>
               <label className="label">Valide jusqu'au</label>
@@ -264,12 +274,14 @@ export default function DevisEditPage({ params }: { params: Promise<{ id: string
                 <span>Sous-total HT</span>
                 <span className="tabular-nums">{formatMoney(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>TVA ({Number(taxRate)}%)</span>
-                <span className="tabular-nums">{formatMoney(taxAmount)}</span>
-              </div>
+              {Number(taxRate) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>TVA ({Number(taxRate)}%)</span>
+                  <span className="tabular-nums">{formatMoney(taxAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-gray-900 pt-1 border-t border-gray-200">
-                <span>Total TTC</span>
+                <span>{Number(taxRate) > 0 ? "Total TTC" : "Total"}</span>
                 <span className="tabular-nums text-blue-700">{formatMoney(total)}</span>
               </div>
             </div>

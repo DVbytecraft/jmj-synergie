@@ -11,6 +11,7 @@ export interface PortalOrderInfo {
   status: string;
   client_name: string;
   currency: string;
+  tax_rate: number;
   total_cents: number;
   paid_cents: number;
   document_types: string[];

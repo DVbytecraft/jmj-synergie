@@ -225,7 +225,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   <th className="table-header">N°</th>
                   <th className="table-header">Statut</th>
                   <th className="table-header text-right">HT</th>
-                  <th className="table-header text-right">TTC</th>
+                  <th className="table-header text-right">Total</th>
                   <th className="table-header">Date</th>
                 </tr>
               </thead>
