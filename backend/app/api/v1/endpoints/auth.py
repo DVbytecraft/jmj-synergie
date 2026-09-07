@@ -16,11 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.middleware.rate_limiter import rate_limit_dependency
 
-# Password recovery and silent refresh retain their own abuse protection. Login
-# itself intentionally has no throttle or account lockout for this single-tenant
-# deployment: a wrong password always returns 401 and never starts a cooldown.
+# Password recovery retains its own abuse protection. Login and silent session
+# refresh intentionally have no throttle or account lockout for this
+# single-tenant deployment: authentication never starts a cooldown.
 _password_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_password")
-_refresh_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_refresh")
 from app.core.database import get_db
 from app.core.single_tenant import normalize_single_tenant_user
 from app.core.security import (
@@ -347,7 +346,6 @@ async def refresh(
     response: Response,
     db: AsyncSession = Depends(get_db),
     rt: str | None = Cookie(default=None, alias=_RT_COOKIE),
-    _rl: None = Depends(_refresh_rate_limit),
 ):
     """
     Renouvelle l'access token.
