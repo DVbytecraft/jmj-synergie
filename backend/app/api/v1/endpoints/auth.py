@@ -18,7 +18,7 @@ from app.middleware.rate_limiter import rate_limit_dependency, reset_rate_limit
 
 # Authentication operations use separate buckets so a silent refresh cannot
 # consume the user's login allowance (and vice versa).
-_login_rate_limit = rate_limit_dependency(calls=10, period=60, key_prefix="auth_login")
+_login_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_login")
 _password_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_password")
 _refresh_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_refresh")
 from app.core.database import get_db

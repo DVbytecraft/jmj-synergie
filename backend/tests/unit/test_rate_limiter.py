@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app.middleware import rate_limiter as rl
-from app.middleware.rate_limiter import RateLimitMiddleware, rate_limit_dependency
+from app.middleware.rate_limiter import RateLimitMiddleware, _client_key, rate_limit_dependency
 
 
 @pytest.mark.asyncio
@@ -93,6 +93,39 @@ class FakeRedis:
     async def delete(self, key: str) -> int:
         self.deleted_keys.append(key)
         return 1
+
+
+def test_client_key_uses_render_forwarded_client_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDER", "true")
+    request = Request({
+        "type": "http",
+        "client": ("10.0.0.12", 12345),
+        "headers": [(b"x-forwarded-for", b"203.0.113.42, 10.0.0.8")],
+    })
+
+    assert _client_key(request, "auth_login") == "auth_login:203.0.113.42"
+
+
+def test_client_key_ignores_forwarded_ip_outside_render(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RENDER", raising=False)
+    request = Request({
+        "type": "http",
+        "client": ("127.0.0.1", 12345),
+        "headers": [(b"x-forwarded-for", b"203.0.113.42")],
+    })
+
+    assert _client_key(request, "auth_login") == "auth_login:127.0.0.1"
+
+
+def test_client_key_rejects_invalid_render_forwarded_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDER", "true")
+    request = Request({
+        "type": "http",
+        "client": ("10.0.0.12", 12345),
+        "headers": [(b"x-forwarded-for", b"not-an-ip")],
+    })
+
+    assert _client_key(request, "auth_login") == "auth_login:10.0.0.12"
 
 
 @pytest.mark.asyncio

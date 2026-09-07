@@ -13,6 +13,7 @@ Failure mode:
   all requests through (fail-open).
 """
 import asyncio
+import ipaddress
 import os
 import time
 from collections import defaultdict
@@ -45,8 +46,28 @@ async def _mem_check(key: str, calls: int, period: int, now: float) -> bool:
         return True
 
 
+def _client_ip(request: Request) -> str:
+    """Return the real client IP when the application runs behind Render.
+
+    Render terminates public traffic at its proxy, so ``request.client.host`` is
+    the proxy address and is shared by unrelated visitors. Render guarantees
+    that the first ``X-Forwarded-For`` entry is the original client address.
+    Outside Render we deliberately ignore that spoofable header.
+    """
+    if os.environ.get("RENDER", "").lower() == "true":
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        candidate = forwarded_for.split(",", 1)[0].strip()
+        if candidate:
+            try:
+                return ipaddress.ip_address(candidate).compressed
+            except ValueError:
+                logger.warning("rate_limiter.invalid_forwarded_ip")
+
+    return request.client.host if request.client else "unknown"
+
+
 def _client_key(request: Request, key_prefix: str) -> str:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_ip(request)
     return f"{key_prefix}:{client_ip}"
 
 
