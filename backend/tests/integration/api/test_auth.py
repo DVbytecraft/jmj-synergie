@@ -308,7 +308,7 @@ async def test_login_success_returns_token_and_cookie(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_login_wrong_password_commits_failure_counter(monkeypatch: pytest.MonkeyPatch):
+async def test_login_wrong_password_never_starts_a_lockout(monkeypatch: pytest.MonkeyPatch):
     from app.main import app
     from app.core.database import get_db
     from app.api.v1.endpoints import auth as auth_endpoint
@@ -333,8 +333,9 @@ async def test_login_wrong_password_commits_failure_counter(monkeypatch: pytest.
                 data={"username": user.email, "password": "Wrong123"},
             )
         assert resp.status_code == 401
-        assert user.failed_login_count == 1
-        db.commit.assert_awaited_once()
+        assert user.failed_login_count == 0
+        assert user.locked_until is None
+        db.commit.assert_not_awaited()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -370,14 +371,12 @@ async def test_login_unknown_user_returns_401_without_commit(monkeypatch: pytest
 
 
 @pytest.mark.asyncio
-async def test_login_locks_account_after_max_attempts(monkeypatch: pytest.MonkeyPatch):
+async def test_login_has_no_request_limit_or_account_lockout(monkeypatch: pytest.MonkeyPatch):
     from app.main import app
     from app.core.database import get_db
     from app.api.v1.endpoints import auth as auth_endpoint
-    from app.core.config import settings
-
     user = _make_active_user()
-    user.failed_login_count = settings.MAX_LOGIN_ATTEMPTS - 1
+    user.failed_login_count = 0
     user.locked_until = None
     db = _mock_db(user)
 
@@ -392,25 +391,42 @@ async def test_login_locks_account_after_max_attempts(monkeypatch: pytest.Monkey
     app.dependency_overrides[get_db] = _yield
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:
-            resp = await c.post(
-                "/api/v1/auth/login",
-                data={"username": user.email, "password": "Wrong123"},
-            )
-        assert resp.status_code == 401
+            responses = [
+                await c.post(
+                    "/api/v1/auth/login",
+                    data={"username": user.email, "password": "Wrong123"},
+                )
+                for _ in range(40)
+            ]
+        assert {response.status_code for response in responses} == {401}
         assert user.failed_login_count == 0
-        assert user.locked_until is not None
+        assert user.locked_until is None
+        db.commit.assert_not_awaited()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio
-async def test_login_rejects_locked_and_disabled_accounts(monkeypatch: pytest.MonkeyPatch):
+async def test_login_ignores_legacy_lock_but_rejects_disabled_accounts(monkeypatch: pytest.MonkeyPatch):
     from app.main import app
     from app.core.database import get_db
     from app.api.v1.endpoints import auth as auth_endpoint
 
     locked_user = _make_active_user()
     locked_user.locked_until = datetime.now(timezone.utc).replace(year=2099)
+
+    async def _verify_password(_plain: str, _hashed: str) -> bool:
+        return True
+
+    async def _normalize(_db, _user):
+        return _user
+
+    async def _audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(auth_endpoint, "verify_password_async", _verify_password)
+    monkeypatch.setattr(auth_endpoint, "normalize_single_tenant_user", _normalize)
+    monkeypatch.setattr(auth_endpoint, "log_audit_event", _audit)
 
     app.dependency_overrides[get_db] = _db_override(locked_user)
     try:
@@ -419,15 +435,13 @@ async def test_login_rejects_locked_and_disabled_accounts(monkeypatch: pytest.Mo
                 "/api/v1/auth/login",
                 data={"username": locked_user.email, "password": "Anything123"},
             )
-        assert locked_resp.status_code == 423
+        assert locked_resp.status_code == 200
+        assert locked_user.locked_until is None
     finally:
         app.dependency_overrides.pop(get_db, None)
 
     disabled_user = _make_active_user()
     disabled_user.status = "disabled"
-    async def _verify_password(_plain: str, _hashed: str) -> bool:
-        return True
-    monkeypatch.setattr(auth_endpoint, "verify_password_async", _verify_password)
     app.dependency_overrides[get_db] = _db_override(disabled_user)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as c:

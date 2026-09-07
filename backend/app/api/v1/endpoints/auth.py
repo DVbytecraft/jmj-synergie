@@ -1,12 +1,12 @@
 ﻿"""
 Auth endpoints — login, register, refresh, logout, and password reset.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import html
 import secrets
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from authlib.jose.errors import JoseError as JWTError
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -14,11 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.middleware.rate_limiter import rate_limit_dependency, reset_rate_limit
+from app.middleware.rate_limiter import rate_limit_dependency
 
-# Authentication operations use separate buckets so a silent refresh cannot
-# consume the user's login allowance (and vice versa).
-_login_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_login")
+# Password recovery and silent refresh retain their own abuse protection. Login
+# itself intentionally has no throttle or account lockout for this single-tenant
+# deployment: a wrong password always returns 401 and never starts a cooldown.
 _password_rate_limit = rate_limit_dependency(calls=5, period=60, key_prefix="auth_password")
 _refresh_rate_limit = rate_limit_dependency(calls=30, period=60, key_prefix="auth_refresh")
 from app.core.database import get_db
@@ -226,11 +226,9 @@ def _issue_tokens(user: UserModel, response: Response) -> TokenResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
-    request: Request,
     response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
-    _rl: None = Depends(_login_rate_limit),
 ):
     result = await db.execute(
         select(UserModel).where(UserModel.email == form.username, UserModel.is_deleted == False)
@@ -239,12 +237,6 @@ async def login(
 
     now = datetime.now(timezone.utc)
 
-    if user and user.locked_until and user.locked_until > now:
-        raise HTTPException(
-            status_code=status.HTTP_423_LOCKED,
-            detail=f"Compte verrouillé jusqu'au {user.locked_until.isoformat()}",
-        )
-
     # Always run bcrypt — even when user does not exist — to prevent timing-based
     # user enumeration. A dummy hash keeps response time constant (~60 ms).
     _DUMMY_HASH = "$2b$12$KIXHoJRdLKMz3VUbm0J4g.lz0Ew2M8WA6BpXjEJGk4Nz7T5MpVGi"
@@ -252,15 +244,6 @@ async def login(
     password_ok = await verify_password_async(form.password, candidate_hash)
 
     if not user or not password_ok:
-        if user:
-            user.failed_login_count += 1
-            if user.failed_login_count >= settings.MAX_LOGIN_ATTEMPTS:
-                user.locked_until = now + timedelta(minutes=settings.LOCKOUT_MINUTES)
-                user.failed_login_count = 0
-            # commit() — pas flush() : get_db() fait un rollback automatique quand
-            # l'exception HTTPException ci-dessous se propage, ce qui annulait
-            # silencieusement le compteur d'échecs et désactivait le verrouillage.
-            await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou mot de passe incorrect",
@@ -284,9 +267,6 @@ async def login(
         entity_type="user",
         entity_id=str(user.id),
     )
-    # Une connexion valide remet le quota reseau a zero. Seules les tentatives
-    # consecutives avant un succes peuvent donc provoquer un 429.
-    await reset_rate_limit(request, "auth_login")
     return tokens
 
 
