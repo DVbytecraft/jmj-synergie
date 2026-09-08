@@ -604,6 +604,7 @@ async def test_load_issuer_context_uses_profile_org_and_settings_fallbacks() -> 
             primary_color=None,
             secondary_color=None,
             font_family=None,
+            document_template="modern",
             logo_path="logo.png",
             stamp_path="stamp.png",
             signature_title="CEO",
@@ -635,6 +636,7 @@ async def test_load_issuer_context_uses_profile_org_and_settings_fallbacks() -> 
     assert issuer["address"] == "Rue 1, BP1, Douala, CM"
     assert issuer["logo_path"] == "logo.png"
     assert issuer["signature_path"] == "sig.png"
+    assert issuer["document_template"] == "jmj_reference"
     assert "RCCM : RCCM123" in issuer["footer_notes"]
 
 

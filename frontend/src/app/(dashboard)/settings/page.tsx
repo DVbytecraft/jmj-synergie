@@ -28,7 +28,7 @@ type SettingsForm = {
   primary_color: string;
   secondary_color: string;
   font_family: string;
-  document_template: "jmj_reference" | "modern";
+  document_template: "jmj_reference";
 };
 
 type OrganizationForm = {
@@ -123,7 +123,7 @@ export default function SettingsPage() {
       primary_color: data.primary_color ?? "#1a56db",
       secondary_color: data.secondary_color ?? "#eff6ff",
       font_family: data.font_family ?? "Helvetica",
-      document_template: data.document_template ?? "jmj_reference",
+      document_template: "jmj_reference",
     });
   }, [data, reset]);
 
@@ -170,7 +170,7 @@ export default function SettingsPage() {
         primary_color: saved.primary_color ?? "#1a56db",
         secondary_color: saved.secondary_color ?? "#eff6ff",
         font_family: saved.font_family ?? "Helvetica",
-        document_template: saved.document_template ?? "jmj_reference",
+        document_template: "jmj_reference",
       });
     },
   });
@@ -427,14 +427,14 @@ export default function SettingsPage() {
             </select>
           </div>
           <div className="md:col-span-2">
-            <label className="label">Design des documents</label>
-            <select className="input" {...register("document_template")}>
-              <option value="jmj_reference">JMJ Reference — modele du pro forma fourni</option>
-              <option value="modern">Moderne — ancien modele</option>
-            </select>
-            <p className="mt-1 text-xs text-gray-500">
-              Le design JMJ Reference est applique par defaut a tous les documents commerciaux.
-            </p>
+            <label className="label">Design officiel des documents</label>
+            <input type="hidden" {...register("document_template")} />
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+              <p className="font-medium text-blue-900">JMJ Reference</p>
+              <p className="mt-1 text-xs leading-5 text-blue-700">
+                Modèle du pro forma fourni, appliqué à tous les documents commerciaux pour garantir une identité cohérente.
+              </p>
+            </div>
           </div>
         </div>
 

@@ -325,7 +325,10 @@ async def update_my_issuer_profile(
         current_user.signature_text = body.signature_text.strip() or None
     profile.secondary_color = _normalize_optional(body.secondary_color)
     profile.font_family = _normalize_optional(body.font_family)
-    profile.document_template = body.document_template
+    # JMJ Reference is the official document identity. Keep accepting the
+    # legacy request field for backwards compatibility, but never persist a
+    # template that could make newly generated documents visually diverge.
+    profile.document_template = "jmj_reference"
 
     await db.flush()
     await db.refresh(profile)
@@ -522,7 +525,7 @@ def _to_issuer_profile_response(
         primary_color=profile.primary_color if profile else "#1a56db",
         secondary_color=profile.secondary_color if profile else "#eff6ff",
         font_family=profile.font_family if profile else "Helvetica",
-        document_template=getattr(profile, "document_template", "jmj_reference") if profile else "jmj_reference",
+        document_template="jmj_reference",
         logo_path=profile.logo_path if profile else None,
         stamp_path=profile.stamp_path if profile else None,
         signature_path=user.signature_path,

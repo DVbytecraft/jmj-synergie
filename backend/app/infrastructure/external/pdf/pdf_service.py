@@ -1351,7 +1351,9 @@ class PDFService:
             "primary_color":    (profile.primary_color if profile else None) or "#1a56db",
             "secondary_color":  (profile.secondary_color if profile else None) or "#eff6ff",
             "font_family":      (profile.font_family if profile else None) or "Helvetica",
-            "document_template": (getattr(profile, "document_template", None) if profile else None) or "jmj_reference",
+            # This is the official JMJ visual identity. Force it here as the
+            # final safeguard for profiles saved with the former template.
+            "document_template": "jmj_reference",
             "logo_path":        logo_path,
             "stamp_path":       (profile.stamp_path if profile else None) or "",
             "signature_path":   (user.signature_path if user else None) or "",

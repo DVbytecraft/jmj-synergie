@@ -106,6 +106,7 @@ def test_to_issuer_profile_response_prefers_profile_values():
             "primary_color": "#112233",
             "secondary_color": "#ddeeff",
             "font_family": "Courier",
+            "document_template": "modern",
             "logo_path": "https://cdn.example.com/logo.png",
             "stamp_path": "https://cdn.example.com/stamp.png",
         },
@@ -119,5 +120,6 @@ def test_to_issuer_profile_response_prefers_profile_values():
     assert payload.document_email == "billing@example.com"
     assert payload.auto_send_documents is False
     assert payload.tax_included is False
+    assert payload.document_template == "jmj_reference"
     assert payload.logo_path == "https://cdn.example.com/logo.png"
     assert payload.stamp_path == "https://cdn.example.com/stamp.png"
