@@ -16,6 +16,7 @@
  */
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/store/auth.store";
+import { waitForBackendReady } from "@/lib/api/readiness";
 
 const GATEWAY_ERRORS = new Set([502, 503, 504]);
 const MAX_RETRIES = 2;
@@ -44,8 +45,8 @@ let _refreshPromise: Promise<string> | null = null;
 export async function performRefresh(): Promise<string> {
   if (_refreshPromise) return _refreshPromise;
 
-  _refreshPromise = axios
-    .post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+  _refreshPromise = waitForBackendReady()
+    .then(() => axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true }))
     .then((res) => {
       const token: string = res.data.access_token;
       useAuthStore.getState().setAuth(token);

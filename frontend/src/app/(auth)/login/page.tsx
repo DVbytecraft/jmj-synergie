@@ -10,32 +10,7 @@ import { z } from "zod";
 import { Loader2, Lock, Mail, ArrowRight, Users, ShoppingCart, TrendingUp, Eye, EyeOff } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { apiClient } from "@/lib/api/client";
-
-// A free Render backend can need about one minute to leave hibernation. Keep
-// retrying for long enough that the user never has to restart the login flow.
-const READY_ATTEMPTS = 20;
-const wait = (milliseconds: number) =>
-  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-
-async function waitForServicesReady(onWaiting: () => void): Promise<void> {
-  for (let attempt = 0; attempt < READY_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await fetch(`/api/ready?t=${Date.now()}`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
-      });
-      const body = (await response.json().catch(() => null)) as { ready?: boolean } | null;
-      if (response.ok && body?.ready === true) return;
-    } catch {
-      // Render may close the first request while either free service wakes up.
-    }
-
-    onWaiting();
-    await wait(Math.min(1_500 + attempt * 500, 4_000));
-  }
-
-  throw new Error("Services not ready");
-}
+import { waitForBackendReady } from "@/lib/api/readiness";
 
 const loginSchema = z.object({
   email: z.string().email("Email invalide"),
@@ -72,7 +47,7 @@ function LoginContent() {
     };
 
     try {
-      await waitForServicesReady(() => setIsWaking(true));
+      await waitForBackendReady(() => setIsWaking(true));
 
       let res;
       try {
@@ -84,7 +59,7 @@ function LoginContent() {
         }
 
         setIsWaking(true);
-        await waitForServicesReady(() => setIsWaking(true));
+        await waitForBackendReady(() => setIsWaking(true));
         res = await submitCredentials();
       }
 

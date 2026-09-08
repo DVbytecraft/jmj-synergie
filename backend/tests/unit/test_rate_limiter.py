@@ -50,6 +50,10 @@ def create_rate_limited_app(calls: int = 2, period: int = 60) -> FastAPI:
     async def auth_refresh() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.post("/api/v1/auth/login")
+    async def auth_login() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
 
 
@@ -203,15 +207,19 @@ def test_rate_limit_middleware_skips_api_health_endpoint(monkeypatch: pytest.Mon
     assert fake_redis.pipeline_calls == 0
 
 
-def test_rate_limit_middleware_skips_auth_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rate_limit_middleware_never_limits_login_or_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     fake_redis = FakeRedis([0, 1, 99, True])
     monkeypatch.setattr(rl, "get_redis", lambda: fake_redis)
 
     with TestClient(create_rate_limited_app()) as client:
-        response = client.post("/api/v1/auth/refresh")
+        responses = [
+            client.post(path)
+            for _ in range(5)
+            for path in ("/api/v1/auth/login", "/api/v1/auth/refresh")
+        ]
 
-    assert response.status_code == 200
+    assert all(response.status_code == 200 for response in responses)
     assert fake_redis.pipeline_calls == 0
 
 
