@@ -11,7 +11,9 @@ import { Loader2, Lock, Mail, ArrowRight, Users, ShoppingCart, TrendingUp, Eye, 
 import { useAuthStore } from "@/store/auth.store";
 import { apiClient } from "@/lib/api/client";
 
-const READY_ATTEMPTS = 10;
+// A free Render backend can need about one minute to leave hibernation. Keep
+// retrying for long enough that the user never has to restart the login flow.
+const READY_ATTEMPTS = 20;
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 

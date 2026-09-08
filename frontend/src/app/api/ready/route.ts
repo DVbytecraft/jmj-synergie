@@ -5,11 +5,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 function resolveBackendUrl(): string {
-  const privateHostPort = process.env.BACKEND_HOSTPORT?.trim();
-  if (privateHostPort) return `http://${privateHostPort}`;
+  // A free Render web service cannot be woken through the private network.
+  // The public URL must be attempted first so Render starts a sleeping backend.
+  const renderUrl = process.env.RENDER_BACKEND_URL?.trim();
+  if (renderUrl) return renderUrl;
 
   const explicitUrl = process.env.BACKEND_URL?.trim();
   if (explicitUrl) return explicitUrl;
+
+  const privateHostPort = process.env.BACKEND_HOSTPORT?.trim();
+  if (privateHostPort) return `http://${privateHostPort}`;
 
   return "http://localhost:8000";
 }
