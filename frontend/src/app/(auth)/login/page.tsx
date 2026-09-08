@@ -48,6 +48,7 @@ function LoginContent() {
 
     try {
       await waitForBackendReady(() => setIsWaking(true));
+      setIsWaking(false);
 
       let res;
       try {
@@ -60,12 +61,14 @@ function LoginContent() {
 
         setIsWaking(true);
         await waitForBackendReady(() => setIsWaking(true));
+        setIsWaking(false);
         res = await submitCredentials();
       }
 
       setAuth(res.data.access_token);
       router.replace("/dashboard");
     } catch (e: unknown) {
+      setIsWaking(false);
       const err = e as {
         response?: {
           status?: number;
@@ -75,7 +78,6 @@ function LoginContent() {
       };
       const status = err.response?.status;
       if (status === 429 || status === 502 || status === 503 || status === 504) {
-        setIsWaking(false);
         setError("Render n'a pas terminé le réveil du service. Relancez la connexion.");
         return;
       }
