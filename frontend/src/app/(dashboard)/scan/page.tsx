@@ -31,7 +31,7 @@ interface PartyInfo {
 }
 
 interface ExtractedData {
-  document_type?: "invoice" | "purchase_order";
+  document_type?: "invoice" | "purchase_order" | "pro_forma";
   invoice_number?: string;
   date?: string;
   due_date?: string;
@@ -79,6 +79,8 @@ export default function ScanPage() {
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [scannedDocumentId, setScannedDocumentId] = useState<string | null>(null);
   const [workflowTarget, setWorkflowTarget] = useState<WorkflowTarget>("customer_documents");
+  const [prepareDeliveryNote, setPrepareDeliveryNote] = useState(true);
+  const [prepareInvoice, setPrepareInvoice] = useState(true);
   const [supplierId, setSupplierId] = useState("");
   const [applyPurchaseTax, setApplyPurchaseTax] = useState(false);
   const [purchaseTaxRate, setPurchaseTaxRate] = useState(19.25);
@@ -122,16 +124,13 @@ export default function ScanPage() {
     try {
       const result = await documentsApi.scanFacture(file);
       const data = result.extracted_data as ExtractedData;
-      const detectedClient = partyFrom(
-        data.document_type === "purchase_order" ? data.vendor : data.client
-      );
-      const fallbackClient = partyFrom(data.client);
+      // On an incoming customer purchase order, the issuer/buyer remains the
+      // customer. The vendor is generally JMJ Synergie and must not replace it.
+      const detectedClient = partyFrom(data.client);
       const fallbackVendor = partyFrom(data.vendor);
       data.client = detectedClient.name
         ? detectedClient
-        : fallbackClient.name
-          ? fallbackClient
-          : fallbackVendor;
+        : fallbackVendor;
       data.line_items = (data.line_items ?? []).map((line) => ({ ...line, supplier_unit_price: 0 }));
       setExtracted(data);
       setScannedDocumentId(result.document_id);
@@ -168,6 +167,8 @@ export default function ScanPage() {
     setIdempotencyKey(crypto.randomUUID());
     setScannedDocumentId(null);
     setWorkflowTarget("customer_documents");
+    setPrepareDeliveryNote(true);
+    setPrepareInvoice(true);
     setSupplierId("");
     setApplyPurchaseTax(false);
     setPurchaseTaxRate(19.25);
@@ -222,7 +223,7 @@ export default function ScanPage() {
     } : current);
   };
 
-  const createOrderAndDocuments = async () => {
+  const prepareWorkflow = async () => {
     if (!extracted) return;
     setWorkflowError(null);
 
@@ -252,6 +253,10 @@ export default function ScanPage() {
     }
     if ((confidence < 0.7 || extracted.needs_review) && !reviewConfirmed) {
       setWorkflowError("Confirmez que vous avez vérifié les données OCR avant de continuer.");
+      return;
+    }
+    if (workflowTarget === "customer_documents" && !prepareDeliveryNote && !prepareInvoice) {
+      setWorkflowError("Choisissez au moins un document à préparer : bon de livraison ou facture.");
       return;
     }
     if (workflowTarget === "supplier_purchase") {
@@ -300,7 +305,9 @@ export default function ScanPage() {
       const sourceReference = extracted.purchase_order_ref || extracted.invoice_number;
       const sourceLabel = extracted.document_type === "purchase_order"
         ? "Bon de commande scanné"
-        : "Facture scannée";
+        : extracted.document_type === "pro_forma"
+          ? "Pro forma scanné"
+          : "Facture scannée";
       const order = await commandesApi.create({
         client_id: orderClient.id,
         currency,
@@ -323,7 +330,6 @@ export default function ScanPage() {
         await documentsApi.linkScanToOrder(scannedDocumentId, order.id);
       }
 
-      const confirmed = order.status === "draft" ? await commandesApi.confirmer(order.id) : order;
       if (workflowTarget === "supplier_purchase") {
         if (scannedDocumentId) {
           const existingPurchases = await achatsApi.list();
@@ -335,13 +341,13 @@ export default function ScanPage() {
         }
         const purchase = await achatsApi.create({
           supplier_id: supplierId,
-          sales_order_id: confirmed.id,
+          sales_order_id: order.id,
           source_document_id: scannedDocumentId || undefined,
           currency,
           apply_tax: applyPurchaseTax,
           tax_rate: applyPurchaseTax ? purchaseTaxRate : 0,
           notes: [
-            `Approvisionnement lié à la commande client ${confirmed.order_number}`,
+            `Approvisionnement lié au dossier client ${order.order_number}`,
             sourceReference ? `Document client source : ${sourceReference}` : undefined,
           ].filter(Boolean).join("\n"),
           items: items.map((line) => ({
@@ -354,22 +360,13 @@ export default function ScanPage() {
         router.push(`/achats?purchase_id=${purchase.id}`);
         return;
       }
-      const currentOrder = await commandesApi.get(order.id);
-      if (currentOrder.status !== "delivered") {
-        const remaining = currentOrder.items
-          .map((line) => ({ item_id: line.id, quantity: line.remaining_quantity }))
-          .filter((line) => line.quantity > 0);
-        if (remaining.length) await commandesApi.enregistrerLivraison(order.id, remaining);
-      }
-      const [deliveryNote, invoice] = await Promise.all([
-        documentsApi.genererBonLivraison(order.id),
-        documentsApi.genererFacture(order.id),
-      ]);
       const query = new URLSearchParams({
-        delivery_document_id: deliveryNote.document_id,
-        invoice_document_id: invoice.document_id,
+        from_scan: "1",
+        edit: "1",
+        prepare_delivery: prepareDeliveryNote ? "1" : "0",
+        prepare_invoice: prepareInvoice ? "1" : "0",
       });
-      router.push(`/commandes/${order.id}?${query.toString()}#documents`);
+      router.push(`/commandes/${order.id}?${query.toString()}#scan-preparation`);
     } catch (error) {
       const suffix = createdOrderId
         ? " La commande a été créée : ouvrez-la depuis la liste pour terminer les documents."
@@ -384,9 +381,9 @@ export default function ScanPage() {
     <div className="min-w-0 max-w-3xl space-y-6">
       {/* En-tête */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Scan de facture ou bon de commande</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Scanner un document commercial</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Importez une photo ou un PDF : les données alimentent directement la commande et ses documents.
+          Importez un bon de commande, une facture ou un pro forma, contrôlez les données, puis choisissez le circuit client ou fournisseur.
         </p>
       </div>
 
@@ -597,14 +594,30 @@ export default function ScanPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <button type="button" aria-pressed={workflowTarget === "customer_documents"} onClick={() => setWorkflowTarget("customer_documents")} className={`rounded-xl border p-4 text-left transition-colors ${workflowTarget === "customer_documents" ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}>
-                <span className="block font-semibold text-slate-900">Livraison + facture client</span>
-                <span className="mt-1 block text-xs text-slate-500">Crée la commande client, enregistre la livraison complète, puis génère le bon de livraison et la facture.</span>
+                <span className="block font-semibold text-slate-900">Documents pour le client</span>
+                <span className="mt-1 block text-xs text-slate-500">Prépare les données du bon de livraison et/ou de la facture. Vous les modifiez avant leur validation.</span>
               </button>
               <button type="button" aria-pressed={workflowTarget === "supplier_purchase"} onClick={() => setWorkflowTarget("supplier_purchase")} className={`rounded-xl border p-4 text-left transition-colors ${workflowTarget === "supplier_purchase" ? "border-orange-500 bg-orange-50 ring-2 ring-orange-100" : "border-slate-200 hover:border-orange-300"}`}>
-                <span className="block font-semibold text-slate-900">Commande client + achat fournisseur</span>
-                <span className="mt-1 block text-xs text-slate-500">Conserve le prix de vente client et crée un bon d'achat séparé avec vos prix fournisseur.</span>
+                <span className="block font-semibold text-slate-900">Commande vers un fournisseur</span>
+                <span className="mt-1 block text-xs text-slate-500">Crée un bon d'achat séparé et modifiable, avec vos prix fournisseur différents des prix de vente.</span>
               </button>
             </div>
+            {workflowTarget === "customer_documents" && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <p className="mb-3 text-sm font-semibold text-blue-950">Documents à préparer après vérification</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex min-h-11 items-center gap-3 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-slate-800">
+                    <input type="checkbox" checked={prepareDeliveryNote} onChange={(event) => setPrepareDeliveryNote(event.target.checked)} />
+                    Bon de livraison
+                  </label>
+                  <label className="flex min-h-11 items-center gap-3 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-slate-800">
+                    <input type="checkbox" checked={prepareInvoice} onChange={(event) => setPrepareInvoice(event.target.checked)} />
+                    Facture finale
+                  </label>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-blue-800">Aucun document définitif n'est généré à cette étape. Les données s'ouvrent d'abord en brouillon modifiable.</p>
+              </div>
+            )}
             {workflowTarget === "supplier_purchase" && (
               <div className="grid gap-4 rounded-xl border border-orange-200 bg-orange-50 p-4 sm:grid-cols-2">
                 <div>
@@ -641,6 +654,7 @@ export default function ScanPage() {
                 >
                   <option value="invoice">Facture</option>
                   <option value="purchase_order">Bon de commande</option>
+                  <option value="pro_forma">Pro forma</option>
                 </select>
               </div>
               <div>
@@ -889,15 +903,15 @@ export default function ScanPage() {
             <button onClick={reset} className="btn-secondary">
               <X className="w-4 h-4" /> Recommencer
             </button>
-            <button onClick={createOrderAndDocuments} disabled={creatingDocuments} className="btn-primary">
+            <button onClick={prepareWorkflow} disabled={creatingDocuments} className="btn-primary">
               {creatingDocuments
                 ? <Loader2 className="w-4 h-4 animate-spin" />
                 : <ChevronRight className="w-4 h-4" />}
               {creatingDocuments
                 ? "Création en cours…"
                 : workflowTarget === "supplier_purchase"
-                  ? "Créer la commande client et le bon fournisseur"
-                  : "Créer livraison et facture"}
+                  ? "Préparer le bon de commande fournisseur"
+                  : "Continuer vers la modification"}
             </button>
           </div>
         </div>

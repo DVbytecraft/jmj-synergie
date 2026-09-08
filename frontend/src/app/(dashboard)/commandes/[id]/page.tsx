@@ -1,7 +1,7 @@
 "use client";
 import { formatDateFr, formatDateTimeFr } from "@/lib/utils/format-dates";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commandesApi } from "@/lib/api/commandes";
@@ -37,8 +37,11 @@ type DocType = "purchase_order" | "pro_forma" | "invoice" | "delivery_note" | "p
 export default function CommandeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const searchParams = useSearchParams();
-  const generatedInvoiceId = searchParams.get("invoice_document_id");
-  const generatedDeliveryId = searchParams.get("delivery_document_id");
+  const [generatedInvoiceId, setGeneratedInvoiceId] = useState(() => searchParams.get("invoice_document_id"));
+  const [generatedDeliveryId, setGeneratedDeliveryId] = useState(() => searchParams.get("delivery_document_id"));
+  const fromScan = searchParams.get("from_scan") === "1";
+  const prepareDeliveryFromScan = searchParams.get("prepare_delivery") === "1";
+  const prepareInvoiceFromScan = searchParams.get("prepare_invoice") === "1";
   const qc = useQueryClient();
   const [showPayModal, setShowPayModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
@@ -47,6 +50,9 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
   const [shareCopied, setShareCopied] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [paymentRecorded, setPaymentRecorded] = useState(false);
+  const [scanEditOpened, setScanEditOpened] = useState(false);
+  const [scanFinalizing, setScanFinalizing] = useState(false);
+  const [scanWorkflowError, setScanWorkflowError] = useState<string | null>(null);
   const {
     previewUrl, previewTitle, error: docError,
     run: runPreview, close: closePreview, download: downloadPreview, clearError: clearDocError,
@@ -103,6 +109,39 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
       }, fileName);
     } finally {
       setDocLoading(null);
+    }
+  };
+
+  useEffect(() => {
+    if (fromScan && commande && !scanEditOpened && searchParams.get("edit") === "1") {
+      setShowEditModal(true);
+      setScanEditOpened(true);
+    }
+  }, [commande, fromScan, scanEditOpened, searchParams]);
+
+  const finalizeScannedDocuments = async () => {
+    if (!commande || (!prepareDeliveryFromScan && !prepareInvoiceFromScan)) return;
+    setScanFinalizing(true);
+    setScanWorkflowError(null);
+    try {
+      if (commande.status === "draft") {
+        await commandesApi.confirmer(id);
+        await qc.invalidateQueries({ queryKey: ["commandes", id] });
+      }
+      if (prepareDeliveryFromScan && !generatedDeliveryId) {
+        const deliveryResult = await apiClient.post<{ document_id: string }>(`/documents/delivery-note/${id}`);
+        setGeneratedDeliveryId(deliveryResult.data.document_id);
+      }
+      if (prepareInvoiceFromScan && !generatedInvoiceId) {
+        const invoiceResult = await apiClient.post<{ document_id: string }>(`/documents/invoice/${id}`);
+        setGeneratedInvoiceId(invoiceResult.data.document_id);
+      }
+      await qc.invalidateQueries({ queryKey: ["commandes", id] });
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setScanWorkflowError(detail || "Impossible de valider les documents préparés. Vérifiez les données et réessayez.");
+    } finally {
+      setScanFinalizing(false);
     }
   };
 
@@ -227,6 +266,48 @@ export default function CommandeDetailPage({ params }: { params: Promise<{ id: s
           )}
         </div>
       </div>
+
+      {fromScan && (
+        <section id="scan-preparation" className="scroll-mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white">Document client scanné</span>
+                {prepareDeliveryFromScan && <span className="badge-blue">Bon de livraison</span>}
+                {prepareInvoiceFromScan && <span className="badge-blue">Facture</span>}
+              </div>
+              <h2 className="font-semibold text-blue-950">Vérifiez le brouillon avant de produire les documents</h2>
+              <p className="max-w-2xl text-sm leading-6 text-blue-800">
+                Les données extraites sont modifiables. La validation confirme le dossier commercial et génère uniquement les documents choisis, sans enregistrer automatiquement une sortie de stock.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:flex-col">
+              {canEdit && (
+                <button type="button" onClick={() => setShowEditModal(true)} className="btn-secondary w-full whitespace-nowrap bg-white">
+                  <Pencil className="h-4 w-4" /> Modifier les données
+                </button>
+              )}
+              {(!prepareDeliveryFromScan || generatedDeliveryId) && (!prepareInvoiceFromScan || generatedInvoiceId) ? (
+                <span className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-100 px-4 text-sm font-semibold text-emerald-800">
+                  <CheckCircle className="h-4 w-4" /> Documents générés
+                </span>
+              ) : (
+                <button type="button" onClick={finalizeScannedDocuments} disabled={scanFinalizing} className="btn-primary w-full whitespace-nowrap">
+                  {scanFinalizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  Valider et générer
+                </button>
+              )}
+            </div>
+          </div>
+          {scanWorkflowError && <p className="mt-4 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700">{scanWorkflowError}</p>}
+          {(generatedDeliveryId || generatedInvoiceId) && (
+            <div className="mt-4 flex flex-col gap-2 border-t border-blue-200 pt-4 sm:flex-row">
+              {generatedDeliveryId && <button type="button" onClick={() => previewExisting(generatedDeliveryId, `bon_livraison-${id.slice(0, 8)}.pdf`, "delivery_note")} className="btn-secondary bg-white"><Eye className="h-4 w-4" /> Voir le bon de livraison</button>}
+              {generatedInvoiceId && <button type="button" onClick={() => previewExisting(generatedInvoiceId, `facture-${id.slice(0, 8)}.pdf`, "invoice")} className="btn-secondary bg-white"><Eye className="h-4 w-4" /> Voir la facture</button>}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Share link banner */}
       {shareLink && (
@@ -663,6 +744,10 @@ function OrderEditModal({ order, onClose, onSuccess }: { order: Order; onClose: 
   })));
   const [applyTax, setApplyTax] = useState(order.tax_rate > 0);
   const [taxRate, setTaxRate] = useState(order.tax_rate || 19.25);
+  const [purchaseOrderRef, setPurchaseOrderRef] = useState(order.purchase_order_ref ?? "");
+  const [dueDate, setDueDate] = useState(order.due_date ?? "");
+  const [deliveryDate, setDeliveryDate] = useState(order.delivery_date ?? "");
+  const [notes, setNotes] = useState(order.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -676,6 +761,10 @@ function OrderEditModal({ order, onClose, onSuccess }: { order: Order; onClose: 
     try {
       await commandesApi.update(order.id, {
         tax_rate: applyTax ? taxRate : 0,
+        purchase_order_ref: purchaseOrderRef.trim(),
+        due_date: dueDate || undefined,
+        delivery_date: deliveryDate || undefined,
+        notes: notes.trim(),
         items: lines.map((line) => ({
           description: line.description.trim(), quantity: Number(line.quantity),
           unit_price_cents: amountToCents(Number(line.unit_price)), unit: line.unit,
@@ -700,6 +789,12 @@ function OrderEditModal({ order, onClose, onSuccess }: { order: Order; onClose: 
         <button aria-label="Supprimer la ligne" onClick={() => setLines((all) => all.filter((_, i) => i !== index))} className="min-h-10 min-w-10 rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 className="mx-auto h-4 w-4" /></button>
       </div>)}
       <button onClick={() => setLines((all) => [...all, { description: "", quantity: 1, unit_price: 0, unit: "" }])} className="btn-secondary w-full sm:w-auto"><Plus className="w-4 h-4" /> Ajouter un produit</button>
+      <div className="grid gap-3 border-t pt-4 sm:grid-cols-2">
+        <div><label className="label">Référence du bon de commande client</label><input value={purchaseOrderRef} onChange={(event) => setPurchaseOrderRef(event.target.value)} className="input" /></div>
+        <div><label className="label">Échéance de paiement</label><input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="input" /></div>
+        <div><label className="label">Date de livraison prévue</label><input type="date" value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} className="input" /></div>
+        <div className="sm:col-span-2"><label className="label">Objet et notes visibles</label><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} className="input resize-y" /></div>
+      </div>
       <div className="flex flex-wrap items-center gap-4 border-t pt-4"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={applyTax} onChange={(e) => setApplyTax(e.target.checked)} /> Appliquer la TVA</label>{applyTax && <input type="number" min="0.01" max="100" step="0.01" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} className="input w-28" />}</div>
       {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>}
       <div className="flex justify-end"><button onClick={save} disabled={saving} className="btn-primary w-full sm:w-auto">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer</button></div>

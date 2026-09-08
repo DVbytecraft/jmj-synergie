@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, CheckCircle, Download, Loader2, PackageCheck, Plus, Trash2, UserRoundCheck } from "lucide-react";
@@ -14,11 +14,20 @@ import { apiClient } from "@/lib/api/client";
 
 type DraftLine = { product_id: string; description: string; quantity: number; purchase_price: number; unit: string };
 const blankLine = (): DraftLine => ({ product_id: "", description: "", quantity: 1, purchase_price: 0, unit: "" });
+const PURCHASE_STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon",
+  ordered: "Envoyé",
+  partially_received: "Partiellement reçu",
+  received: "Reçu",
+  cancelled: "Annulé",
+};
 
 function AchatsContent() {
   const params = useSearchParams();
+  const selectedPurchaseId = params.get("purchase_id");
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(Boolean(params.get("sales_order_id")));
+  const [showForm, setShowForm] = useState(Boolean(params.get("sales_order_id") || selectedPurchaseId));
+  const [openedPurchaseId, setOpenedPurchaseId] = useState<string | null>(null);
   const [editing, setEditing] = useState<PurchaseOrder | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [salesOrderId, setSalesOrderId] = useState(params.get("sales_order_id") ?? "");
@@ -56,6 +65,29 @@ function AchatsContent() {
     setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  useEffect(() => {
+    if (!selectedPurchaseId || openedPurchaseId === selectedPurchaseId || !purchases?.items.length) return;
+    const purchase = purchases.items.find((candidate) => candidate.id === selectedPurchaseId);
+    if (!purchase) return;
+    setEditing(purchase);
+    setSupplierId(purchase.supplier_id);
+    setSalesOrderId(purchase.sales_order_id ?? "");
+    setCurrency(purchase.currency);
+    setApplyTax(purchase.tax_rate > 0);
+    setTaxRate(purchase.tax_rate || 19.25);
+    setExpectedDate(purchase.expected_date ?? "");
+    setNotes(purchase.notes ?? "");
+    setLines(purchase.items.map((item) => ({
+      product_id: item.product_id ?? "",
+      description: item.description,
+      quantity: item.quantity,
+      purchase_price: item.purchase_unit_price_cents / 100,
+      unit: item.unit ?? "",
+    })));
+    setShowForm(true);
+    setOpenedPurchaseId(selectedPurchaseId);
+  }, [openedPurchaseId, purchases, selectedPurchaseId]);
+
   const payload = (): PurchaseInput => ({
     supplier_id: supplierId, sales_order_id: salesOrderId || undefined, currency,
     source_document_id: editing?.source_document_id || undefined,
@@ -70,7 +102,7 @@ function AchatsContent() {
   const saveMut = useMutation({
     mutationFn: () => editing ? achatsApi.update(editing.id, payload()) : achatsApi.create(payload()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["purchases"] }); resetForm(); },
-    onError: (error: any) => setFormError(error?.response?.data?.detail ?? "Impossible d'enregistrer le bon d'achat"),
+    onError: (error: any) => setFormError(error?.response?.data?.detail ?? "Impossible d'enregistrer le bon de commande fournisseur"),
   });
   const supplierMut = useMutation({
     mutationFn: () => achatsApi.createSupplier({ name: supplierName, phone: supplierPhone, currency, email: null }),
@@ -128,7 +160,7 @@ function AchatsContent() {
     <div className="page-container space-y-6">
       <div className="page-header">
         <div><h1 className="page-title">Achats fournisseurs</h1><p className="page-subtitle">Approvisionner une commande client sans mélanger prix d’achat et prix de vente</p></div>
-        <button onClick={() => setShowForm(true)} className="btn-primary w-full sm:w-auto"><Plus className="w-4 h-4" /> Nouveau bon d’achat</button>
+        <button onClick={() => setShowForm(true)} className="btn-primary w-full sm:w-auto"><Plus className="w-4 h-4" /> Nouveau bon fournisseur</button>
       </div>
 
       <section className="card space-y-4 p-4 sm:p-5">
@@ -150,6 +182,9 @@ function AchatsContent() {
           {!editing && <div className="rounded-lg border border-blue-100 bg-blue-50 p-3"><p className="mb-2 text-xs font-medium text-blue-900">Entreprise déjà cliente ? Activez aussi son rôle fournisseur sans créer de doublon.</p><div className="grid gap-2 md:grid-cols-[1fr_auto]"><select value={partnerClientId} onChange={(event) => setPartnerClientId(event.target.value)} className="input"><option value="">— Choisir une entreprise cliente —</option>{clients?.items.map((client) => <option key={client.id} value={client.id}>{client.company_name || client.full_name}</option>)}</select><button onClick={() => partnerMut.mutate()} disabled={!partnerClientId || partnerMut.isPending} className="btn-secondary"><Building2 className="h-4 w-4" /> Activer comme fournisseur</button></div></div>}
 
           <div className="space-y-3">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
+              Pour que la réception augmente automatiquement le stock, associez chaque ligne concernée à un produit enregistré.
+            </div>
             {lines.map((line, index) => <div key={index} className="grid md:grid-cols-12 gap-2 items-end border rounded-lg p-3">
               <div className="md:col-span-3"><label className="label">Produit stocké</label><select value={line.product_id} onChange={(e) => { const product = products?.items.find((p) => p.id === e.target.value); setLines((all) => all.map((v, i) => i === index ? { ...v, product_id: e.target.value, description: product?.name ?? v.description, unit: product?.unit ?? v.unit } : v)); }} className="input"><option value="">Non lié au stock</option>{products?.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
               <div className="md:col-span-4"><label className="label">Description *</label><input value={line.description} onChange={(e) => setLines((all) => all.map((v, i) => i === index ? { ...v, description: e.target.value } : v))} className="input" /></div>
@@ -167,7 +202,7 @@ function AchatsContent() {
           </div>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Conditions d'achat, délai, transport…" className="input" rows={2} />
           {formError && <p className="text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg">{formError}</p>}
-          <div className="flex justify-end"><button onClick={submit} disabled={saveMut.isPending} className="btn-primary w-full sm:w-auto">{saveMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />} {editing ? "Enregistrer les modifications" : "Créer le bon d’achat"}</button></div>
+          <div className="flex justify-end"><button onClick={submit} disabled={saveMut.isPending} className="btn-primary w-full sm:w-auto">{saveMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />} {editing ? "Enregistrer les modifications" : "Créer le bon fournisseur"}</button></div>
         </div>
       )}
 
@@ -176,7 +211,7 @@ function AchatsContent() {
           const sale = orders?.items.find((order) => order.id === purchase.sales_order_id);
           const comparable = sale?.currency === purchase.currency;
           return <article key={purchase.id} className="card p-4 space-y-4">
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-sm font-semibold truncate">{purchase.purchase_number}</p><p className="text-sm text-slate-600 truncate">{purchase.supplier_name}</p></div><span className="badge-blue flex-shrink-0">{purchase.status}</span></div>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-mono text-sm font-semibold truncate">{purchase.purchase_number}</p><p className="text-sm text-slate-600 truncate">{purchase.supplier_name}</p></div><span className="badge-blue flex-shrink-0">{PURCHASE_STATUS_LABELS[purchase.status] ?? purchase.status}</span></div>
             {purchase.sales_order_id && <Link className="block text-sm text-blue-600 font-medium" href={`/commandes/${purchase.sales_order_id}`}>Commande client liée →</Link>}
             <dl className="grid grid-cols-1 gap-2 text-center min-[380px]:grid-cols-3"><div className="rounded-lg bg-orange-50 p-2"><dt className="text-[11px] text-orange-700">Achat HT</dt><dd className="break-words text-xs font-bold text-orange-800">{formatCents(purchase.subtotal_cents, purchase.currency)}</dd></div><div className="rounded-lg bg-blue-50 p-2"><dt className="text-[11px] text-blue-700">Vente HT</dt><dd className="break-words text-xs font-bold text-blue-800">{sale ? formatCents(sale.subtotal_cents, sale.currency) : "—"}</dd></div><div className="rounded-lg bg-emerald-50 p-2"><dt className="text-[11px] text-emerald-700">Marge</dt><dd className="break-words text-xs font-bold text-emerald-800">{sale && comparable ? formatCents(sale.subtotal_cents - purchase.subtotal_cents, sale.currency) : "—"}</dd></div></dl>
             {purchaseActions(purchase, true)}
@@ -184,12 +219,12 @@ function AchatsContent() {
         })}
       </div>
 
-      <div className="card overflow-hidden hidden md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead className="bg-slate-50"><tr><th className="table-header">Bon d’achat</th><th className="table-header">Fournisseur C</th><th className="table-header">Commande client A</th><th className="table-header">Statut</th><th className="table-header text-right">Coût d’achat HT</th><th className="table-header text-right">Vente HT</th><th className="table-header text-right">Marge brute</th><th className="table-header">Actions</th></tr></thead><tbody>
+      <div className="card overflow-hidden hidden md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead className="bg-slate-50"><tr><th className="table-header">Bon fournisseur</th><th className="table-header">Fournisseur C</th><th className="table-header">Commande client A</th><th className="table-header">Statut</th><th className="table-header text-right">Coût d’achat HT</th><th className="table-header text-right">Vente HT</th><th className="table-header text-right">Marge brute</th><th className="table-header">Actions</th></tr></thead><tbody>
         {isLoading ? <tr><td colSpan={8} className="p-10 text-center"><Loader2 className="animate-spin mx-auto" /></td></tr> : purchases?.items.map((purchase) => {
           const sale = orders?.items.find((order) => order.id === purchase.sales_order_id);
           const comparable = sale?.currency === purchase.currency;
           return <tr key={purchase.id} className="border-t">
-            <td className="table-cell font-mono">{purchase.purchase_number}</td><td className="table-cell font-medium">{purchase.supplier_name}</td><td className="table-cell">{purchase.sales_order_id ? <Link className="text-blue-600" href={`/commandes/${purchase.sales_order_id}`}>Voir la vente</Link> : "—"}</td><td className="table-cell">{purchase.status}</td><td className="table-cell text-right font-semibold text-orange-700">{formatCents(purchase.subtotal_cents, purchase.currency)}</td>
+            <td className="table-cell font-mono">{purchase.purchase_number}</td><td className="table-cell font-medium">{purchase.supplier_name}</td><td className="table-cell">{purchase.sales_order_id ? <Link className="text-blue-600" href={`/commandes/${purchase.sales_order_id}`}>Voir la vente</Link> : "—"}</td><td className="table-cell">{PURCHASE_STATUS_LABELS[purchase.status] ?? purchase.status}</td><td className="table-cell text-right font-semibold text-orange-700">{formatCents(purchase.subtotal_cents, purchase.currency)}</td>
             <td className="table-cell text-right font-semibold text-blue-700">{sale ? formatCents(sale.subtotal_cents, sale.currency) : "—"}</td>
             <td className="table-cell text-right font-bold text-emerald-700">{sale && comparable ? formatCents(sale.subtotal_cents - purchase.subtotal_cents, sale.currency) : "—"}</td>
             <td className="table-cell">{purchaseActions(purchase)}</td>
