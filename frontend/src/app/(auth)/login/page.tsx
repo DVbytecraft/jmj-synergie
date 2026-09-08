@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -11,6 +11,30 @@ import { Loader2, Lock, Mail, ArrowRight, Users, ShoppingCart, TrendingUp, Eye, 
 import { useAuthStore } from "@/store/auth.store";
 import { apiClient } from "@/lib/api/client";
 
+const READY_ATTEMPTS = 10;
+const wait = (milliseconds: number) =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+async function waitForServicesReady(onWaiting: () => void): Promise<void> {
+  for (let attempt = 0; attempt < READY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(`/api/ready?t=${Date.now()}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
+      const body = (await response.json().catch(() => null)) as { ready?: boolean } | null;
+      if (response.ok && body?.ready === true) return;
+    } catch {
+      // Render may close the first request while either free service wakes up.
+    }
+
+    onWaiting();
+    await wait(Math.min(1_500 + attempt * 500, 4_000));
+  }
+
+  throw new Error("Services not ready");
+}
+
 const loginSchema = z.object({
   email: z.string().email("Email invalide"),
   password: z.string().min(6, "Mot de passe requis"),
@@ -20,7 +44,6 @@ type LoginForm = z.infer<typeof loginSchema>;
 function LoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [isWaking, setIsWaking] = useState(false);
-  const [retryAfter, setRetryAfter] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,26 +56,36 @@ function LoginContent() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
-  useEffect(() => {
-    if (retryAfter <= 0) return;
-    const timer = window.setTimeout(
-      () => setRetryAfter((seconds) => Math.max(0, seconds - 1)),
-      1_000
-    );
-    return () => window.clearTimeout(timer);
-  }, [retryAfter]);
-
   const onSubmit = async (data: LoginForm) => {
-    if (retryAfter > 0) return;
     setError(null);
     setIsWaking(false);
-    try {
+
+    const submitCredentials = () => {
       const form = new URLSearchParams();
       form.append("username", data.email);
       form.append("password", data.password);
-      const res = await apiClient.post("/auth/login", form, {
+      return apiClient.post("/auth/login", form, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
+    };
+
+    try {
+      await waitForServicesReady(() => setIsWaking(true));
+
+      let res;
+      try {
+        res = await submitCredentials();
+      } catch (firstError: unknown) {
+        const status = (firstError as { response?: { status?: number } }).response?.status;
+        if (status !== 429 && status !== 502 && status !== 503 && status !== 504) {
+          throw firstError;
+        }
+
+        setIsWaking(true);
+        await waitForServicesReady(() => setIsWaking(true));
+        res = await submitCredentials();
+      }
+
       setAuth(res.data.access_token);
       router.replace("/dashboard");
     } catch (e: unknown) {
@@ -64,17 +97,9 @@ function LoginContent() {
         };
       };
       const status = err.response?.status;
-      if (status === 502 || status === 503 || status === 504) {
-        setIsWaking(true);
-        return;
-      }
-      if (status === 429) {
-        const rawRetryAfter =
-          err.response?.headers?.get?.("retry-after") ??
-          err.response?.headers?.["retry-after"];
-        const seconds = Math.max(1, Number(rawRetryAfter) || 60);
-        setRetryAfter(seconds);
-        setError(`Trop de tentatives de connexion. Réessayez dans ${seconds} secondes.`);
+      if (status === 429 || status === 502 || status === 503 || status === 504) {
+        setIsWaking(false);
+        setError("Render n'a pas terminé le réveil du service. Relancez la connexion.");
         return;
       }
       const detail = err.response?.data?.detail;
@@ -220,7 +245,7 @@ function LoginContent() {
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <p className="font-medium">Le serveur se réveille…</p>
                 <p className="mt-0.5 text-amber-700">
-                  Première connexion du jour — réessayez dans 30 secondes.
+                  La connexion démarrera automatiquement dès que Render sera prêt.
                 </p>
               </div>
             )}
@@ -231,17 +256,15 @@ function LoginContent() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={isSubmitting || retryAfter > 0}
+              disabled={isSubmitting}
               className="btn-primary w-full py-2.5 mt-2"
             >
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
-              ) : retryAfter > 0 ? (
-                `Réessayer dans ${retryAfter}s`
               ) : (
                 <ArrowRight className="w-4 h-4" />
               )}
-              {retryAfter <= 0 && "Se connecter"}
+              {isSubmitting ? "Connexion en cours" : "Se connecter"}
             </button>
           </form>
         </div>
